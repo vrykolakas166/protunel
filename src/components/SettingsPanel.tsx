@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { check } from "@tauri-apps/plugin-updater";
+import { getVersion } from "@tauri-apps/api/app";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { getSettings, updateSettings } from "../api";
 import type { Settings, ThemePreference } from "../types";
 
@@ -18,11 +20,15 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     getSettings().then(setSettings);
+    getVersion().then(setVersion);
   }, []);
 
   const save = async (next: Settings) => {
@@ -42,13 +48,39 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
   const checkForUpdates = async () => {
     setCheckingUpdate(true);
     setUpdateStatus(null);
+    setPendingUpdate(null);
     try {
       const update = await check();
-      setUpdateStatus(update ? `Update available: v${update.version}` : "You're up to date.");
+      if (update) {
+        setPendingUpdate(update);
+        setUpdateStatus(`Update available: v${update.version}`);
+      } else {
+        setUpdateStatus("You're up to date.");
+      }
     } catch (err) {
       setUpdateStatus(`Check failed: ${String(err)}`);
     } finally {
       setCheckingUpdate(false);
+    }
+  };
+
+  const installUpdate = async () => {
+    if (!pendingUpdate) return;
+    setInstalling(true);
+    setUpdateStatus("Downloading…");
+    try {
+      await pendingUpdate.downloadAndInstall((event) => {
+        if (event.event === "Progress") {
+          setUpdateStatus("Downloading…");
+        } else if (event.event === "Finished") {
+          setUpdateStatus("Installing…");
+        }
+      });
+      setUpdateStatus("Installed. Restarting…");
+      await relaunch();
+    } catch (err) {
+      setUpdateStatus(`Install failed: ${String(err)}`);
+      setInstalling(false);
     }
   };
 
@@ -119,14 +151,29 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
         {error && <p className="text-sm text-coral">{error}</p>}
 
         <div className="border-t border-border pt-3">
-          <button
-            onClick={checkForUpdates}
-            disabled={checkingUpdate}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
-          >
-            {checkingUpdate ? "Checking…" : "Check for updates"}
-          </button>
+          <div className="flex items-center justify-between">
+            <p className="font-mono text-xs text-muted">
+              {version ? `v${version}` : "…"}
+            </p>
+            <button
+              onClick={checkForUpdates}
+              disabled={checkingUpdate || installing}
+              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            >
+              {checkingUpdate ? "Checking…" : "Check for updates"}
+            </button>
+          </div>
+
           {updateStatus && <p className="mt-2 text-xs text-muted">{updateStatus}</p>}
+
+          {pendingUpdate && !installing && (
+            <button
+              onClick={installUpdate}
+              className="mt-2 w-full rounded bg-amber px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+            >
+              Install v{pendingUpdate.version} &amp; restart
+            </button>
+          )}
         </div>
       </div>
     </div>
