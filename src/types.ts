@@ -40,3 +40,26 @@ export interface HostKeyPending {
   fingerprint: string;
   algorithm: string;
 }
+
+export interface TunnelStats {
+  tunnelId: string;
+  bytesUp: number;
+  bytesDown: number;
+  uptimeSecs: number;
+}
+
+export interface KnownHostEntry {
+  keyId: string;
+  fingerprint: string;
+  algorithm: string;
+  trustedAt: number;
+}
+
+export type ThemePreference = "system" | "light" | "dark";
+
+export interface Settings {
+  theme: ThemePreference;
+  autostartEnabled: boolean;
+  portRangeMin: number;
+  portRangeMax: number;
+}

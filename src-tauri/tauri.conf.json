@@ -14,7 +14,9 @@
       {
         "title": "protunel",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "minWidth": 480,
+        "minHeight": 360
       }
     ],
     "security": {

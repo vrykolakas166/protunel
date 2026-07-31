@@ -1,23 +1,28 @@
+mod counting_stream;
 pub mod known_hosts;
 pub mod socks;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use russh::client::{self, AuthResult};
 use russh::keys::agent::client::AgentClient;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_notification::NotificationExt;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::db::{AuthMethod, Tunnel};
-use crate::events::{HostKeyPending, StatusEvent, TunnelStatus, HOST_KEY_PENDING_EVENT, STATUS_EVENT};
+use crate::events::{
+    HostKeyPending, StatsEvent, StatusEvent, TunnelStatus, HOST_KEY_PENDING_EVENT, STATS_EVENT,
+    STATUS_EVENT,
+};
 
 /// Registry of host-key confirmation prompts currently waiting on the frontend.
 #[derive(Default, Clone)]
@@ -61,6 +66,7 @@ impl client::Handler for SshHandler {
         // Unknown host key: block on an explicit user decision instead of the old
         // app's silent auto-trust. Frontend renders a confirm modal off this event.
         let fingerprint = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+        let algorithm = server_public_key.algorithm().to_string();
         let request_id = Uuid::new_v4();
         let (tx, rx) = oneshot::channel();
         self.pending.insert(request_id, tx);
@@ -72,8 +78,8 @@ impl client::Handler for SshHandler {
                 tunnel_id: self.tunnel_id,
                 host: self.host.clone(),
                 port: self.port,
-                fingerprint,
-                algorithm: server_public_key.algorithm().to_string(),
+                fingerprint: fingerprint.clone(),
+                algorithm: algorithm.clone(),
             },
         );
 
@@ -84,23 +90,44 @@ impl client::Handler for SshHandler {
             .unwrap_or(false);
 
         if accepted {
-            self.known_hosts.trust(&key_id, &openssh_key);
+            self.known_hosts.trust(&key_id, &openssh_key, &fingerprint, &algorithm);
         }
 
         Ok(accepted)
     }
 }
 
-fn emit_status(app: &AppHandle, tunnel_id: Uuid, status: TunnelStatus, message: Option<String>) {
+fn emit_status(
+    app: &AppHandle,
+    tunnel_id: Uuid,
+    tunnel_name: &str,
+    status: TunnelStatus,
+    message: Option<String>,
+) {
     let _ = app.emit(
         STATUS_EVENT,
         StatusEvent {
             tunnel_id,
             status,
-            message,
+            message: message.clone(),
         },
     );
     crate::tray::rebuild_menu(app);
+
+    let body = match status {
+        TunnelStatus::Connected => Some("Connected".to_string()),
+        TunnelStatus::Disconnected => Some("Disconnected".to_string()),
+        TunnelStatus::Error => Some(message.unwrap_or_else(|| "Connection error".to_string())),
+        TunnelStatus::Connecting => None,
+    };
+    if let Some(body) = body {
+        let _ = app
+            .notification()
+            .builder()
+            .title(tunnel_name)
+            .body(body)
+            .show();
+    }
 }
 
 /// Connects, authenticates, opens the local SOCKS5 listener, and serves connections
@@ -112,15 +139,17 @@ pub async fn run_tunnel(
     known_hosts: Arc<known_hosts::KnownHosts>,
     pending: PendingHostKeyRequests,
     cancel: CancellationToken,
+    bytes_up: Arc<AtomicU64>,
+    bytes_down: Arc<AtomicU64>,
 ) {
-    emit_status(&app, tunnel.id, TunnelStatus::Connecting, None);
+    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connecting, None);
 
     let result = connect_and_authenticate(&app, &tunnel, secret, known_hosts, pending).await;
 
     let session = match result {
         Ok(session) => session,
         Err(e) => {
-            emit_status(&app, tunnel.id, TunnelStatus::Error, Some(e));
+            emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Error, Some(e));
             return;
         }
     };
@@ -131,6 +160,7 @@ pub async fn run_tunnel(
             emit_status(
                 &app,
                 tunnel.id,
+                &tunnel.name,
                 TunnelStatus::Error,
                 Some(format!("failed to bind local SOCKS port {}: {e}", tunnel.local_socks_port)),
             );
@@ -138,21 +168,36 @@ pub async fn run_tunnel(
         }
     };
 
-    emit_status(&app, tunnel.id, TunnelStatus::Connected, None);
+    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connected, None);
 
     let session = Arc::new(session);
     let closed = Arc::new(AtomicBool::new(false));
+    let started = Instant::now();
+    let mut stats_tick = tokio::time::interval(Duration::from_secs(1));
 
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
+            _ = stats_tick.tick() => {
+                let _ = app.emit(
+                    STATS_EVENT,
+                    StatsEvent {
+                        tunnel_id: tunnel.id,
+                        bytes_up: bytes_up.load(Ordering::Relaxed),
+                        bytes_down: bytes_down.load(Ordering::Relaxed),
+                        uptime_secs: started.elapsed().as_secs(),
+                    },
+                );
+            }
             accepted = listener.accept() => {
                 match accepted {
                     Ok((stream, _addr)) => {
                         let session = session.clone();
                         let closed = closed.clone();
+                        let bytes_up = bytes_up.clone();
+                        let bytes_down = bytes_down.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = socks::serve_connection(stream, &session).await {
+                            if let Err(e) = socks::serve_connection(stream, &session, bytes_up, bytes_down).await {
                                 if !closed.load(Ordering::Relaxed) {
                                     log::debug!("socks connection error: {e}");
                                 }
@@ -160,7 +205,7 @@ pub async fn run_tunnel(
                         });
                     }
                     Err(e) => {
-                        emit_status(&app, tunnel.id, TunnelStatus::Error, Some(format!("accept error: {e}")));
+                        emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Error, Some(format!("accept error: {e}")));
                         break;
                     }
                 }
@@ -172,7 +217,7 @@ pub async fn run_tunnel(
     let _ = session
         .disconnect(russh::Disconnect::ByApplication, "", "en")
         .await;
-    emit_status(&app, tunnel.id, TunnelStatus::Disconnected, None);
+    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
 }
 
 async fn connect_and_authenticate(

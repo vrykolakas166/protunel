@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod events;
 mod secrets;
+mod settings;
 mod ssh;
 mod tray;
 mod tunnel;
@@ -27,6 +28,12 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -48,8 +55,14 @@ pub fn run() {
             commands::delete_tunnel,
             commands::connect_tunnel,
             commands::disconnect_tunnel,
+            commands::connect_all,
+            commands::disconnect_all,
             commands::confirm_host_key,
             commands::reject_host_key,
+            commands::list_known_hosts,
+            commands::forget_known_host,
+            commands::get_settings,
+            commands::update_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

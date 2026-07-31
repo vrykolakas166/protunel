@@ -19,31 +19,29 @@ export function HostKeyPrompt({ request, onResolved }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-5 shadow-xl dark:bg-neutral-900">
-        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-          Unknown host key
-        </h2>
-        <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
+      <div className="w-full max-w-md rounded-lg border border-amber/40 bg-surface p-5 shadow-xl">
+        <h2 className="font-display text-base font-semibold text-text">Unknown host key</h2>
+        <p className="mt-2 text-sm text-muted">
           The host{" "}
-          <span className="font-mono">
+          <span className="font-mono text-text">
             {request.host}:{request.port}
           </span>{" "}
           presented a {request.algorithm} key that hasn't been seen before. Verify the fingerprint
           out-of-band before trusting it.
         </p>
-        <p className="mt-3 break-all rounded bg-neutral-100 p-2 font-mono text-xs text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200">
+        <p className="mt-3 break-all rounded border border-border bg-bg p-2 font-mono text-xs text-text">
           {request.fingerprint}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <button
             onClick={reject}
-            className="rounded px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="rounded px-3 py-1.5 text-sm font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
             Reject
           </button>
           <button
             onClick={accept}
-            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
           >
             Trust &amp; Connect
           </button>

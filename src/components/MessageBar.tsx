@@ -10,8 +10,8 @@ export function MessageBar({ text, isError }: Props) {
     <div
       className={
         isError
-          ? "border-b border-red-200 bg-red-100 px-4 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
-          : "border-b border-neutral-200 bg-neutral-100 px-4 py-2 text-sm text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
+          ? "border-b border-coral/30 bg-coral/10 px-4 py-2 text-sm text-coral"
+          : "border-b border-border bg-surface px-4 py-2 text-sm text-muted"
       }
     >
       {text}

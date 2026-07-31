@@ -32,3 +32,14 @@ pub struct HostKeyPending {
 }
 
 pub const HOST_KEY_PENDING_EVENT: &str = "host-key-pending";
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StatsEvent {
+    pub tunnel_id: Uuid,
+    pub bytes_up: u64,
+    pub bytes_down: u64,
+    pub uptime_secs: u64,
+}
+
+pub const STATS_EVENT: &str = "tunnel-stats";

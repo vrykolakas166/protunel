@@ -2,19 +2,31 @@ import { useState, type FormEvent } from "react";
 import type { AuthMethod, Tunnel, TunnelInput } from "../types";
 
 type AuthKind = AuthMethod["kind"];
+type FormMode = "add" | "edit" | "clone";
 
 interface Props {
+  mode: FormMode;
   initial?: Tunnel | null;
+  suggestedPort?: number;
   onSubmit: (input: TunnelInput, secret?: string) => Promise<void>;
   onCancel: () => void;
 }
 
-const inputClass =
-  "w-full rounded border border-neutral-300 bg-white px-2 py-1.5 text-sm text-neutral-900 focus:border-blue-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-100";
-const labelClass = "block text-xs font-medium text-neutral-600 dark:text-neutral-400";
+const TITLE: Record<FormMode, string> = {
+  add: "Add tunnel",
+  edit: "Edit tunnel",
+  clone: "Clone tunnel",
+};
 
-export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
-  const [name, setName] = useState(initial?.name ?? "");
+const inputClass =
+  "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none";
+const monoInputClass = `${inputClass} font-mono`;
+const labelClass = "block text-xs font-medium text-muted";
+
+export function AddTunnelForm({ mode, initial, suggestedPort, onSubmit, onCancel }: Props) {
+  const [name, setName] = useState(
+    initial ? (mode === "clone" ? `${initial.name} copy` : initial.name) : "",
+  );
   const [host, setHost] = useState(initial?.host ?? "");
   const [port, setPort] = useState(initial?.port ?? 22);
   const [username, setUsername] = useState(initial?.username ?? "");
@@ -23,8 +35,10 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
     initial?.auth.kind === "privateKey" ? initial.auth.path : "",
   );
   const [secret, setSecret] = useState("");
-  const [localSocksPort, setLocalSocksPort] = useState(initial?.localSocksPort ?? 1080);
-  const [autoConnect, setAutoConnect] = useState(initial?.autoConnect ?? false);
+  const [localSocksPort, setLocalSocksPort] = useState(
+    initial?.localSocksPort ?? suggestedPort ?? 1080,
+  );
+  const [autoConnect, setAutoConnect] = useState(mode === "edit" ? (initial?.autoConnect ?? false) : false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,11 +69,9 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg bg-white p-5 shadow-xl dark:bg-neutral-900"
+        className="w-full max-w-md space-y-3 rounded-lg border border-border bg-surface p-5 shadow-xl"
       >
-        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-          {initial ? "Edit tunnel" : "Add tunnel"}
-        </h2>
+        <h2 className="font-display text-base font-semibold text-text">{TITLE[mode]}</h2>
 
         <div>
           <label className={labelClass}>Name</label>
@@ -75,7 +87,7 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
           <div className="col-span-2">
             <label className={labelClass}>Host</label>
             <input
-              className={inputClass}
+              className={monoInputClass}
               value={host}
               onChange={(e) => setHost(e.target.value)}
               required
@@ -85,7 +97,7 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
             <label className={labelClass}>Port</label>
             <input
               type="number"
-              className={inputClass}
+              className={monoInputClass}
               value={port}
               onChange={(e) => setPort(Number(e.target.value))}
               required
@@ -120,7 +132,7 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
           <div>
             <label className={labelClass}>Key file path</label>
             <input
-              className={inputClass}
+              className={monoInputClass}
               value={keyPath}
               onChange={(e) => setKeyPath(e.target.value)}
               placeholder="C:\Users\you\.ssh\id_ed25519"
@@ -136,10 +148,16 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
             </label>
             <input
               type="password"
-              className={inputClass}
+              className={monoInputClass}
               value={secret}
               onChange={(e) => setSecret(e.target.value)}
-              placeholder={initial ? "Leave blank to keep existing" : ""}
+              placeholder={
+                mode === "edit"
+                  ? "Leave blank to keep existing"
+                  : mode === "clone"
+                    ? "Not carried over — re-enter"
+                    : ""
+              }
             />
           </div>
         )}
@@ -148,14 +166,14 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
           <label className={labelClass}>Local SOCKS port</label>
           <input
             type="number"
-            className={inputClass}
+            className={monoInputClass}
             value={localSocksPort}
             onChange={(e) => setLocalSocksPort(Number(e.target.value))}
             required
           />
         </div>
 
-        <label className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+        <label className="flex items-center gap-2 text-sm text-text">
           <input
             type="checkbox"
             checked={autoConnect}
@@ -164,22 +182,22 @@ export function AddTunnelForm({ initial, onSubmit, onCancel }: Props) {
           Connect automatically on startup
         </label>
 
-        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        {error && <p className="text-sm text-coral">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onCancel}
-            className="rounded px-3 py-1.5 text-sm font-medium text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="rounded px-3 py-1.5 text-sm font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {initial ? "Save" : "Add"}
+            {mode === "edit" ? "Save" : "Add"}
           </button>
         </div>
       </form>
