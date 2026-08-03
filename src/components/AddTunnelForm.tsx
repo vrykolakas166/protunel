@@ -8,6 +8,7 @@ interface Props {
   mode: FormMode;
   initial?: Tunnel | null;
   suggestedPort?: number;
+  tunnels: Tunnel[];
   onSubmit: (input: TunnelInput, secret?: string) => Promise<void>;
   onCancel: () => void;
 }
@@ -23,7 +24,7 @@ const inputClass =
 const monoInputClass = `${inputClass} font-mono`;
 const labelClass = "block text-xs font-medium text-muted";
 
-export function AddTunnelForm({ mode, initial, suggestedPort, onSubmit, onCancel }: Props) {
+export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit, onCancel }: Props) {
   const [name, setName] = useState(
     initial ? (mode === "clone" ? `${initial.name} copy` : initial.name) : "",
   );
@@ -39,8 +40,12 @@ export function AddTunnelForm({ mode, initial, suggestedPort, onSubmit, onCancel
     initial?.localSocksPort ?? suggestedPort ?? 1080,
   );
   const [autoConnect, setAutoConnect] = useState(mode === "edit" ? (initial?.autoConnect ?? false) : false);
+  const [socksEnabled, setSocksEnabled] = useState(initial?.socksEnabled ?? true);
+  const [jumpTunnelId, setJumpTunnelId] = useState(initial?.jumpTunnelId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const jumpOptions = tunnels.filter((t) => t.id !== initial?.id);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,7 +60,17 @@ export function AddTunnelForm({ mode, initial, suggestedPort, onSubmit, onCancel
             : { kind: "password" };
 
       await onSubmit(
-        { name, host, port, username, auth, localSocksPort, autoConnect },
+        {
+          name,
+          host,
+          port,
+          username,
+          auth,
+          localSocksPort,
+          autoConnect,
+          socksEnabled,
+          jumpTunnelId: jumpTunnelId || null,
+        },
         secret || undefined,
       );
     } catch (err) {
@@ -163,14 +178,43 @@ export function AddTunnelForm({ mode, initial, suggestedPort, onSubmit, onCancel
         )}
 
         <div>
-          <label className={labelClass}>Local SOCKS port</label>
-          <input
-            type="number"
-            className={monoInputClass}
-            value={localSocksPort}
-            onChange={(e) => setLocalSocksPort(Number(e.target.value))}
-            required
-          />
+          <label className="flex items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              checked={socksEnabled}
+              onChange={(e) => setSocksEnabled(e.target.checked)}
+            />
+            Enable local SOCKS5 proxy
+          </label>
+        </div>
+
+        {socksEnabled && (
+          <div>
+            <label className={labelClass}>Local SOCKS port</label>
+            <input
+              type="number"
+              className={monoInputClass}
+              value={localSocksPort}
+              onChange={(e) => setLocalSocksPort(Number(e.target.value))}
+              required
+            />
+          </div>
+        )}
+
+        <div>
+          <label className={labelClass}>Connect via</label>
+          <select
+            className={inputClass}
+            value={jumpTunnelId}
+            onChange={(e) => setJumpTunnelId(e.target.value)}
+          >
+            <option value="">Direct connection</option>
+            {jumpOptions.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <label className="flex items-center gap-2 text-sm text-text">

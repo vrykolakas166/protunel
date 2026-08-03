@@ -12,6 +12,23 @@ export interface Tunnel {
   auth: AuthMethod;
   localSocksPort: number;
   autoConnect: boolean;
+  forwards: PortForward[];
+  jumpTunnelId: string | null;
+  socksEnabled: boolean;
+}
+
+export interface PortForward {
+  id: string;
+  tunnelId: string;
+  remoteHost: string;
+  remotePort: number;
+  localPort: number;
+}
+
+export interface PortForwardInput {
+  remoteHost: string;
+  remotePort: number;
+  localPort: number;
 }
 
 export interface TunnelInput {
@@ -22,6 +39,8 @@ export interface TunnelInput {
   auth: AuthMethod;
   localSocksPort: number;
   autoConnect: boolean;
+  jumpTunnelId: string | null;
+  socksEnabled: boolean;
 }
 
 export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";

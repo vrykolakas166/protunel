@@ -1,8 +1,10 @@
 mod counting_stream;
+pub mod forward;
 pub mod known_hosts;
 pub mod socks;
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -11,18 +13,20 @@ use russh::client::{self, AuthResult};
 use russh::keys::agent::client::AgentClient;
 use russh::keys::agent::AgentIdentity;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
-use tokio::net::TcpListener;
-use tokio::sync::oneshot;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::db::{AuthMethod, Tunnel};
+use crate::db::{AuthMethod, PortForward, Tunnel};
 use crate::events::{
     HostKeyPending, StatsEvent, StatusEvent, TunnelStatus, HOST_KEY_PENDING_EVENT, STATS_EVENT,
     STATUS_EVENT,
 };
+use crate::tunnel::ForwardCommand;
+use crate::AppState;
 
 /// Registry of host-key confirmation prompts currently waiting on the frontend.
 #[derive(Default, Clone)]
@@ -43,7 +47,7 @@ impl PendingHostKeyRequests {
     }
 }
 
-pub(crate) struct SshHandler {
+pub struct SshHandler {
     app: AppHandle,
     tunnel_id: Uuid,
     host: String,
@@ -141,6 +145,8 @@ pub async fn run_tunnel(
     cancel: CancellationToken,
     bytes_up: Arc<AtomicU64>,
     bytes_down: Arc<AtomicU64>,
+    mut forward_rx: mpsc::UnboundedReceiver<ForwardCommand>,
+    session_slot: Arc<Mutex<Option<Arc<client::Handle<SshHandler>>>>>,
 ) {
     emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connecting, None);
 
@@ -154,30 +160,95 @@ pub async fn run_tunnel(
         }
     };
 
-    let listener = match TcpListener::bind(("127.0.0.1", tunnel.local_socks_port)).await {
-        Ok(l) => l,
-        Err(e) => {
-            emit_status(
-                &app,
-                tunnel.id,
-                &tunnel.name,
-                TunnelStatus::Error,
-                Some(format!("failed to bind local SOCKS port {}: {e}", tunnel.local_socks_port)),
-            );
-            return;
+    let listener = if tunnel.socks_enabled {
+        match TcpListener::bind(("127.0.0.1", tunnel.local_socks_port)).await {
+            Ok(l) => Some(l),
+            Err(e) => {
+                emit_status(
+                    &app,
+                    tunnel.id,
+                    &tunnel.name,
+                    TunnelStatus::Error,
+                    Some(format!("failed to bind local SOCKS port {}: {e}", tunnel.local_socks_port)),
+                );
+                return;
+            }
         }
+    } else {
+        None
     };
+
+    let mut forward_listeners = Vec::with_capacity(tunnel.forwards.len());
+    for fwd in &tunnel.forwards {
+        match TcpListener::bind(("127.0.0.1", fwd.local_port)).await {
+            Ok(l) => forward_listeners.push((l, fwd.clone())),
+            Err(e) => {
+                emit_status(
+                    &app,
+                    tunnel.id,
+                    &tunnel.name,
+                    TunnelStatus::Error,
+                    Some(format!("failed to bind local forward port {}: {e}", fwd.local_port)),
+                );
+                return;
+            }
+        }
+    }
 
     emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connected, None);
 
     let session = Arc::new(session);
+    *session_slot.lock().unwrap() = Some(session.clone());
     let closed = Arc::new(AtomicBool::new(false));
     let started = Instant::now();
     let mut stats_tick = tokio::time::interval(Duration::from_secs(1));
 
+    let mut forward_tasks: HashMap<Uuid, CancellationToken> = HashMap::new();
+    for (fwd_listener, fwd) in forward_listeners {
+        let child = cancel.child_token();
+        forward_tasks.insert(fwd.id, child.clone());
+        spawn_forward_listener(
+            fwd_listener,
+            fwd,
+            session.clone(),
+            closed.clone(),
+            bytes_up.clone(),
+            bytes_down.clone(),
+            child,
+        );
+    }
+
     loop {
         tokio::select! {
             _ = cancel.cancelled() => break,
+            cmd = forward_rx.recv() => {
+                match cmd {
+                    Some(ForwardCommand::Add(fwd, resp)) => {
+                        match TcpListener::bind(("127.0.0.1", fwd.local_port)).await {
+                            Ok(l) => {
+                                let child = cancel.child_token();
+                                forward_tasks.insert(fwd.id, child.clone());
+                                spawn_forward_listener(
+                                    l, fwd, session.clone(), closed.clone(), bytes_up.clone(), bytes_down.clone(), child,
+                                );
+                                let _ = resp.send(Ok(()));
+                            }
+                            Err(e) => {
+                                let _ = resp.send(Err(format!(
+                                    "failed to bind local forward port {}: {e}", fwd.local_port
+                                )));
+                            }
+                        }
+                    }
+                    Some(ForwardCommand::Remove(id, resp)) => {
+                        if let Some(token) = forward_tasks.remove(&id) {
+                            token.cancel();
+                        }
+                        let _ = resp.send(Ok(()));
+                    }
+                    None => break,
+                }
+            }
             _ = stats_tick.tick() => {
                 let _ = app.emit(
                     STATS_EVENT,
@@ -189,17 +260,18 @@ pub async fn run_tunnel(
                     },
                 );
             }
-            accepted = listener.accept() => {
+            accepted = accept_optional(&listener) => {
                 match accepted {
                     Ok((stream, _addr)) => {
                         let session = session.clone();
                         let closed = closed.clone();
                         let bytes_up = bytes_up.clone();
                         let bytes_down = bytes_down.clone();
+                        let local_socks_port = tunnel.local_socks_port;
                         tokio::spawn(async move {
                             if let Err(e) = socks::serve_connection(stream, &session, bytes_up, bytes_down).await {
                                 if !closed.load(Ordering::Relaxed) {
-                                    log::debug!("socks connection error: {e}");
+                                    eprintln!("[socks :{local_socks_port}] connection error: {e}");
                                 }
                             }
                         });
@@ -214,10 +286,66 @@ pub async fn run_tunnel(
     }
 
     closed.store(true, Ordering::Relaxed);
+    *session_slot.lock().unwrap() = None;
     let _ = session
         .disconnect(russh::Disconnect::ByApplication, "", "en")
         .await;
     emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
+}
+
+/// Awaits the SOCKS listener's next connection, or never resolves if SOCKS is
+/// disabled for this tunnel — keeps the `select!` arm shape without a busy-loop.
+async fn accept_optional(listener: &Option<TcpListener>) -> std::io::Result<(TcpStream, SocketAddr)> {
+    match listener {
+        Some(l) => l.accept().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Spawns the accept loop for one local forward listener. Runs until `cancel`
+/// fires — either the whole tunnel's token (session torn down) or the forward's
+/// own child token (forward removed live while the tunnel keeps running).
+fn spawn_forward_listener(
+    listener: TcpListener,
+    fwd: PortForward,
+    session: Arc<client::Handle<SshHandler>>,
+    closed: Arc<AtomicBool>,
+    bytes_up: Arc<AtomicU64>,
+    bytes_down: Arc<AtomicU64>,
+    cancel: CancellationToken,
+) {
+    tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => break,
+                accepted = listener.accept() => {
+                    match accepted {
+                        Ok((stream, _addr)) => {
+                            let session = session.clone();
+                            let closed = closed.clone();
+                            let bytes_up = bytes_up.clone();
+                            let bytes_down = bytes_down.clone();
+                            let remote_host = fwd.remote_host.clone();
+                            let remote_port = fwd.remote_port;
+                            let local_port = fwd.local_port;
+                            tokio::spawn(async move {
+                                if let Err(e) = forward::serve_forward_connection(
+                                    stream, &session, &remote_host, remote_port, bytes_up, bytes_down,
+                                ).await {
+                                    if !closed.load(Ordering::Relaxed) {
+                                        eprintln!(
+                                            "[forward :{local_port} -> {remote_host}:{remote_port}] connection error: {e}"
+                                        );
+                                    }
+                                }
+                            });
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+    });
 }
 
 async fn connect_and_authenticate(
@@ -241,10 +369,27 @@ async fn connect_and_authenticate(
         pending,
     };
 
-    let addr: (&str, u16) = (&tunnel.host, tunnel.port);
-    let mut session = client::connect(config, addr, handler)
-        .await
-        .map_err(|e| format!("connect failed: {e}"))?;
+    let mut session = if let Some(jump_id) = tunnel.jump_tunnel_id {
+        if jump_id == tunnel.id {
+            return Err("tunnel cannot jump through itself".to_string());
+        }
+        let jump_session = app
+            .state::<AppState>()
+            .session_for(jump_id)
+            .ok_or_else(|| "jump tunnel is not connected".to_string())?;
+        let channel = jump_session
+            .channel_open_direct_tcpip(tunnel.host.clone(), tunnel.port as u32, "127.0.0.1", 0)
+            .await
+            .map_err(|e| format!("failed to open jump channel: {e}"))?;
+        client::connect_stream(config, channel.into_stream(), handler)
+            .await
+            .map_err(|e| format!("connect over jump failed: {e}"))?
+    } else {
+        let addr: (&str, u16) = (&tunnel.host, tunnel.port);
+        client::connect(config, addr, handler)
+            .await
+            .map_err(|e| format!("connect failed: {e}"))?
+    };
 
     let auth = authenticate(&mut session, tunnel, secret).await?;
     if !auth.success() {

@@ -33,9 +33,18 @@ type FormState =
   | { mode: "edit"; tunnel: Tunnel }
   | { mode: "clone"; tunnel: Tunnel };
 
+function usedLocalPorts(tunnels: Tunnel[]): Set<number> {
+  const used = new Set<number>();
+  for (const tunnel of tunnels) {
+    if (tunnel.socksEnabled) used.add(tunnel.localSocksPort);
+    for (const forward of tunnel.forwards) used.add(forward.localPort);
+  }
+  return used;
+}
+
 function suggestPort(tunnels: Tunnel[], settings: Settings | null): number {
   if (!settings) return 1080;
-  const used = new Set(tunnels.map((t) => t.localSocksPort));
+  const used = usedLocalPorts(tunnels);
   for (let port = settings.portRangeMin; port <= settings.portRangeMax; port++) {
     if (!used.has(port)) return port;
   }
@@ -239,10 +248,13 @@ function App() {
         tunnels={filteredTunnels}
         statuses={statuses}
         stats={stats}
+        suggestedForwardPort={suggestPort(tunnels, settings)}
         onToggle={handleToggle}
         onEdit={(tunnel) => setFormState({ mode: "edit", tunnel })}
         onClone={(tunnel) => setFormState({ mode: "clone", tunnel })}
         onDelete={setPendingDelete}
+        onRefresh={refresh}
+        onError={(text) => setMessage({ text, isError: true })}
       />
 
       {formState && (
@@ -250,6 +262,7 @@ function App() {
           mode={formState.mode}
           initial={formState.mode === "add" ? null : formState.tunnel}
           suggestedPort={suggestPort(tunnels, settings)}
+          tunnels={tunnels}
           onSubmit={handleSubmit}
           onCancel={() => setFormState(null)}
         />
