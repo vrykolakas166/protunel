@@ -46,6 +46,22 @@ Produces installers under `src-tauri/target/release/bundle/`.
 
 ## Releasing
 
+Bump the version across `package.json`, `src-tauri/tauri.conf.json`,
+`src-tauri/Cargo.toml`, and `src-tauri/Cargo.lock` in one shot:
+
+```sh
+bun run bump 0.2.1
+```
+
+Then commit, tag, and push:
+
+```sh
+git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+git commit -m "Bump version to 0.2.1"
+git tag v0.2.1
+git push origin master v0.2.1
+```
+
 Push a tag matching `v*.*.*` (e.g. `v0.2.0`) — the `Release` GitHub Actions
 workflow builds signed installers and publishes them as a GitHub release,
 along with the `latest.json` manifest the in-app updater checks against.

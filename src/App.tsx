@@ -51,6 +51,7 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Tunnel | null>(null);
+  const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
 
@@ -144,6 +145,13 @@ function App() {
     }
   };
 
+  const confirmBulkAction = async () => {
+    const action = pendingBulkAction;
+    setPendingBulkAction(null);
+    if (action === "connect") await handleConnectAll();
+    else if (action === "disconnect") await handleDisconnectAll();
+  };
+
   const handleSubmit = async (input: TunnelInput, secret?: string) => {
     if (formState?.mode === "edit") {
       await updateTunnel(formState.tunnel.id, input, secret);
@@ -174,18 +182,6 @@ function App() {
         />
 
         <div className="ml-auto flex items-center gap-1.5">
-          <button
-            onClick={handleConnectAll}
-            className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
-          >
-            Connect all
-          </button>
-          <button
-            onClick={handleDisconnectAll}
-            className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
-          >
-            Disconnect all
-          </button>
           <button
             onClick={() => setShowKnownHosts(true)}
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
@@ -222,6 +218,23 @@ function App() {
         </div>
       )}
 
+      <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2">
+        <button
+          onClick={() => setPendingBulkAction("connect")}
+          disabled={filteredTunnels.length === 0}
+          className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+        >
+          Connect all
+        </button>
+        <button
+          onClick={() => setPendingBulkAction("disconnect")}
+          disabled={filteredTunnels.length === 0}
+          className="rounded bg-coral px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+        >
+          Disconnect all
+        </button>
+      </div>
+
       <TunnelList
         tunnels={filteredTunnels}
         statuses={statuses}
@@ -257,6 +270,21 @@ function App() {
           message={`Delete "${pendingDelete.name}"? This disconnects it and removes its saved credentials.`}
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+
+      {pendingBulkAction && (
+        <ConfirmDialog
+          title={pendingBulkAction === "connect" ? "Connect all tunnels" : "Disconnect all tunnels"}
+          message={
+            pendingBulkAction === "connect"
+              ? "Connect every tunnel in the list?"
+              : "Disconnect every active tunnel?"
+          }
+          confirmLabel={pendingBulkAction === "connect" ? "Connect all" : "Disconnect all"}
+          tone={pendingBulkAction === "connect" ? "accent" : "danger"}
+          onConfirm={confirmBulkAction}
+          onCancel={() => setPendingBulkAction(null)}
         />
       )}
     </main>
