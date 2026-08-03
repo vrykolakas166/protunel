@@ -1,7 +1,7 @@
 [package]
 name = "protunel"
-version = "0.1.1"
-description = "A Tauri App"
+version = "0.1.2"
+description = "Lightweight Windows desktop app for managing SSH SOCKS5 tunnels and local proxies without external SSH tools."
 authors = ["you"]
 edition = "2021"
 
