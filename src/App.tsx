@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
@@ -49,6 +51,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Tunnel | null>(null);
+  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
+  const [updateInstalling, setUpdateInstalling] = useState(false);
 
   useTheme(settings?.theme ?? "system");
 
@@ -61,7 +65,22 @@ function App() {
       .then(setTunnels)
       .catch((err) => setMessage({ text: String(err), isError: true }));
     getSettings().then(setSettings);
+    check()
+      .then((update) => update && setPendingUpdate(update))
+      .catch(() => {});
   }, []);
+
+  const installUpdate = async () => {
+    if (!pendingUpdate) return;
+    setUpdateInstalling(true);
+    try {
+      await pendingUpdate.downloadAndInstall();
+      await relaunch();
+    } catch (err) {
+      setMessage({ text: String(err), isError: true });
+      setUpdateInstalling(false);
+    }
+  };
 
   useEffect(() => {
     if (!message) return;
@@ -189,6 +208,19 @@ function App() {
       </header>
 
       <MessageBar text={message?.text ?? null} isError={message?.isError ?? false} />
+
+      {pendingUpdate && (
+        <div className="flex items-center justify-between gap-3 border-b border-border bg-accent/10 px-4 py-2 text-sm text-text">
+          <span>Update v{pendingUpdate.version} available.</span>
+          <button
+            onClick={installUpdate}
+            disabled={updateInstalling}
+            className="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          >
+            {updateInstalling ? "Installing…" : "Install & restart"}
+          </button>
+        </div>
+      )}
 
       <TunnelList
         tunnels={filteredTunnels}
