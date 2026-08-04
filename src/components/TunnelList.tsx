@@ -47,9 +47,19 @@ export function TunnelList({
 }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const toggleExpanded = (id: string) => {
     setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroup = (id: string) => {
+    setCollapsedGroups((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
@@ -71,9 +81,35 @@ export function TunnelList({
     );
   }
 
+  const tunnelIds = new Set(tunnels.map((t) => t.id));
+  const childrenByParent = new Map<string, Tunnel[]>();
+  for (const tunnel of tunnels) {
+    if (tunnel.jumpTunnelId && tunnelIds.has(tunnel.jumpTunnelId)) {
+      const siblings = childrenByParent.get(tunnel.jumpTunnelId) ?? [];
+      siblings.push(tunnel);
+      childrenByParent.set(tunnel.jumpTunnelId, siblings);
+    }
+  }
+  const roots = tunnels.filter(
+    (t) => !t.jumpTunnelId || !tunnelIds.has(t.jumpTunnelId),
+  );
+
+  const rows: { tunnel: Tunnel; depth: number }[] = [];
+  for (const root of roots) {
+    rows.push({ tunnel: root, depth: 0 });
+    if (!collapsedGroups.has(root.id)) {
+      for (const child of childrenByParent.get(root.id) ?? []) {
+        rows.push({ tunnel: child, depth: 1 });
+      }
+    }
+  }
+
   return (
     <ul className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-      {tunnels.map((tunnel) => {
+      {rows.map(({ tunnel, depth }) => {
+        const children = childrenByParent.get(tunnel.id) ?? [];
+        const hasChildren = children.length > 0;
+        const isCollapsed = collapsedGroups.has(tunnel.id);
         const runtime = statuses[tunnel.id];
         const status = runtime?.status ?? "disconnected";
         const isBusy = status === "connecting";
@@ -89,13 +125,32 @@ export function TunnelList({
         return (
           <li
             key={tunnel.id}
-            className="rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-surface-hover"
+            style={depth > 0 ? { marginLeft: 20 } : undefined}
+            className={`rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${
+              depth > 0 ? "border-l-2 border-l-accent/40" : ""
+            }`}
           >
             <div className="flex items-center gap-3">
               <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[status]}`} />
 
+              {hasChildren && (
+                <button
+                  onClick={() => toggleGroup(tunnel.id)}
+                  title={isCollapsed ? "Expand dependents" : "Collapse dependents"}
+                  aria-expanded={!isCollapsed}
+                  className="shrink-0 rounded px-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+                >
+                  {isCollapsed ? "▸" : "▾"}
+                </button>
+              )}
+
               <p className="min-w-0 flex-1 truncate font-display text-sm font-medium text-text">
                 {tunnel.name}
+                {hasChildren && (
+                  <span className="ml-1.5 text-[11px] font-normal text-muted">
+                    ({children.length})
+                  </span>
+                )}
               </p>
 
               <button

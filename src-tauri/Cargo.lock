@@ -3889,7 +3889,7 @@ dependencies = [
 
 [[package]]
 name = "protunel"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "fast-socks5",

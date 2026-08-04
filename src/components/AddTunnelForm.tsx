@@ -36,6 +36,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
     initial?.auth.kind === "privateKey" ? initial.auth.path : "",
   );
   const [secret, setSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
   const [localSocksPort, setLocalSocksPort] = useState(
     initial?.localSocksPort ?? suggestedPort ?? 1080,
   );
@@ -161,19 +162,31 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
             <label className={labelClass}>
               {authKind === "password" ? "Password" : "Key passphrase (optional)"}
             </label>
-            <input
-              type="password"
-              className={monoInputClass}
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder={
-                mode === "edit"
-                  ? "Leave blank to keep existing"
-                  : mode === "clone"
-                    ? "Not carried over — re-enter"
-                    : ""
-              }
-            />
+            <div className="relative">
+              <input
+                type={showSecret ? "text" : "password"}
+                className={`${monoInputClass} pr-9`}
+                value={secret}
+                onChange={(e) => setSecret(e.target.value)}
+                placeholder={
+                  mode === "edit"
+                    ? "Leave blank to keep existing"
+                    : mode === "clone"
+                      ? "Not carried over — re-enter"
+                      : ""
+                }
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret((current) => !current)}
+                tabIndex={-1}
+                title={showSecret ? "Hide" : "Show"}
+                aria-label={showSecret ? "Hide password" : "Show password"}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-1 text-xs text-muted hover:text-text"
+              >
+                {showSecret ? "🙈" : "👁"}
+              </button>
+            </div>
           </div>
         )}
 

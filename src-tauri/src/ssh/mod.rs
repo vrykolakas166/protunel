@@ -124,13 +124,19 @@ fn emit_status(
         TunnelStatus::Error => Some(message.unwrap_or_else(|| "Connection error".to_string())),
         TunnelStatus::Connecting => None,
     };
-    if let Some(body) = body {
-        let _ = app
-            .notification()
-            .builder()
-            .title(tunnel_name)
-            .body(body)
-            .show();
+    let notifications_enabled = app
+        .try_state::<AppState>()
+        .map(|s| s.settings.get().notifications_enabled)
+        .unwrap_or(true);
+    if notifications_enabled {
+        if let Some(body) = body {
+            let _ = app
+                .notification()
+                .builder()
+                .title(tunnel_name)
+                .body(body)
+                .show();
+        }
     }
 }
 

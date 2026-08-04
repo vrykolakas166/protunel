@@ -9,6 +9,12 @@ pub struct Settings {
     pub autostart_enabled: bool,
     pub port_range_min: u16,
     pub port_range_max: u16,
+    #[serde(default = "default_notifications_enabled")]
+    pub notifications_enabled: bool,
+}
+
+fn default_notifications_enabled() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -18,6 +24,7 @@ impl Default for Settings {
             autostart_enabled: false,
             port_range_min: 1080,
             port_range_max: 1179,
+            notifications_enabled: true,
         }
     }
 }

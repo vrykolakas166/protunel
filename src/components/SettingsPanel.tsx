@@ -123,6 +123,16 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
           Launch ProdTunnel when Windows starts
         </label>
 
+        <label className="flex items-center gap-2 text-sm text-text">
+          <input
+            type="checkbox"
+            checked={settings.notificationsEnabled}
+            disabled={busy}
+            onChange={(e) => save({ ...settings, notificationsEnabled: e.target.checked })}
+          />
+          Show Windows notifications
+        </label>
+
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={labelClass}>Default port range — min</label>

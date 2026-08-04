@@ -81,4 +81,5 @@ export interface Settings {
   autostartEnabled: boolean;
   portRangeMin: number;
   portRangeMax: number;
+  notificationsEnabled: boolean;
 }

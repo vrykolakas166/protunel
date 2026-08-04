@@ -1,6 +1,6 @@
 [package]
 name = "protunel"
-version = "0.3.0"
+version = "0.3.1"
 description = "Lightweight Windows desktop app for managing SSH SOCKS5 tunnels and local proxies without external SSH tools."
 authors = ["you"]
 edition = "2021"
