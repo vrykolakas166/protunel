@@ -1,12 +1,15 @@
 use serde::Serialize;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Debug, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TunnelStatus {
     Disconnected,
     Connecting,
     Connected,
+    /// Was up (or is retrying a failed attempt) and is working its way back —
+    /// the tunnel task is still alive, the SSH session is not.
+    Reconnecting,
     Error,
 }
 

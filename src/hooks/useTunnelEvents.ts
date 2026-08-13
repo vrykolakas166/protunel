@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { listTunnelStatuses } from "../api";
 import type { HostKeyPending, StatusEvent, TunnelStats, TunnelStatus } from "../types";
 
 export interface TunnelRuntimeState {
@@ -38,6 +39,21 @@ export function useTunnelEvents(onError?: (tunnelId: string, message: string) =>
     const unlistenHostKey = listen<HostKeyPending>("host-key-pending", (event) => {
       setHostKeyQueue((prev) => [...prev, event.payload]);
     });
+
+    // Status arrives as events, so a reload (or a window opened after tunnels
+    // were already up) starts blind. Seed from the backend's snapshot, without
+    // clobbering any event that landed while this was in flight.
+    listTunnelStatuses()
+      .then((snapshot) => {
+        setStatuses((prev) => {
+          const next = { ...prev };
+          for (const { tunnelId, status, message } of snapshot) {
+            if (!(tunnelId in next)) next[tunnelId] = { status, message };
+          }
+          return next;
+        });
+      })
+      .catch(() => {});
 
     return () => {
       unlistenStatus.then((f) => f());

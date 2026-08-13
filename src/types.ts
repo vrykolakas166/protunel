@@ -43,7 +43,12 @@ export interface TunnelInput {
   socksEnabled: boolean;
 }
 
-export type TunnelStatus = "disconnected" | "connecting" | "connected" | "error";
+export type TunnelStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "error";
 
 export interface StatusEvent {
   tunnelId: string;
@@ -82,4 +87,7 @@ export interface Settings {
   portRangeMin: number;
   portRangeMax: number;
   notificationsEnabled: boolean;
+  autoReconnectEnabled: boolean;
+  keepaliveIntervalSecs: number;
+  reconnectMaxAttempts: number;
 }

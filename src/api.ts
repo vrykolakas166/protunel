@@ -1,7 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { KnownHostEntry, PortForward, PortForwardInput, Settings, Tunnel, TunnelInput } from "./types";
+import type {
+  KnownHostEntry,
+  PortForward,
+  PortForwardInput,
+  Settings,
+  StatusEvent,
+  Tunnel,
+  TunnelInput,
+} from "./types";
 
 export const listTunnels = () => invoke<Tunnel[]>("list_tunnels");
+
+export const listTunnelStatuses = () => invoke<StatusEvent[]>("list_tunnel_statuses");
 
 export const addTunnel = (input: TunnelInput, secret?: string) =>
   invoke<Tunnel>("add_tunnel", { input, secret });

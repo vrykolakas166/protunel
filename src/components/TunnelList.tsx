@@ -9,6 +9,7 @@ import { addPortForward, deletePortForward } from "../api";
 const LINE_COLOR: Record<string, string> = {
   disconnected: "text-slate",
   connecting: "text-amber",
+  reconnecting: "text-amber",
   connected: "text-accent",
   error: "text-coral",
 };
@@ -16,6 +17,7 @@ const LINE_COLOR: Record<string, string> = {
 const DOT_COLOR: Record<string, string> = {
   disconnected: "bg-slate",
   connecting: "bg-amber",
+  reconnecting: "bg-amber",
   connected: "bg-accent",
   error: "bg-coral",
 };
@@ -112,13 +114,16 @@ export function TunnelList({
         const isCollapsed = collapsedGroups.has(tunnel.id);
         const runtime = statuses[tunnel.id];
         const status = runtime?.status ?? "disconnected";
+        // Reconnecting is still "on": the tunnel task owns its ports and is
+        // working its way back, so the toggle stays lit and stays clickable.
         const isBusy = status === "connecting";
-        const isOn = status === "connected" || status === "connecting";
+        const isOn =
+          status === "connected" || status === "connecting" || status === "reconnecting";
         const tunnelStats = stats[tunnel.id];
         const lineClass =
           status === "connected"
             ? "tunnel-line tunnel-line--live"
-            : status === "connecting"
+            : status === "connecting" || status === "reconnecting"
               ? "tunnel-line tunnel-line--pending"
               : "tunnel-line";
 
@@ -224,6 +229,11 @@ export function TunnelList({
               <p className="mt-1.5 font-mono text-[11px] text-muted">
                 ↑ {formatBytes(tunnelStats.bytesUp)} ↓ {formatBytes(tunnelStats.bytesDown)} ·{" "}
                 {formatDuration(tunnelStats.uptimeSecs)}
+              </p>
+            )}
+            {status === "reconnecting" && (
+              <p className="mt-1.5 truncate text-[11px] text-amber">
+                Reconnecting… {runtime?.message ?? ""}
               </p>
             )}
             {status === "error" && runtime?.message && (

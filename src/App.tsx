@@ -116,7 +116,7 @@ function App() {
   const handleToggle = async (tunnel: Tunnel) => {
     const status = statuses[tunnel.id]?.status ?? "disconnected";
     try {
-      if (status === "connected" || status === "connecting") {
+      if (status === "connected" || status === "connecting" || status === "reconnecting") {
         await disconnectTunnel(tunnel.id);
       } else {
         await connectTunnel(tunnel.id);

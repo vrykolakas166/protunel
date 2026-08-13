@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use crate::db::{PortForward, PortForwardInput, Tunnel, TunnelInput};
+use crate::events::StatusEvent;
 use crate::secrets;
 use crate::settings::Settings;
 use crate::tunnel::{ForwardCommand, TunnelHandle};
@@ -28,6 +29,14 @@ pub struct KnownHostEntry {
 #[tauri::command]
 pub fn list_tunnels(state: State<AppState>) -> Result<Vec<Tunnel>, String> {
     state.db.list().map_err(|e| e.to_string())
+}
+
+/// Current status of every tunnel the backend has run this session. Status is
+/// pushed as events, so the frontend needs this to seed itself on load (or after
+/// a webview reload) instead of showing everything as disconnected.
+#[tauri::command]
+pub fn list_tunnel_statuses(state: State<AppState>) -> Vec<StatusEvent> {
+    state.statuses()
 }
 
 #[tauri::command]
@@ -90,6 +99,7 @@ pub fn update_tunnel(
 #[tauri::command]
 pub fn delete_tunnel(app: AppHandle, state: State<AppState>, id: Uuid) -> Result<(), String> {
     state.stop(id);
+    state.forget_status(id);
     state.db.delete(id).map_err(|e| e.to_string())?;
     let _ = secrets::delete_secret(id);
     crate::tray::rebuild_menu(&app);

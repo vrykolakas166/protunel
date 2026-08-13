@@ -133,6 +133,45 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
           Show Windows notifications
         </label>
 
+        <label className="flex items-center gap-2 text-sm text-text">
+          <input
+            type="checkbox"
+            checked={settings.autoReconnectEnabled}
+            disabled={busy}
+            onChange={(e) => save({ ...settings, autoReconnectEnabled: e.target.checked })}
+          />
+          Reconnect automatically when a tunnel drops
+        </label>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={labelClass}>Keepalive interval (s, 0 = off)</label>
+            <input
+              type="number"
+              className={inputClass}
+              value={settings.keepaliveIntervalSecs}
+              disabled={busy}
+              onChange={(e) =>
+                setSettings({ ...settings, keepaliveIntervalSecs: Number(e.target.value) })
+              }
+              onBlur={() => settings && save(settings)}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Max retries (0 = unlimited)</label>
+            <input
+              type="number"
+              className={inputClass}
+              value={settings.reconnectMaxAttempts}
+              disabled={busy}
+              onChange={(e) =>
+                setSettings({ ...settings, reconnectMaxAttempts: Number(e.target.value) })
+              }
+              onBlur={() => settings && save(settings)}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className={labelClass}>Default port range — min</label>

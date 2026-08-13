@@ -11,10 +11,31 @@ pub struct Settings {
     pub port_range_max: u16,
     #[serde(default = "default_notifications_enabled")]
     pub notifications_enabled: bool,
+    /// Whether a tunnel that loses its SSH session (dead VPN, laptop sleep,
+    /// server reboot) retries on its own instead of just going red.
+    #[serde(default = "default_auto_reconnect_enabled")]
+    pub auto_reconnect_enabled: bool,
+    /// How long an idle session may go silent before we ping the server. Three
+    /// unanswered pings tear the session down, which is what makes a dead peer
+    /// detectable at all. `0` disables keepalives.
+    #[serde(default = "default_keepalive_interval_secs")]
+    pub keepalive_interval_secs: u16,
+    /// Give up after this many consecutive failed attempts. `0` means never
+    /// give up.
+    #[serde(default)]
+    pub reconnect_max_attempts: u32,
 }
 
 fn default_notifications_enabled() -> bool {
     true
+}
+
+fn default_auto_reconnect_enabled() -> bool {
+    true
+}
+
+fn default_keepalive_interval_secs() -> u16 {
+    15
 }
 
 impl Default for Settings {
@@ -25,6 +46,9 @@ impl Default for Settings {
             port_range_min: 1080,
             port_range_max: 1179,
             notifications_enabled: true,
+            auto_reconnect_enabled: true,
+            keepalive_interval_secs: 15,
+            reconnect_max_attempts: 0,
         }
     }
 }

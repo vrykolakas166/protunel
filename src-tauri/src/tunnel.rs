@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 use crate::db::Db;
 use crate::db::PortForward;
+use crate::events::{StatusEvent, TunnelStatus};
 use crate::settings::SettingsStore;
 use crate::ssh::known_hosts::KnownHosts;
 use crate::ssh::PendingHostKeyRequests;
@@ -38,6 +39,10 @@ pub struct AppState {
     pub pending_host_key: PendingHostKeyRequests,
     pub settings: SettingsStore,
     running: Mutex<HashMap<Uuid, TunnelHandle>>,
+    /// Last status emitted per tunnel. The status events are fire-and-forget, so
+    /// a webview that reloads (or a tray menu rebuilt mid-reconnect) would
+    /// otherwise have no way to learn where things actually stand.
+    statuses: Mutex<HashMap<Uuid, StatusEvent>>,
 }
 
 impl AppState {
@@ -48,11 +53,36 @@ impl AppState {
             pending_host_key: PendingHostKeyRequests::default(),
             settings: SettingsStore::load(data_dir.join("settings.json")),
             running: Mutex::new(HashMap::new()),
+            statuses: Mutex::new(HashMap::new()),
         }
     }
 
+    /// Whether a tunnel task is alive for `id`. Note this is true while a tunnel
+    /// is reconnecting — use [`AppState::status`] when the SSH session's actual
+    /// health matters, and [`AppState::session_for`] when you need to use it.
     pub fn is_connected(&self, id: Uuid) -> bool {
         self.running.lock().unwrap().contains_key(&id)
+    }
+
+    pub fn set_status(&self, event: StatusEvent) {
+        self.statuses.lock().unwrap().insert(event.tunnel_id, event);
+    }
+
+    pub fn status(&self, id: Uuid) -> TunnelStatus {
+        self.statuses
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|e| e.status)
+            .unwrap_or(TunnelStatus::Disconnected)
+    }
+
+    pub fn statuses(&self) -> Vec<StatusEvent> {
+        self.statuses.lock().unwrap().values().cloned().collect()
+    }
+
+    pub fn forget_status(&self, id: Uuid) {
+        self.statuses.lock().unwrap().remove(&id);
     }
 
     /// Returns a sender for hot-applying forward changes to an already-running

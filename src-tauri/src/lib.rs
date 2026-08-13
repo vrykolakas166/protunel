@@ -50,6 +50,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_tunnels,
+            commands::list_tunnel_statuses,
             commands::add_tunnel,
             commands::update_tunnel,
             commands::delete_tunnel,

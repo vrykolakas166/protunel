@@ -25,8 +25,13 @@ use crate::events::{
     HostKeyPending, StatsEvent, StatusEvent, TunnelStatus, HOST_KEY_PENDING_EVENT, STATS_EVENT,
     STATUS_EVENT,
 };
+use crate::settings::Settings;
 use crate::tunnel::ForwardCommand;
 use crate::AppState;
+
+/// How often the supervisor asks the SSH session whether it is still alive. The
+/// session itself dies from keepalive timeouts; this is just how fast we notice.
+const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
 
 /// Registry of host-key confirmation prompts currently waiting on the frontend.
 #[derive(Default, Clone)]
@@ -108,40 +113,101 @@ fn emit_status(
     status: TunnelStatus,
     message: Option<String>,
 ) {
-    let _ = app.emit(
-        STATUS_EVENT,
-        StatusEvent {
-            tunnel_id,
-            status,
-            message: message.clone(),
-        },
-    );
+    let event = StatusEvent {
+        tunnel_id,
+        status,
+        message: message.clone(),
+    };
+    if let Some(state) = app.try_state::<AppState>() {
+        state.set_status(event.clone());
+    }
+    let _ = app.emit(STATUS_EVENT, event);
     crate::tray::rebuild_menu(app);
 
     let body = match status {
         TunnelStatus::Connected => Some("Connected".to_string()),
         TunnelStatus::Disconnected => Some("Disconnected".to_string()),
         TunnelStatus::Error => Some(message.unwrap_or_else(|| "Connection error".to_string())),
-        TunnelStatus::Connecting => None,
+        // Retries are noisy by nature — the UI shows them, the tray doesn't need
+        // to pop a toast for every backoff tick.
+        TunnelStatus::Connecting | TunnelStatus::Reconnecting => None,
     };
-    let notifications_enabled = app
-        .try_state::<AppState>()
-        .map(|s| s.settings.get().notifications_enabled)
-        .unwrap_or(true);
-    if notifications_enabled {
-        if let Some(body) = body {
-            let _ = app
-                .notification()
-                .builder()
-                .title(tunnel_name)
-                .body(body)
-                .show();
-        }
+    if let Some(body) = body {
+        notify(app, tunnel_name, &body);
     }
 }
 
-/// Connects, authenticates, opens the local SOCKS5 listener, and serves connections
-/// until `cancel` fires or the session dies. Runs to completion inside its own task.
+/// Desktop toast for something the user should know about without the window open.
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    if !settings(app).notifications_enabled {
+        return;
+    }
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
+/// Why a live SSH session stopped, which is what decides whether the supervisor
+/// reconnects or lets the tunnel task end.
+enum SessionEnd {
+    /// The user (or app shutdown) asked this tunnel to stop.
+    Cancelled,
+    /// The session died underneath us — dead VPN, TCP reset, keepalive timeout,
+    /// jump parent going away. Worth retrying.
+    Lost(String),
+}
+
+/// Local listeners for one tunnel. Bound once for the tunnel's whole lifetime,
+/// *not* per SSH session: rebinding on every reconnect would hand the ports to
+/// whatever else grabbed them during the outage.
+struct Listeners {
+    socks: Option<Arc<TcpListener>>,
+    forwards: HashMap<Uuid, (Arc<TcpListener>, PortForward)>,
+}
+
+fn settings(app: &AppHandle) -> Settings {
+    app.try_state::<AppState>()
+        .map(|s| s.settings.get())
+        .unwrap_or_default()
+}
+
+/// 2s, 4s, 8s, 16s, then a flat 30s — a blip barely registers, an overnight
+/// outage isn't hammered.
+fn backoff(attempt: u32) -> Duration {
+    Duration::from_secs(2u64.saturating_pow(attempt.clamp(1, 5)).min(30))
+}
+
+/// Failures that retrying cannot fix: wrong credentials, a host key the user
+/// rejected, a self-referential jump. Everything else (DNS, TCP, a jump parent
+/// that is itself mid-reconnect) gets another go.
+fn is_fatal(error: &str) -> bool {
+    const FATAL: [&str; 8] = [
+        "authentication failed",
+        "no password stored",
+        "failed to load private key",
+        "ssh-agent",
+        "Unknown server key",
+        "Wrong server signature",
+        "tunnel cannot jump through itself",
+        "No common key exchange algorithm",
+    ];
+    FATAL.iter().any(|f| error.contains(f))
+}
+
+/// Decides whether a failure that just happened earns attempt number `attempt`.
+fn should_retry(app: &AppHandle, error: &str, attempt: u32) -> bool {
+    if is_fatal(error) {
+        return false;
+    }
+    let settings = settings(app);
+    if !settings.auto_reconnect_enabled {
+        return false;
+    }
+    settings.reconnect_max_attempts == 0 || attempt <= settings.reconnect_max_attempts
+}
+
+/// Owns one tunnel for its whole lifetime: binds its local listeners, then keeps
+/// an authenticated SSH session behind them, reconnecting with backoff whenever
+/// that session dies. Returns only on user cancellation or an unrecoverable
+/// error. Runs to completion inside its own task.
 pub async fn run_tunnel(
     app: AppHandle,
     tunnel: Tunnel,
@@ -156,66 +222,183 @@ pub async fn run_tunnel(
 ) {
     emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connecting, None);
 
-    let result = connect_and_authenticate(&app, &tunnel, secret, known_hosts, pending).await;
-
-    let session = match result {
-        Ok(session) => session,
+    let mut listeners = match bind_listeners(&tunnel).await {
+        Ok(l) => l,
         Err(e) => {
             emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Error, Some(e));
             return;
         }
     };
 
-    let listener = if tunnel.socks_enabled {
-        match TcpListener::bind(("127.0.0.1", tunnel.local_socks_port)).await {
-            Ok(l) => Some(l),
-            Err(e) => {
-                emit_status(
-                    &app,
-                    tunnel.id,
-                    &tunnel.name,
-                    TunnelStatus::Error,
-                    Some(format!("failed to bind local SOCKS port {}: {e}", tunnel.local_socks_port)),
-                );
+    let mut attempt: u32 = 0;
+    let mut last_error: Option<String> = None;
+
+    loop {
+        if attempt > 0 {
+            emit_status(
+                &app,
+                tunnel.id,
+                &tunnel.name,
+                TunnelStatus::Reconnecting,
+                Some(format!(
+                    "attempt {attempt}: {}",
+                    last_error.as_deref().unwrap_or("connection lost")
+                )),
+            );
+        }
+
+        // Connecting can block for a long time (TCP timeouts, a host-key prompt
+        // waiting on the user). Without this the tunnel could report Connected
+        // after the user already asked it to stop.
+        let connecting = connect_and_authenticate(
+            &app,
+            &tunnel,
+            secret.clone(),
+            known_hosts.clone(),
+            pending.clone(),
+        );
+        let result = tokio::select! {
+            _ = cancel.cancelled() => {
+                emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
                 return;
             }
+            result = connecting => result,
+        };
+
+        let session = match result {
+            Ok(session) => session,
+            Err(e) => {
+                attempt += 1;
+                if !should_retry(&app, &e, attempt) {
+                    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Error, Some(e));
+                    return;
+                }
+                last_error = Some(e);
+                if !wait_before_retry(&cancel, &mut forward_rx, &mut listeners, backoff(attempt)).await
+                {
+                    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
+                    return;
+                }
+                continue;
+            }
+        };
+
+        let session = Arc::new(session);
+        *session_slot.lock().unwrap() = Some(session.clone());
+        emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connected, None);
+
+        let session_started = Instant::now();
+        let end = run_session(
+            &app,
+            &tunnel,
+            &session,
+            &cancel,
+            &mut forward_rx,
+            &mut listeners,
+            &bytes_up,
+            &bytes_down,
+        )
+        .await;
+
+        *session_slot.lock().unwrap() = None;
+        let _ = session
+            .disconnect(russh::Disconnect::ByApplication, "", "en")
+            .await;
+
+        match end {
+            SessionEnd::Cancelled => {
+                emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
+                return;
+            }
+            SessionEnd::Lost(reason) => {
+                // A session that stayed up for a while counts as a fresh start,
+                // so a single drop reconnects in seconds. One that dies right
+                // after connecting keeps escalating, so a flapping server or a
+                // half-up VPN isn't hammered.
+                attempt = if session_started.elapsed() >= Duration::from_secs(60) {
+                    1
+                } else {
+                    attempt + 1
+                };
+                if !should_retry(&app, &reason, attempt) {
+                    emit_status(
+                        &app,
+                        tunnel.id,
+                        &tunnel.name,
+                        TunnelStatus::Error,
+                        Some(reason),
+                    );
+                    return;
+                }
+                // Toast the drop itself once, not every backoff tick — losing a
+                // tunnel silently is exactly the thing worth knowing about.
+                if attempt == 1 {
+                    notify(&app, &tunnel.name, &format!("Connection lost ({reason}) — reconnecting…"));
+                }
+                last_error = Some(reason);
+                if !wait_before_retry(&cancel, &mut forward_rx, &mut listeners, backoff(attempt)).await
+                {
+                    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
+                    return;
+                }
+            }
         }
+    }
+}
+
+/// Binds the tunnel's SOCKS port and every configured forward port up front, so
+/// the ports are reserved for as long as the tunnel exists — including while it
+/// is between connection attempts.
+async fn bind_listeners(tunnel: &Tunnel) -> Result<Listeners, String> {
+    let socks = if tunnel.socks_enabled {
+        let listener = TcpListener::bind(("127.0.0.1", tunnel.local_socks_port))
+            .await
+            .map_err(|e| {
+                format!("failed to bind local SOCKS port {}: {e}", tunnel.local_socks_port)
+            })?;
+        Some(Arc::new(listener))
     } else {
         None
     };
 
-    let mut forward_listeners = Vec::with_capacity(tunnel.forwards.len());
+    let mut forwards = HashMap::with_capacity(tunnel.forwards.len());
     for fwd in &tunnel.forwards {
-        match TcpListener::bind(("127.0.0.1", fwd.local_port)).await {
-            Ok(l) => forward_listeners.push((l, fwd.clone())),
-            Err(e) => {
-                emit_status(
-                    &app,
-                    tunnel.id,
-                    &tunnel.name,
-                    TunnelStatus::Error,
-                    Some(format!("failed to bind local forward port {}: {e}", fwd.local_port)),
-                );
-                return;
-            }
-        }
+        let listener = TcpListener::bind(("127.0.0.1", fwd.local_port))
+            .await
+            .map_err(|e| format!("failed to bind local forward port {}: {e}", fwd.local_port))?;
+        forwards.insert(fwd.id, (Arc::new(listener), fwd.clone()));
     }
 
-    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connected, None);
+    Ok(Listeners { socks, forwards })
+}
 
-    let session = Arc::new(session);
-    *session_slot.lock().unwrap() = Some(session.clone());
+/// Serves traffic over one authenticated session until it is cancelled or the
+/// session goes away.
+async fn run_session(
+    app: &AppHandle,
+    tunnel: &Tunnel,
+    session: &Arc<client::Handle<SshHandler>>,
+    cancel: &CancellationToken,
+    forward_rx: &mut mpsc::UnboundedReceiver<ForwardCommand>,
+    listeners: &mut Listeners,
+    bytes_up: &Arc<AtomicU64>,
+    bytes_down: &Arc<AtomicU64>,
+) -> SessionEnd {
+    // Scoped to this session only: cancelled on every teardown so the accept
+    // loops don't outlive the session handle they forward onto.
+    let session_token = cancel.child_token();
     let closed = Arc::new(AtomicBool::new(false));
     let started = Instant::now();
     let mut stats_tick = tokio::time::interval(Duration::from_secs(1));
+    let mut health_tick = tokio::time::interval(HEALTH_CHECK_INTERVAL);
 
     let mut forward_tasks: HashMap<Uuid, CancellationToken> = HashMap::new();
-    for (fwd_listener, fwd) in forward_listeners {
-        let child = cancel.child_token();
+    for (listener, fwd) in listeners.forwards.values() {
+        let child = session_token.child_token();
         forward_tasks.insert(fwd.id, child.clone());
         spawn_forward_listener(
-            fwd_listener,
-            fwd,
+            listener.clone(),
+            fwd.clone(),
             session.clone(),
             closed.clone(),
             bytes_up.clone(),
@@ -224,25 +407,31 @@ pub async fn run_tunnel(
         );
     }
 
-    loop {
+    let end = loop {
         tokio::select! {
-            _ = cancel.cancelled() => break,
+            _ = cancel.cancelled() => break SessionEnd::Cancelled,
+            _ = health_tick.tick() => {
+                // russh tears the session down once keepalives go unanswered, so a
+                // closed handle is how a dead VPN or a rebooted server shows up.
+                if session.is_closed() {
+                    break SessionEnd::Lost("connection lost".to_string());
+                }
+            }
             cmd = forward_rx.recv() => {
                 match cmd {
                     Some(ForwardCommand::Add(fwd, resp)) => {
-                        match TcpListener::bind(("127.0.0.1", fwd.local_port)).await {
-                            Ok(l) => {
-                                let child = cancel.child_token();
+                        match bind_forward(listeners, fwd.clone()).await {
+                            Ok(listener) => {
+                                let child = session_token.child_token();
                                 forward_tasks.insert(fwd.id, child.clone());
                                 spawn_forward_listener(
-                                    l, fwd, session.clone(), closed.clone(), bytes_up.clone(), bytes_down.clone(), child,
+                                    listener, fwd, session.clone(), closed.clone(),
+                                    bytes_up.clone(), bytes_down.clone(), child,
                                 );
                                 let _ = resp.send(Ok(()));
                             }
                             Err(e) => {
-                                let _ = resp.send(Err(format!(
-                                    "failed to bind local forward port {}: {e}", fwd.local_port
-                                )));
+                                let _ = resp.send(Err(e));
                             }
                         }
                     }
@@ -250,9 +439,10 @@ pub async fn run_tunnel(
                         if let Some(token) = forward_tasks.remove(&id) {
                             token.cancel();
                         }
+                        listeners.forwards.remove(&id);
                         let _ = resp.send(Ok(()));
                     }
-                    None => break,
+                    None => break SessionEnd::Cancelled,
                 }
             }
             _ = stats_tick.tick() => {
@@ -266,7 +456,7 @@ pub async fn run_tunnel(
                     },
                 );
             }
-            accepted = accept_optional(&listener) => {
+            accepted = accept_optional(&listeners.socks) => {
                 match accepted {
                     Ok((stream, _addr)) => {
                         let session = session.clone();
@@ -282,26 +472,74 @@ pub async fn run_tunnel(
                             }
                         });
                     }
-                    Err(e) => {
-                        emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Error, Some(format!("accept error: {e}")));
-                        break;
+                    // The listener itself failing is not something a reconnect
+                    // fixes, but it also can't be served — treat it as lost and
+                    // let the supervisor's classifier decide.
+                    Err(e) => break SessionEnd::Lost(format!("accept error: {e}")),
+                }
+            }
+        }
+    };
+
+    closed.store(true, Ordering::Relaxed);
+    session_token.cancel();
+    end
+}
+
+/// Sleeps out the backoff while still answering forward add/remove commands, so
+/// editing a tunnel's forwards doesn't hang the UI for the length of a retry
+/// delay. Returns `false` if the tunnel was cancelled while waiting.
+async fn wait_before_retry(
+    cancel: &CancellationToken,
+    forward_rx: &mut mpsc::UnboundedReceiver<ForwardCommand>,
+    listeners: &mut Listeners,
+    delay: Duration,
+) -> bool {
+    let sleep = tokio::time::sleep(delay);
+    tokio::pin!(sleep);
+
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => return false,
+            _ = &mut sleep => return true,
+            cmd = forward_rx.recv() => {
+                match cmd {
+                    Some(ForwardCommand::Add(fwd, resp)) => {
+                        let _ = resp.send(bind_forward(listeners, fwd).await.map(|_| ()));
                     }
+                    Some(ForwardCommand::Remove(id, resp)) => {
+                        listeners.forwards.remove(&id);
+                        let _ = resp.send(Ok(()));
+                    }
+                    None => return false,
                 }
             }
         }
     }
+}
 
-    closed.store(true, Ordering::Relaxed);
-    *session_slot.lock().unwrap() = None;
-    let _ = session
-        .disconnect(russh::Disconnect::ByApplication, "", "en")
-        .await;
-    emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Disconnected, None);
+/// Binds one forward's local port and records it, so it survives into the next
+/// session. Re-adding an id that is already bound reuses the existing listener.
+async fn bind_forward(
+    listeners: &mut Listeners,
+    fwd: PortForward,
+) -> Result<Arc<TcpListener>, String> {
+    if let Some((listener, _)) = listeners.forwards.get(&fwd.id) {
+        return Ok(listener.clone());
+    }
+    let listener = TcpListener::bind(("127.0.0.1", fwd.local_port))
+        .await
+        .map_err(|e| format!("failed to bind local forward port {}: {e}", fwd.local_port))?;
+    let listener = Arc::new(listener);
+    listeners.forwards.insert(fwd.id, (listener.clone(), fwd));
+    Ok(listener)
 }
 
 /// Awaits the SOCKS listener's next connection, or never resolves if SOCKS is
 /// disabled for this tunnel — keeps the `select!` arm shape without a busy-loop.
-async fn accept_optional(listener: &Option<TcpListener>) -> std::io::Result<(TcpStream, SocketAddr)> {
+async fn accept_optional(
+    listener: &Option<Arc<TcpListener>>,
+) -> std::io::Result<(TcpStream, SocketAddr)> {
     match listener {
         Some(l) => l.accept().await,
         None => std::future::pending().await,
@@ -309,10 +547,10 @@ async fn accept_optional(listener: &Option<TcpListener>) -> std::io::Result<(Tcp
 }
 
 /// Spawns the accept loop for one local forward listener. Runs until `cancel`
-/// fires — either the whole tunnel's token (session torn down) or the forward's
-/// own child token (forward removed live while the tunnel keeps running).
+/// fires — the session's token (session torn down or reconnecting) or the
+/// forward's own child token (forward removed live while the tunnel keeps running).
 fn spawn_forward_listener(
-    listener: TcpListener,
+    listener: Arc<TcpListener>,
     fwd: PortForward,
     session: Arc<client::Handle<SshHandler>>,
     closed: Arc<AtomicBool>,
@@ -361,8 +599,15 @@ async fn connect_and_authenticate(
     known_hosts: Arc<known_hosts::KnownHosts>,
     pending: PendingHostKeyRequests,
 ) -> Result<client::Handle<SshHandler>, String> {
+    // Without keepalives a session that lost its underlying network never
+    // notices — it just sits there looking connected. russh sends these on an
+    // idle link and kills the session after `keepalive_max` go unanswered.
+    let keepalive_secs = settings(app).keepalive_interval_secs;
     let config = Arc::new(client::Config {
         nodelay: true,
+        keepalive_interval: (keepalive_secs > 0)
+            .then(|| Duration::from_secs(keepalive_secs.max(5) as u64)),
+        keepalive_max: 3,
         ..Default::default()
     });
 
