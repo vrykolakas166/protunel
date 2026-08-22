@@ -81,6 +81,109 @@ export interface KnownHostEntry {
 
 export type ThemePreference = "system" | "light" | "dark";
 
+export type RuleKind = "hostWildcard" | "hostRegex" | "ipCidr" | "all";
+
+export type RuleAction = "tunnel" | "direct" | "block";
+
+export interface RouterRule {
+  id: string;
+  position: number;
+  enabled: boolean;
+  kind: RuleKind;
+  pattern: string;
+  port: number | null;
+  action: RuleAction;
+  targetTunnelId: string | null;
+}
+
+export interface RouterRuleInput {
+  enabled: boolean;
+  kind: RuleKind;
+  pattern: string;
+  port: number | null;
+  action: RuleAction;
+  targetTunnelId: string | null;
+}
+
+export interface RouterConfig {
+  enabled: boolean;
+  port: number;
+  defaultAction: RuleAction;
+  defaultTunnelId: string | null;
+  setSystemProxy: boolean;
+  bypassList: string;
+  resolveForIpRules: boolean;
+}
+
+export interface RouterSnapshot {
+  running: boolean;
+  port: number | null;
+  pacUrl: string | null;
+  compileErrors: string[];
+}
+
+export interface RoutingDecision {
+  at: number;
+  host: string;
+  port: number;
+  ruleId: string | null;
+  action: RuleAction;
+  targetTunnelId: string | null;
+  outcome: string;
+}
+
+export type RouterStatus = "stopped" | "running" | "error";
+
+export interface RouterStatusEvent {
+  status: RouterStatus;
+  port: number | null;
+  message: string | null;
+}
+
+export interface RouterStats {
+  bytesUp: number;
+  bytesDown: number;
+  activeConnections: number;
+}
+
+export type TunnelDisposition = "new" | "overwrite" | "nameConflict";
+
+export interface TunnelPreview {
+  id: string;
+  name: string;
+  host: string;
+  disposition: TunnelDisposition;
+}
+
+export interface ImportPreview {
+  appVersion: string;
+  exportedAt: number;
+  tunnels: TunnelPreview[];
+  routerRuleCount: number;
+  currentRouterRuleCount: number;
+  knownHostCount: number;
+  hasSecrets: boolean;
+  secretsUnlocked: boolean;
+  secretCount: number;
+}
+
+export interface ImportSections {
+  tunnels: boolean;
+  router: boolean;
+  settings: boolean;
+  knownHosts: boolean;
+  secrets: boolean;
+  overwriteNameConflicts: boolean;
+}
+
+export interface ImportResult {
+  tunnelsAdded: number;
+  tunnelsUpdated: number;
+  rulesReplaced: number;
+  secretsRestored: number;
+  knownHostsAdded: number;
+}
+
 export interface Settings {
   theme: ThemePreference;
   autostartEnabled: boolean;
@@ -90,4 +193,5 @@ export interface Settings {
   autoReconnectEnabled: boolean;
   keepaliveIntervalSecs: number;
   reconnectMaxAttempts: number;
+  tourCompleted: boolean;
 }

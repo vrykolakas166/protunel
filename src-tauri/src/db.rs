@@ -4,6 +4,8 @@ use std::path::Path;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+use crate::router::rules::{RouterRule, RuleAction, RuleKind};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AuthMethod {
@@ -117,6 +119,16 @@ const SCHEMA: &str = "
         remote_port INTEGER NOT NULL,
         local_port INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS router_rules (
+        id TEXT PRIMARY KEY,
+        position INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        kind TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        port INTEGER,
+        action TEXT NOT NULL,
+        target_tunnel_id TEXT
+    );
 ";
 
 fn migrate(conn: &Connection) {
@@ -138,6 +150,26 @@ fn row_to_forward(row: &rusqlite::Row) -> rusqlite::Result<PortForward> {
         remote_host: row.get(2)?,
         remote_port: row.get(3)?,
         local_port: row.get(4)?,
+    })
+}
+
+const RULE_COLUMNS: &str =
+    "id, position, enabled, kind, pattern, port, action, target_tunnel_id";
+
+fn row_to_rule(row: &rusqlite::Row) -> rusqlite::Result<RouterRule> {
+    let id: String = row.get(0)?;
+    let kind: String = row.get(3)?;
+    let action: String = row.get(6)?;
+    let target_tunnel_id: Option<String> = row.get(7)?;
+    Ok(RouterRule {
+        id: Uuid::parse_str(&id).unwrap_or_else(|_| Uuid::nil()),
+        position: row.get(1)?,
+        enabled: row.get(2)?,
+        kind: RuleKind::from_str(&kind),
+        pattern: row.get(4)?,
+        port: row.get(5)?,
+        action: RuleAction::from_str(&action),
+        target_tunnel_id: target_tunnel_id.and_then(|s| Uuid::parse_str(&s).ok()),
     })
 }
 
@@ -308,5 +340,158 @@ impl Db {
             row_to_forward,
         )
         .optional()
+    }
+
+    pub fn list_router_rules(&self) -> rusqlite::Result<Vec<RouterRule>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(&format!(
+            "SELECT {RULE_COLUMNS} FROM router_rules ORDER BY position"
+        ))?;
+        let rules: Vec<RouterRule> = stmt.query_map([], row_to_rule)?.collect::<rusqlite::Result<_>>()?;
+        Ok(rules)
+    }
+
+    /// Appends at the end of the evaluation order. `MAX(position)` rather than a
+    /// row count so the order survives deletions from the middle of the list.
+    pub fn next_rule_position(&self) -> rusqlite::Result<i64> {
+        let conn = self.conn.lock().unwrap();
+        let max: Option<i64> =
+            conn.query_row("SELECT MAX(position) FROM router_rules", [], |row| row.get(0))?;
+        Ok(max.map_or(0, |m| m + 1))
+    }
+
+    pub fn insert_router_rule(&self, r: &RouterRule) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO router_rules (id, position, enabled, kind, pattern, port, action, target_tunnel_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                r.id.to_string(),
+                r.position,
+                r.enabled,
+                r.kind.as_str(),
+                r.pattern,
+                r.port,
+                r.action.as_str(),
+                r.target_tunnel_id.map(|id| id.to_string()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Position is deliberately not updated here — reordering goes through
+    /// [`Db::reorder_router_rules`] so editing a rule can't shuffle the list.
+    pub fn update_router_rule(&self, r: &RouterRule) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE router_rules SET enabled=?2, kind=?3, pattern=?4, port=?5, action=?6, target_tunnel_id=?7
+             WHERE id=?1",
+            params![
+                r.id.to_string(),
+                r.enabled,
+                r.kind.as_str(),
+                r.pattern,
+                r.port,
+                r.action.as_str(),
+                r.target_tunnel_id.map(|id| id.to_string()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn delete_router_rule(&self, id: Uuid) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("DELETE FROM router_rules WHERE id = ?1", params![id.to_string()])?;
+        Ok(())
+    }
+
+    pub fn get_router_rule(&self, id: Uuid) -> rusqlite::Result<Option<RouterRule>> {
+        let conn = self.conn.lock().unwrap();
+        conn.query_row(
+            &format!("SELECT {RULE_COLUMNS} FROM router_rules WHERE id = ?1"),
+            params![id.to_string()],
+            row_to_rule,
+        )
+        .optional()
+    }
+
+    /// Rewrites the evaluation order from an explicit id list, in one transaction
+    /// so a failure part-way can't leave two rules fighting over one position.
+    pub fn reorder_router_rules(&self, ids: &[Uuid]) -> rusqlite::Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        for (position, id) in ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE router_rules SET position = ?2 WHERE id = ?1",
+                params![id.to_string(), position as i64],
+            )?;
+        }
+        tx.commit()
+    }
+
+    /// Swaps the whole rule list for a new one, in a transaction. Import
+    /// replaces rather than merges: position *is* the meaning of a rule list, so
+    /// interleaving two of them produces an order nobody chose.
+    pub fn replace_router_rules(&self, rules: &[RouterRule]) -> rusqlite::Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM router_rules", [])?;
+        for (position, r) in rules.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO router_rules (id, position, enabled, kind, pattern, port, action, target_tunnel_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                params![
+                    r.id.to_string(),
+                    position as i64,
+                    r.enabled,
+                    r.kind.as_str(),
+                    r.pattern,
+                    r.port,
+                    r.action.as_str(),
+                    r.target_tunnel_id.map(|id| id.to_string()),
+                ],
+            )?;
+        }
+        tx.commit()
+    }
+
+    /// Swaps a tunnel's forwards for a new set, in a transaction.
+    pub fn replace_forwards(
+        &self,
+        tunnel_id: Uuid,
+        forwards: &[PortForward],
+    ) -> rusqlite::Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "DELETE FROM port_forwards WHERE tunnel_id = ?1",
+            params![tunnel_id.to_string()],
+        )?;
+        for f in forwards {
+            tx.execute(
+                "INSERT INTO port_forwards (id, tunnel_id, remote_host, remote_port, local_port)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    f.id.to_string(),
+                    tunnel_id.to_string(),
+                    f.remote_host,
+                    f.remote_port,
+                    f.local_port,
+                ],
+            )?;
+        }
+        tx.commit()
+    }
+
+    /// Clears the tunnel target of every rule pointing at a deleted tunnel and
+    /// disables them, so a stale rule can't silently fall through to the default
+    /// action once its tunnel is gone.
+    pub fn orphan_router_rules(&self, tunnel_id: Uuid) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE router_rules SET enabled = 0, target_tunnel_id = NULL WHERE target_tunnel_id = ?1",
+            params![tunnel_id.to_string()],
+        )?;
+        Ok(())
     }
 }

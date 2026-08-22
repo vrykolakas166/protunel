@@ -11,6 +11,7 @@ use uuid::Uuid;
 use crate::db::Db;
 use crate::db::PortForward;
 use crate::events::{StatusEvent, TunnelStatus};
+use crate::router::RouterState;
 use crate::settings::SettingsStore;
 use crate::ssh::known_hosts::KnownHosts;
 use crate::ssh::PendingHostKeyRequests;
@@ -38,6 +39,7 @@ pub struct AppState {
     pub known_hosts: Arc<KnownHosts>,
     pub pending_host_key: PendingHostKeyRequests,
     pub settings: SettingsStore,
+    pub router: RouterState,
     running: Mutex<HashMap<Uuid, TunnelHandle>>,
     /// Last status emitted per tunnel. The status events are fire-and-forget, so
     /// a webview that reloads (or a tray menu rebuilt mid-reconnect) would
@@ -52,6 +54,7 @@ impl AppState {
             known_hosts: Arc::new(KnownHosts::load(data_dir.join("known_hosts.json"))),
             pending_host_key: PendingHostKeyRequests::default(),
             settings: SettingsStore::load(data_dir.join("settings.json")),
+            router: RouterState::new(data_dir),
             running: Mutex::new(HashMap::new()),
             statuses: Mutex::new(HashMap::new()),
         }
@@ -100,6 +103,16 @@ impl AppState {
             .unwrap()
             .get(&id)
             .and_then(|h| h.session.lock().unwrap().clone())
+    }
+
+    /// Byte counters of a running tunnel, so router traffic dispatched to it lands
+    /// in the same up/down totals its own SOCKS port feeds. `None` if not running.
+    pub fn counters_for(&self, id: Uuid) -> Option<(Arc<AtomicU64>, Arc<AtomicU64>)> {
+        self.running
+            .lock()
+            .unwrap()
+            .get(&id)
+            .map(|h| (h.bytes_up.clone(), h.bytes_down.clone()))
     }
 
     /// Registers a running tunnel's cancellation handle and byte counters.

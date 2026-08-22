@@ -8,6 +8,7 @@ import type { Settings, ThemePreference } from "../types";
 interface Props {
   onClose: () => void;
   onSettingsChange: (settings: Settings) => void;
+  onOpenConfig: () => void;
 }
 
 const inputClass =
@@ -16,7 +17,7 @@ const selectClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none";
 const labelClass = "block text-xs font-medium text-muted";
 
-export function SettingsPanel({ onClose, onSettingsChange }: Props) {
+export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +144,7 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
           Reconnect automatically when a tunnel drops
         </label>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div data-tour="settings-reconnect" className="grid grid-cols-2 gap-2">
           <div>
             <label className={labelClass}>Keepalive interval (s, 0 = off)</label>
             <input
@@ -198,6 +199,18 @@ export function SettingsPanel({ onClose, onSettingsChange }: Props) {
         </div>
 
         {error && <p className="text-sm text-coral">{error}</p>}
+
+        <div
+          data-tour="settings-config"
+          className="flex items-center gap-2 border-t border-border pt-3"
+        >
+          <button
+            onClick={onOpenConfig}
+            className="rounded border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover"
+          >
+            Export / import config
+          </button>
+        </div>
 
         <div className="border-t border-border pt-3">
           <div className="flex items-center justify-between">

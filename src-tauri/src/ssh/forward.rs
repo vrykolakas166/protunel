@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 
-use super::counting_stream::CountingStream;
+use super::pipe::pipe_streams;
 use super::SshHandler;
 
 /// Opens an SSH `direct-tcpip` channel to a fixed remote target and pipes bytes
@@ -21,9 +21,5 @@ pub async fn serve_forward_connection(
         .channel_open_direct_tcpip(remote_host, remote_port as u32, "127.0.0.1", 0)
         .await?;
 
-    let mut client_stream = CountingStream::new(stream, bytes_up);
-    let mut channel_stream = CountingStream::new(channel.into_stream(), bytes_down);
-
-    tokio::io::copy_bidirectional(&mut client_stream, &mut channel_stream).await?;
-    Ok(())
+    pipe_streams(stream, channel.into_stream(), bytes_up, bytes_down).await
 }

@@ -1,13 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
+import { ConfigPanel } from "./components/ConfigPanel";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
 import { KnownHostsPanel } from "./components/KnownHostsPanel";
 import { MessageBar } from "./components/MessageBar";
+import { RouterPanel } from "./components/RouterPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
+import { useRouterEvents } from "./hooks/useRouterEvents";
 import { useTheme } from "./hooks/useTheme";
 import { useTunnelEvents } from "./hooks/useTunnelEvents";
 import {
@@ -19,6 +23,7 @@ import {
   disconnectTunnel,
   getSettings,
   listTunnels,
+  updateSettings,
   updateTunnel,
 } from "./api";
 import type { Settings, Tunnel, TunnelInput } from "./types";
@@ -57,7 +62,10 @@ function App() {
   const [search, setSearch] = useState("");
   const [formState, setFormState] = useState<FormState | null>(null);
   const [showKnownHosts, setShowKnownHosts] = useState(false);
+  const [showRouter, setShowRouter] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [showTour, setShowTour] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Tunnel | null>(null);
   const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
@@ -65,6 +73,8 @@ function App() {
   const [updateInstalling, setUpdateInstalling] = useState(false);
 
   useTheme(settings?.theme ?? "system");
+
+  const router = useRouterEvents();
 
   const { statuses, stats, hostKeyQueue, dismissHostKey } = useTunnelEvents((_tunnelId, text) =>
     setMessage({ text, isError: true }),
@@ -74,7 +84,11 @@ function App() {
     listTunnels()
       .then(setTunnels)
       .catch((err) => setMessage({ text: String(err), isError: true }));
-    getSettings().then(setSettings);
+    getSettings().then((loaded) => {
+      setSettings(loaded);
+      // Runs itself once on a fresh install, then never again unless replayed.
+      if (!loaded.tourCompleted) setShowTour(true);
+    });
     check()
       .then((update) => update && setPendingUpdate(update))
       .catch(() => {});
@@ -99,6 +113,26 @@ function App() {
   }, [message]);
 
   const refresh = async () => setTunnels(await listTunnels());
+
+  // The tour drives the modals itself so it can point at things inside them.
+  // Everything it opens is closed again when it moves on or ends.
+  const showTourPanel = useCallback((panel: TourPanel | null) => {
+    setShowRouter(panel === "router");
+    setShowKnownHosts(panel === "hosts");
+    setShowSettings(panel === "settings");
+    setFormState(panel === "add" ? { mode: "add" } : null);
+  }, []);
+
+  const finishTour = async () => {
+    setShowTour(false);
+    if (!settings || settings.tourCompleted) return;
+    try {
+      setSettings(await updateSettings({ ...settings, tourCompleted: true }));
+    } catch {
+      // Not worth interrupting anyone over; worst case the tour offers itself
+      // again next launch.
+    }
+  };
 
   const activeCount = useMemo(
     () => Object.values(statuses).filter((s) => s.status === "connected").length,
@@ -187,24 +221,49 @@ function App() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search…"
+          data-tour="search"
           className="ml-2 w-36 rounded border border-border bg-bg px-2 py-1 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
         />
 
         <div className="ml-auto flex items-center gap-1.5">
           <button
+            onClick={() => setShowRouter(true)}
+            data-tour="router"
+            title={
+              router.status === "running"
+                ? `Router listening on 127.0.0.1:${router.port}`
+                : "Rule-based proxy router"
+            }
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+          >
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                router.status === "running"
+                  ? "bg-accent"
+                  : router.status === "error"
+                    ? "bg-coral"
+                    : "bg-slate"
+              }`}
+            />
+            Router
+          </button>
+          <button
             onClick={() => setShowKnownHosts(true)}
+            data-tour="hosts"
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
             Hosts
           </button>
           <button
             onClick={() => setShowSettings(true)}
+            data-tour="settings"
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
             Settings
           </button>
           <button
             onClick={() => setFormState({ mode: "add" })}
+            data-tour="add"
             className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
           >
             Add tunnel
@@ -227,7 +286,10 @@ function App() {
         </div>
       )}
 
-      <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2">
+      <div
+        data-tour="bulk"
+        className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2"
+      >
         <button
           onClick={() => setPendingBulkAction("connect")}
           disabled={filteredTunnels.length === 0}
@@ -244,18 +306,20 @@ function App() {
         </button>
       </div>
 
-      <TunnelList
-        tunnels={filteredTunnels}
-        statuses={statuses}
-        stats={stats}
-        suggestedForwardPort={suggestPort(tunnels, settings)}
-        onToggle={handleToggle}
-        onEdit={(tunnel) => setFormState({ mode: "edit", tunnel })}
-        onClone={(tunnel) => setFormState({ mode: "clone", tunnel })}
-        onDelete={setPendingDelete}
-        onRefresh={refresh}
-        onError={(text) => setMessage({ text, isError: true })}
-      />
+      <div data-tour="list" className="flex min-h-0 flex-1 flex-col">
+        <TunnelList
+          tunnels={filteredTunnels}
+          statuses={statuses}
+          stats={stats}
+          suggestedForwardPort={suggestPort(tunnels, settings)}
+          onToggle={handleToggle}
+          onEdit={(tunnel) => setFormState({ mode: "edit", tunnel })}
+          onClone={(tunnel) => setFormState({ mode: "clone", tunnel })}
+          onDelete={setPendingDelete}
+          onRefresh={refresh}
+          onError={(text) => setMessage({ text, isError: true })}
+        />
+      </div>
 
       {formState && (
         <AddTunnelForm
@@ -269,9 +333,46 @@ function App() {
       )}
 
       {showKnownHosts && <KnownHostsPanel onClose={() => setShowKnownHosts(false)} />}
-      {showSettings && (
-        <SettingsPanel onClose={() => setShowSettings(false)} onSettingsChange={setSettings} />
+      {showRouter && (
+        <RouterPanel
+          tunnels={tunnels}
+          runtime={router}
+          onClose={() => setShowRouter(false)}
+        />
       )}
+      {showSettings && (
+        <SettingsPanel
+          onClose={() => setShowSettings(false)}
+          onSettingsChange={setSettings}
+          onOpenConfig={() => {
+            setShowSettings(false);
+            setShowConfig(true);
+          }}
+        />
+      )}
+      {showConfig && (
+        <ConfigPanel
+          onClose={() => setShowConfig(false)}
+          onImported={() => {
+            void refresh();
+            getSettings().then(setSettings);
+          }}
+        />
+      )}
+      {/* Below the tour overlay's z-index so it is dimmed along with everything
+          else while the tour runs. */}
+      {!showTour && (
+        <button
+          onClick={() => setShowTour(true)}
+          title="Show the guided tour"
+          aria-label="Show the guided tour"
+          className="fixed bottom-4 left-4 z-40 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-base font-semibold text-muted shadow-lg transition-colors hover:bg-surface-hover hover:text-text"
+        >
+          ?
+        </button>
+      )}
+
+      {showTour && <TourGuide onFinish={finishTour} onRequestPanel={showTourPanel} />}
 
       {hostKeyQueue[0] && (
         <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />

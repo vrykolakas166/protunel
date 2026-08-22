@@ -1,6 +1,7 @@
-mod counting_stream;
+pub mod counting_stream;
 pub mod forward;
 pub mod known_hosts;
+pub mod pipe;
 pub mod socks;
 
 use std::collections::HashMap;

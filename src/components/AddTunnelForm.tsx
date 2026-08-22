@@ -131,7 +131,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
           />
         </div>
 
-        <div>
+        <div data-tour="add-auth">
           <label className={labelClass}>Authentication</label>
           <select
             className={inputClass}
@@ -190,7 +190,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
           </div>
         )}
 
-        <div>
+        <div data-tour="add-socks">
           <label className="flex items-center gap-2 text-sm text-text">
             <input
               type="checkbox"
@@ -214,7 +214,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
           </div>
         )}
 
-        <div>
+        <div data-tour="add-jump">
           <label className={labelClass}>Connect via</label>
           <select
             className={inputClass}

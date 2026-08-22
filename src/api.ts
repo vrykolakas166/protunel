@@ -1,8 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  ImportPreview,
+  ImportResult,
+  ImportSections,
   KnownHostEntry,
   PortForward,
   PortForwardInput,
+  RouterConfig,
+  RouterRule,
+  RouterRuleInput,
+  RouterSnapshot,
+  RoutingDecision,
   Settings,
   StatusEvent,
   Tunnel,
@@ -51,3 +59,41 @@ export const getSettings = () => invoke<Settings>("get_settings");
 
 export const updateSettings = (settings: Settings) =>
   invoke<Settings>("update_settings", { settings });
+
+export const getRouterConfig = () => invoke<RouterConfig>("get_router_config");
+
+export const updateRouterConfig = (config: RouterConfig) =>
+  invoke<RouterConfig>("update_router_config", { config });
+
+export const routerSnapshot = () => invoke<RouterSnapshot>("router_snapshot");
+
+export const listRouterRules = () => invoke<RouterRule[]>("list_router_rules");
+
+export const addRouterRule = (input: RouterRuleInput) =>
+  invoke<RouterRule>("add_router_rule", { input });
+
+export const updateRouterRule = (id: string, input: RouterRuleInput) =>
+  invoke<RouterRule>("update_router_rule", { id, input });
+
+export const deleteRouterRule = (id: string) => invoke<void>("delete_router_rule", { id });
+
+export const reorderRouterRules = (ids: string[]) =>
+  invoke<void>("reorder_router_rules", { ids });
+
+export const listRouterDecisions = () => invoke<RoutingDecision[]>("list_router_decisions");
+
+/** Returns the written path, or null if the save dialog was cancelled. */
+export const exportConfig = (passphrase?: string) =>
+  invoke<string | null>("export_config", { passphrase: passphrase || null });
+
+export const pickImportFile = () => invoke<string | null>("pick_import_file");
+
+export const previewImport = (path: string, passphrase?: string) =>
+  invoke<ImportPreview>("preview_import", { path, passphrase: passphrase || null });
+
+export const applyImport = (path: string, passphrase: string | undefined, sections: ImportSections) =>
+  invoke<ImportResult>("apply_import", {
+    path,
+    passphrase: passphrase || null,
+    sections,
+  });

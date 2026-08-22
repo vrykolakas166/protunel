@@ -64,6 +64,25 @@ impl KnownHosts {
         list
     }
 
+    /// Adds imported entries, keeping the existing key on conflict. Silently
+    /// replacing a trusted key from a config file would defeat the point of
+    /// TOFU — a mismatch has to stay a mismatch until the user forgets the old
+    /// one deliberately. Returns how many were actually added.
+    pub fn merge(&self, entries: Vec<(String, TrustedKey)>) -> usize {
+        let mut current = self.entries.lock().unwrap();
+        let mut added = 0;
+        for (key_id, key) in entries {
+            if !current.contains_key(&key_id) {
+                current.insert(key_id, key);
+                added += 1;
+            }
+        }
+        if added > 0 {
+            self.persist(&current);
+        }
+        added
+    }
+
     pub fn forget(&self, key_id: &str) {
         let mut entries = self.entries.lock().unwrap();
         entries.remove(key_id);

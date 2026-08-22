@@ -1,6 +1,6 @@
 [package]
 name = "protunel"
-version = "0.3.2"
+version = "0.4.1"
 description = "Lightweight Windows desktop app for managing SSH SOCKS5 tunnels and local proxies without external SSH tools."
 authors = ["you"]
 edition = "2021"
@@ -38,4 +38,20 @@ tauri-plugin-process = "2.3.1"
 tauri-plugin-notification = "2.3.3"
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-clipboard-manager = "2.3.2"
+regex = "1.13.1"
+ipnet = "2.12.1"
+tauri-plugin-dialog = "2"
+# Config-export encryption. All of these were already in Cargo.lock as
+# transitive dependencies, so promoting them costs no new downloads. `argon2` is
+# pinned exactly: a silent bump of the KDF would make existing export files
+# undecryptable.
+aes-gcm = "0.11.0"
+argon2 = "=0.6.0-rc.8"
+base64 = "0.22.1"
+rand = "0.9.5"
+zeroize = { version = "1.9.0", features = ["derive"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55.0"
+windows-sys = { version = "0.61.2", features = ["Win32_Networking_WinInet"] }
 

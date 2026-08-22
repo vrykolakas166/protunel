@@ -42,7 +42,7 @@ export function KnownHostsPanel({ onClose }: Props) {
           next connection to that host re-prompts.
         </p>
 
-        <div className="mt-4 max-h-96 overflow-y-auto">
+        <div data-tour="hosts-list" className="mt-4 max-h-96 overflow-y-auto">
           {loading ? (
             <p className="py-6 text-center text-sm text-muted">Loading…</p>
           ) : entries.length === 0 ? (
