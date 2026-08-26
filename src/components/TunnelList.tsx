@@ -1,18 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { PortForward, Tunnel } from "../types";
-import type { TunnelRuntimeState } from "../hooks/useTunnelEvents";
+import type { Throughput, TunnelRuntimeState } from "../hooks/useTunnelEvents";
 import type { TunnelStats } from "../types";
 import { formatBytes, formatDuration } from "../format";
 import { addPortForward, deletePortForward } from "../api";
-
-const LINE_COLOR: Record<string, string> = {
-  disconnected: "text-slate",
-  connecting: "text-amber",
-  reconnecting: "text-amber",
-  connected: "text-accent",
-  error: "text-coral",
-};
+import { TunnelWaveform } from "./TunnelWaveform";
 
 const DOT_COLOR: Record<string, string> = {
   disconnected: "bg-slate",
@@ -26,6 +19,7 @@ interface Props {
   tunnels: Tunnel[];
   statuses: Record<string, TunnelRuntimeState>;
   stats: Record<string, TunnelStats>;
+  throughput: Record<string, Throughput>;
   suggestedForwardPort: number;
   onToggle: (tunnel: Tunnel) => void;
   onEdit: (tunnel: Tunnel) => void;
@@ -39,6 +33,7 @@ export function TunnelList({
   tunnels,
   statuses,
   stats,
+  throughput,
   suggestedForwardPort,
   onToggle,
   onEdit,
@@ -120,12 +115,7 @@ export function TunnelList({
         const isOn =
           status === "connected" || status === "connecting" || status === "reconnecting";
         const tunnelStats = stats[tunnel.id];
-        const lineClass =
-          status === "connected"
-            ? "tunnel-line tunnel-line--live"
-            : status === "connecting" || status === "reconnecting"
-              ? "tunnel-line tunnel-line--pending"
-              : "tunnel-line";
+        const tunnelThroughput = throughput[tunnel.id];
 
         return (
           <li
@@ -186,23 +176,44 @@ export function TunnelList({
               <button
                 onClick={() => onClone(tunnel)}
                 title="Clone"
-                className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+                aria-label="Clone"
+                className="rounded p-1.5 text-muted hover:bg-surface-hover hover:text-text"
               >
-                Clone
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="8" y="8" width="13" height="13" rx="1.5" />
+                  <path d="M4 16V5a1 1 0 0 1 1-1h11" strokeLinecap="round" />
+                </svg>
               </button>
               <button
                 onClick={() => onEdit(tunnel)}
                 title="Edit"
-                className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+                aria-label="Edit"
+                className="rounded p-1.5 text-muted hover:bg-surface-hover hover:text-text"
               >
-                Edit
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 20h9" strokeLinecap="round" />
+                  <path
+                    d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
               <button
                 onClick={() => onDelete(tunnel)}
                 title="Delete"
-                className="rounded px-2 py-1 text-xs font-medium text-coral hover:bg-coral/10"
+                aria-label="Delete"
+                className="rounded p-1.5 text-coral hover:bg-coral/10"
               >
-                Delete
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18" strokeLinecap="round" />
+                  <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path
+                    d="M19 6l-.8 13.2a1 1 0 0 1-1 .8H6.8a1 1 0 0 1-1-.8L5 6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
               </button>
             </div>
 
@@ -216,7 +227,13 @@ export function TunnelList({
                   {copiedId === tunnel.id ? "copied" : `:${tunnel.localSocksPort}`}
                 </button>
               )}
-              <div className={`h-0.5 flex-1 ${lineClass} ${LINE_COLOR[status]}`} />
+              <div className="h-4 flex-1">
+                <TunnelWaveform
+                  up={tunnelThroughput?.up ?? []}
+                  down={tunnelThroughput?.down ?? []}
+                  status={status}
+                />
+              </div>
               <span className="shrink-0 truncate text-muted">
                 {tunnel.username}@{tunnel.host}:{tunnel.port}
                 {tunnel.jumpTunnelId && (
@@ -268,7 +285,7 @@ function ForwardsPanel({
 }) {
   const [remoteHost, setRemoteHost] = useState("");
   const [remotePort, setRemotePort] = useState(0);
-  const [localPort, setLocalPort] = useState(suggestedForwardPort);
+  const [localPort, setLocalPort] = useState(0);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: FormEvent) => {
@@ -330,7 +347,7 @@ function ForwardsPanel({
           onChange={(e) => setRemotePort(Number(e.target.value))}
           placeholder="remote port"
           required
-          className="w-20 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
+          className="w-24 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
         />
         <span className="text-muted">→</span>
         <input
@@ -339,7 +356,7 @@ function ForwardsPanel({
           onChange={(e) => setLocalPort(Number(e.target.value))}
           placeholder="local port"
           required
-          className="w-20 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
+          className="w-24 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
         />
         <button
           type="submit"

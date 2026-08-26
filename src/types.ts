@@ -184,6 +184,37 @@ export interface ImportResult {
   knownHostsAdded: number;
 }
 
+export interface CapturedProcess {
+  id: string;
+  pid: number;
+  exePath: string;
+  label: string | null;
+  startedAt: number;
+}
+
+export interface LaunchCaptureInput {
+  exePath: string;
+  args: string[];
+  label: string | null;
+}
+
+export interface RecentCapture {
+  exePath: string;
+  args: string[];
+  label: string | null;
+  lastLaunchedAt: number;
+}
+
+export interface CaptureConnection {
+  at: number;
+  captureId: string;
+  pid: number;
+  host: string;
+  port: number;
+  action: RuleAction;
+  outcome: string;
+}
+
 export interface Settings {
   theme: ThemePreference;
   autostartEnabled: boolean;

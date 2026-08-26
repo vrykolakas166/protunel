@@ -12,10 +12,12 @@ const TUNNEL_PREFIX: &str = "tunnel:";
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
+    let info = app.package_info();
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(app.default_window_icon().cloned().unwrap())
         .menu(&menu)
+        .tooltip(format!("{} v{}", info.name, info.version))
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {

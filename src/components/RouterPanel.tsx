@@ -21,6 +21,7 @@ import type {
   Tunnel,
 } from "../types";
 import type { RouterRuntimeState } from "../hooks/useRouterEvents";
+import { Modal } from "./Modal";
 
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text font-mono focus:border-accent focus:outline-none";
@@ -176,9 +177,9 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
   const running = runtime.status === "running";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-full w-full max-w-3xl flex-col gap-4 overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-xl">
-        <div className="flex items-center gap-3">
+    <Modal
+      title={
+        <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-display text-base font-semibold text-text">Proxy router</h2>
           <span className="flex items-center gap-1.5 text-xs text-muted">
             <span
@@ -192,14 +193,12 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
               {runtime.stats.activeConnections} open
             </span>
           )}
-          <button
-            onClick={onClose}
-            className="ml-auto rounded px-2 py-1 text-sm text-muted hover:bg-surface-hover hover:text-text"
-          >
-            Close
-          </button>
         </div>
-
+      }
+      onClose={onClose}
+      size="xl"
+    >
+      <div className="flex flex-col gap-4">
         <p className="text-xs text-muted">
           One local SOCKS5 port that picks a tunnel per destination. Rules are evaluated top
           to bottom and the first enabled match wins; anything unmatched takes the default
@@ -448,7 +447,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
           <DecisionLog decisions={decisions} tunnelName={tunnelName} />
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

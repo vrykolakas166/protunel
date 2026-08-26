@@ -1,6 +1,6 @@
 [package]
 name = "protunel"
-version = "0.4.1"
+version = "0.5.1"
 description = "Lightweight Windows desktop app for managing SSH SOCKS5 tunnels and local proxies without external SSH tools."
 authors = ["you"]
 edition = "2021"
@@ -53,5 +53,23 @@ zeroize = { version = "1.9.0", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
-windows-sys = { version = "0.61.2", features = ["Win32_Networking_WinInet"] }
+windows-sys = { version = "0.61.2", features = [
+  "Win32_Networking_WinInet",
+  "Win32_Networking_WinSock",
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Memory",
+  "Win32_System_LibraryLoader",
+  "Win32_Security",
+  "Win32_NetworkManagement_IpHelper",
+] }
+
+# The injected process-capture hook (src-tauri/capture-hook) is a separate
+# cdylib artifact built and bundled as a resource — see scripts/build-hook-dll.mjs
+# — not linked into this crate. `default-members` keeps `cargo check`/`cargo test`
+# scoped to the app only, as CLAUDE.md documents.
+[workspace]
+members = ["capture-hook"]
+default-members = ["."]
 

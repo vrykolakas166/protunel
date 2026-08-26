@@ -1,3 +1,4 @@
+mod capture;
 mod commands;
 mod config_io;
 mod db;
@@ -100,6 +101,12 @@ pub fn run() {
             commands::delete_router_rule,
             commands::reorder_router_rules,
             commands::list_router_decisions,
+            commands::pick_capture_target,
+            commands::launch_capture,
+            commands::stop_capture,
+            commands::list_active_captures,
+            commands::list_recent_captures,
+            commands::list_capture_connections,
             config_io::export_config,
             config_io::pick_import_file,
             config_io::preview_import,

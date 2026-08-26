@@ -85,6 +85,12 @@ async fn handle_connection(app: AppHandle, stream: TcpStream) {
 }
 
 async fn route(app: &AppHandle, state: &AppState, stream: TcpStream) -> anyhow::Result<()> {
+    // Captured processes reach the router over loopback, so the ephemeral
+    // port the OS assigned their socket is exactly the peer port seen here —
+    // grabbed before `stream` moves into the SOCKS5 protocol wrapper below,
+    // since TcpStream itself is what exposes peer_addr().
+    let peer_port = stream.peer_addr().ok().map(|a| a.port());
+
     // No `resolve_dns()`: the hostname the client asked for is exactly what the
     // rules match on, and what the SSH server should resolve on the far side.
     let (proto, cmd, target_addr) = Socks5ServerProtocol::accept_no_auth(stream)
@@ -118,6 +124,7 @@ async fn route(app: &AppHandle, state: &AppState, stream: TcpStream) -> anyhow::
         RuleAction::Block => {
             proto.reply_error(&ReplyError::ConnectionNotAllowed).await?;
             decision.outcome = "blocked by rule".to_string();
+            attribute_to_capture(state, peer_port, &decision);
             state.router.record_decision(decision);
             return Ok(());
         }
@@ -132,6 +139,7 @@ async fn route(app: &AppHandle, state: &AppState, stream: TcpStream) -> anyhow::
         Ok(()) => {}
         Err(e) => decision.outcome = e.to_string(),
     }
+    attribute_to_capture(state, peer_port, &decision);
     state.router.record_decision(decision);
     served
 }
@@ -232,6 +240,19 @@ async fn ensure_session(
     state
         .session_for(tunnel_id)
         .ok_or_else(|| "tunnel connected but has no session".to_string())
+}
+
+/// Attributes a routed connection to a captured process, if any capture is
+/// active — gated behind `has_active()` so ordinary SOCKS5 clients (browsers,
+/// tools using `--socks5-hostname`) never pay for a PID-table walk.
+fn attribute_to_capture(state: &AppState, peer_port: Option<u16>, decision: &RoutingDecision) {
+    if !state.capture.has_active() {
+        return;
+    }
+    let Some(port) = peer_port else { return };
+    if let Some(pid) = crate::capture::pid_lookup::owning_pid(port) {
+        state.capture.record_connection(pid, decision);
+    }
 }
 
 fn now_secs() -> u64 {

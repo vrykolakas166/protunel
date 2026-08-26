@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  CaptureConnection,
+  CapturedProcess,
   ImportPreview,
   ImportResult,
   ImportSections,
   KnownHostEntry,
+  LaunchCaptureInput,
+  RecentCapture,
   PortForward,
   PortForwardInput,
   RouterConfig,
@@ -97,3 +101,17 @@ export const applyImport = (path: string, passphrase: string | undefined, sectio
     passphrase: passphrase || null,
     sections,
   });
+
+export const pickCaptureTarget = () => invoke<string | null>("pick_capture_target");
+
+export const launchCapture = (input: LaunchCaptureInput) =>
+  invoke<CapturedProcess>("launch_capture", { input });
+
+export const stopCapture = (id: string) => invoke<void>("stop_capture", { id });
+
+export const listActiveCaptures = () => invoke<CapturedProcess[]>("list_active_captures");
+
+export const listRecentCaptures = () => invoke<RecentCapture[]>("list_recent_captures");
+
+export const listCaptureConnections = () =>
+  invoke<CaptureConnection[]>("list_capture_connections");

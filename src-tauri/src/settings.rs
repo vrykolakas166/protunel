@@ -132,3 +132,27 @@ impl<T: Clone + Serialize + DeserializeOwned + Default> JsonStore<T> {
 
 pub type SettingsStore = JsonStore<Settings>;
 pub type RouterStore = JsonStore<RouterConfig>;
+
+/// One entry in the recent-captures MRU list — enough to relaunch the same
+/// target without re-browsing for it.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentCapture {
+    pub exe_path: String,
+    pub args: Vec<String>,
+    pub label: Option<String>,
+    pub last_launched_at: u64,
+}
+
+/// Automatic MRU list of launched capture targets, capped at
+/// [`crate::capture::MAX_RECENT_CAPTURES`]. Separate file from
+/// [`RouterConfig`]/[`Settings`] for the same reason those are split — an
+/// independent writer shouldn't be able to clobber another panel's state.
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureConfig {
+    #[serde(default)]
+    pub recent: Vec<RecentCapture>,
+}
+
+pub type CaptureStore = JsonStore<CaptureConfig>;

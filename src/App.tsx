@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
+import { CapturePanel } from "./components/CapturePanel";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
@@ -60,9 +61,12 @@ function App() {
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [search, setSearch] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [formState, setFormState] = useState<FormState | null>(null);
   const [showKnownHosts, setShowKnownHosts] = useState(false);
   const [showRouter, setShowRouter] = useState(false);
+  const [showCapture, setShowCapture] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -76,8 +80,8 @@ function App() {
 
   const router = useRouterEvents();
 
-  const { statuses, stats, hostKeyQueue, dismissHostKey } = useTunnelEvents((_tunnelId, text) =>
-    setMessage({ text, isError: true }),
+  const { statuses, stats, throughput, hostKeyQueue, dismissHostKey } = useTunnelEvents(
+    (_tunnelId, text) => setMessage({ text, isError: true }),
   );
 
   useEffect(() => {
@@ -112,13 +116,34 @@ function App() {
     return () => clearTimeout(timer);
   }, [message]);
 
+  // Ctrl+F drops the floating search box in; Escape drops it back out and
+  // clears the filter, so a closed box never leaves the list silently
+  // filtered with no visible reason why.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setShowSearch(true);
+      } else if (e.key === "Escape" && showSearch) {
+        setShowSearch(false);
+        setSearch("");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showSearch]);
+
+  useEffect(() => {
+    if (showSearch) searchInputRef.current?.focus();
+  }, [showSearch]);
+
   const refresh = async () => setTunnels(await listTunnels());
 
   // The tour drives the modals itself so it can point at things inside them.
   // Everything it opens is closed again when it moves on or ends.
   const showTourPanel = useCallback((panel: TourPanel | null) => {
     setShowRouter(panel === "router");
-    setShowKnownHosts(panel === "hosts");
+    setShowCapture(panel === "capture");
     setShowSettings(panel === "settings");
     setFormState(panel === "add" ? { mode: "add" } : null);
   }, []);
@@ -133,11 +158,6 @@ function App() {
       // again next launch.
     }
   };
-
-  const activeCount = useMemo(
-    () => Object.values(statuses).filter((s) => s.status === "connected").length,
-    [statuses],
-  );
 
   const filteredTunnels = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -209,21 +229,6 @@ function App() {
     <main className="flex h-screen flex-col bg-bg text-text">
       <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
         <h1 className="font-display text-lg font-semibold text-text">ProdTunnel</h1>
-        <span className="flex items-center gap-1.5 text-xs text-muted">
-          <span
-            className="h-1.5 w-1.5 rounded-full bg-accent"
-            style={{ opacity: activeCount > 0 ? 1 : 0.3 }}
-          />
-          {activeCount} active
-        </span>
-
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search…"
-          data-tour="search"
-          className="ml-2 w-36 rounded border border-border bg-bg px-2 py-1 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
-        />
 
         <div className="ml-auto flex items-center gap-1.5">
           <button
@@ -248,11 +253,12 @@ function App() {
             Router
           </button>
           <button
-            onClick={() => setShowKnownHosts(true)}
-            data-tour="hosts"
+            onClick={() => setShowCapture(true)}
+            data-tour="capture"
+            title="Launch an app with its traffic routed through the router"
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
-            Hosts
+            Capture
           </button>
           <button
             onClick={() => setShowSettings(true)}
@@ -260,13 +266,6 @@ function App() {
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
             Settings
-          </button>
-          <button
-            onClick={() => setFormState({ mode: "add" })}
-            data-tour="add"
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
-          >
-            Add tunnel
           </button>
         </div>
       </header>
@@ -304,13 +303,51 @@ function App() {
         >
           Disconnect all
         </button>
+        <button
+          onClick={() => setFormState({ mode: "add" })}
+          data-tour="add"
+          className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
+        >
+          Add tunnel
+        </button>
       </div>
 
-      <div data-tour="list" className="flex min-h-0 flex-1 flex-col">
+      <div data-tour="list" className="relative flex min-h-0 flex-1 flex-col">
+        {showSearch && (
+          <div className="search-drop-in absolute inset-x-0 bottom-4 z-10 mx-auto flex w-fit items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5 shadow-lg">
+            <input
+              ref={searchInputRef}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+              placeholder="Search… (Esc to close)"
+              data-tour="search"
+              className="w-48 rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+            <button
+              onClick={() => {
+                setShowSearch(false);
+                setSearch("");
+              }}
+              aria-label="Close search"
+              className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path
+                  d="M2 2L14 14M14 2L2 14"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+        )}
         <TunnelList
           tunnels={filteredTunnels}
           statuses={statuses}
           stats={stats}
+          throughput={throughput}
           suggestedForwardPort={suggestPort(tunnels, settings)}
           onToggle={handleToggle}
           onEdit={(tunnel) => setFormState({ mode: "edit", tunnel })}
@@ -332,7 +369,6 @@ function App() {
         />
       )}
 
-      {showKnownHosts && <KnownHostsPanel onClose={() => setShowKnownHosts(false)} />}
       {showRouter && (
         <RouterPanel
           tunnels={tunnels}
@@ -340,14 +376,13 @@ function App() {
           onClose={() => setShowRouter(false)}
         />
       )}
+      {showCapture && <CapturePanel runtime={router} onClose={() => setShowCapture(false)} />}
       {showSettings && (
         <SettingsPanel
           onClose={() => setShowSettings(false)}
           onSettingsChange={setSettings}
-          onOpenConfig={() => {
-            setShowSettings(false);
-            setShowConfig(true);
-          }}
+          onOpenConfig={() => setShowConfig(true)}
+          onOpenHosts={() => setShowKnownHosts(true)}
         />
       )}
       {showConfig && (
@@ -359,6 +394,7 @@ function App() {
           }}
         />
       )}
+      {showKnownHosts && <KnownHostsPanel onClose={() => setShowKnownHosts(false)} />}
       {/* Below the tour overlay's z-index so it is dimmed along with everything
           else while the tour runs. */}
       {!showTour && (

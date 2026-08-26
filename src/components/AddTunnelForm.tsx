@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { AuthMethod, Tunnel, TunnelInput } from "../types";
+import { Modal } from "./Modal";
 
 type AuthKind = AuthMethod["kind"];
 type FormMode = "add" | "edit" | "clone";
@@ -82,13 +83,12 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-md space-y-3 rounded-lg border border-border bg-surface p-5 shadow-xl"
-      >
-        <h2 className="font-display text-base font-semibold text-text">{TITLE[mode]}</h2>
-
+    <Modal
+      title={<h2 className="font-display text-base font-semibold text-text">{TITLE[mode]}</h2>}
+      onClose={onCancel}
+      size="md"
+    >
+      <form onSubmit={submit} className="space-y-3">
         <div>
           <label className={labelClass}>Name</label>
           <input
@@ -258,6 +258,6 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }

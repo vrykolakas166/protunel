@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { applyImport, exportConfig, pickImportFile, previewImport } from "../api";
 import type { ImportPreview, ImportResult, ImportSections, TunnelDisposition } from "../types";
+import { Modal } from "./Modal";
 
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text font-mono focus:border-accent focus:outline-none";
@@ -103,20 +104,16 @@ export function ConfigPanel({ onClose, onImported }: Props) {
   const conflicts = preview?.tunnels.filter((t) => t.disposition === "nameConflict") ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-full w-full max-w-2xl flex-col gap-4 overflow-y-auto rounded-lg border border-border bg-surface p-5 shadow-xl">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-base font-semibold text-text">
-            Export / import config
-          </h2>
-          <button
-            onClick={onClose}
-            className="rounded px-2 py-1 text-sm text-muted hover:bg-surface-hover hover:text-text"
-          >
-            Close
-          </button>
-        </div>
-
+    <Modal
+      title={
+        <h2 className="font-display text-base font-semibold text-text">
+          Export / import config
+        </h2>
+      }
+      onClose={onClose}
+      size="xl"
+    >
+      <div className="flex flex-col gap-4">
         {error && <p className="text-sm text-coral">{error}</p>}
         {note && <p className="text-sm text-accent">{note}</p>}
 
@@ -320,6 +317,6 @@ export function ConfigPanel({ onClose, onImported }: Props) {
           )}
         </section>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,0 +1,25 @@
+[package]
+name = "capture-hook"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Injected into a captured process; never linked into the main app binary.
+# Built by scripts/build-hook-dll.mjs, shipped as a bundled resource.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+minhook = "0.9"
+
+[dependencies.windows-sys]
+version = "0.61.2"
+features = [
+  "Win32_Foundation",
+  "Win32_System_SystemServices",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Threading",
+  "Win32_System_IO",
+  "Win32_Networking_WinSock",
+  "Win32_Security",
+]

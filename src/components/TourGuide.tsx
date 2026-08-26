@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 
 /** Which modal the tour needs open for a step. `null` closes whatever is open. */
-export type TourPanel = "add" | "router" | "hosts" | "settings";
+export type TourPanel = "add" | "router" | "capture" | "settings";
 
 interface Step {
   title: string;
@@ -47,7 +47,7 @@ const STEPS: Step[] = [
   },
   {
     title: "Search and bulk actions",
-    body: "Filter by name or host, and connect or disconnect everything at once.",
+    body: "Ctrl+F drops in a search box to filter by name or host — Esc closes it. Connect or disconnect everything at once from here too.",
     target: "bulk",
   },
   {
@@ -80,10 +80,27 @@ const STEPS: Step[] = [
     panel: "router",
   },
   {
-    title: "Known hosts",
-    body: "The first time you reach a server its host key is shown and you decide whether to trust it. After that, a changed key is refused outright rather than silently accepted. Revoke one here to be asked again.",
-    target: "hosts-list",
-    panel: "hosts",
+    title: "Capturing an app that has no proxy setting",
+    body: "RDP clients, CLI tools, DB clients — most apps have nowhere to type a proxy address. Capture launches one with a small hook injected, so its traffic reaches the router anyway. Rules decide where it goes from there, same as anything else.",
+    target: "capture",
+  },
+  {
+    title: "Launching a captured process",
+    body: "Point it at an .exe (Browse or paste a path), add arguments if it needs them. Recently launched targets show up as quick-relaunch buttons above the form.",
+    target: "capture-launch",
+    panel: "capture",
+  },
+  {
+    title: "What's running",
+    body: "Every captured process stays listed here with its PID, so you can stop one without hunting for it in Task Manager.",
+    target: "capture-active",
+    panel: "capture",
+  },
+  {
+    title: "Where its traffic actually went",
+    body: "Each connection a captured process makes shows up here with the rule's decision — same idea as the router's own decision log, scoped to just this process.",
+    target: "capture-log",
+    panel: "capture",
   },
   {
     title: "Staying connected",
@@ -170,13 +187,26 @@ export function TourGuide({ onFinish, onRequestPanel }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  // Card sits below the highlight, or above it when there is no room.
+  // Card sits below the highlight, or above it when there is no room below.
+  // Some targets (the tunnel list) span nearly the whole window, leaving no
+  // room on either side — pin to whichever edge has more clearance instead
+  // of letting the card render partly off-screen.
+  const CARD_HEIGHT_ESTIMATE = 200;
   const left = rect ? Math.max(12, Math.min(rect.left, window.innerWidth - CARD_WIDTH - 12)) : 0;
-  const cardStyle: React.CSSProperties = rect
-    ? rect.bottom + 220 < window.innerHeight
-      ? { top: rect.bottom + 14, left }
-      : { bottom: window.innerHeight - rect.top + 14, left }
-    : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+  let cardStyle: React.CSSProperties;
+  if (!rect) {
+    cardStyle = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
+  } else {
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    if (spaceBelow >= CARD_HEIGHT_ESTIMATE) {
+      cardStyle = { top: rect.bottom + 14, left };
+    } else if (spaceAbove >= CARD_HEIGHT_ESTIMATE) {
+      cardStyle = { bottom: window.innerHeight - rect.top + 14, left };
+    } else {
+      cardStyle = spaceAbove > spaceBelow ? { top: 12, left } : { bottom: 12, left };
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[60]">

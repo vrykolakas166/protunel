@@ -8,6 +8,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use crate::capture::CaptureState;
 use crate::db::Db;
 use crate::db::PortForward;
 use crate::events::{StatusEvent, TunnelStatus};
@@ -40,6 +41,7 @@ pub struct AppState {
     pub pending_host_key: PendingHostKeyRequests,
     pub settings: SettingsStore,
     pub router: RouterState,
+    pub capture: CaptureState,
     running: Mutex<HashMap<Uuid, TunnelHandle>>,
     /// Last status emitted per tunnel. The status events are fire-and-forget, so
     /// a webview that reloads (or a tray menu rebuilt mid-reconnect) would
@@ -55,6 +57,7 @@ impl AppState {
             pending_host_key: PendingHostKeyRequests::default(),
             settings: SettingsStore::load(data_dir.join("settings.json")),
             router: RouterState::new(data_dir),
+            capture: CaptureState::new(data_dir),
             running: Mutex::new(HashMap::new()),
             statuses: Mutex::new(HashMap::new()),
         }
