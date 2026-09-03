@@ -1,0 +1,23 @@
+{
+  "routerListening": "Router listening on 127.0.0.1:{{port}}",
+  "routerTooltip": "Rule-based proxy router",
+  "router": "Router",
+  "captureTooltip": "Launch an app with its traffic routed through the router",
+  "capture": "Capture",
+  "settings": "Settings",
+  "updateAvailable": "Update v{{version}} available.",
+  "installing": "Installing…",
+  "installAndRestart": "Install & restart",
+  "connectAll": "Connect all",
+  "disconnectAll": "Disconnect all",
+  "addTunnel": "Add tunnel",
+  "searchPlaceholder": "Search… (Esc to close)",
+  "closeSearch": "Close search",
+  "showGuidedTour": "Show the guided tour",
+  "deleteTunnelTitle": "Delete tunnel",
+  "deleteTunnelMessage": "Delete \"{{name}}\"? This disconnects it and removes its saved credentials.",
+  "connectAllTitle": "Connect all tunnels",
+  "disconnectAllTitle": "Disconnect all tunnels",
+  "connectAllMessage": "Connect every tunnel in the list?",
+  "disconnectAllMessage": "Disconnect every active tunnel?"
+}

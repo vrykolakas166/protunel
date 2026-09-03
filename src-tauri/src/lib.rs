@@ -3,6 +3,7 @@ mod commands;
 mod config_io;
 mod db;
 mod events;
+mod network;
 mod router;
 mod secrets;
 mod settings;
@@ -111,6 +112,7 @@ pub fn run() {
             config_io::pick_import_file,
             config_io::preview_import,
             config_io::apply_import,
+            network::list_local_ips,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

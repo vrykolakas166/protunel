@@ -167,6 +167,14 @@ export interface ImportPreview {
   secretCount: number;
 }
 
+export interface ExportSections {
+  tunnels: boolean;
+  tunnelIds: string[];
+  router: boolean;
+  settings: boolean;
+  knownHosts: boolean;
+}
+
 export interface ImportSections {
   tunnels: boolean;
   router: boolean;
@@ -225,4 +233,5 @@ export interface Settings {
   keepaliveIntervalSecs: number;
   reconnectMaxAttempts: number;
   tourCompleted: boolean;
+  language: string;
 }

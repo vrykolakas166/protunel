@@ -1,0 +1,85 @@
+{
+  "steps": {
+    "welcome": {
+      "title": "Welcome to ProdTunnel",
+      "body": "A quick pass over what everything does. Two minutes, and you can skip or replay it any time from the ? button."
+    },
+    "add": {
+      "title": "Add a tunnel",
+      "body": "A tunnel is one SSH connection. This button opens the form — let's look at what's in it."
+    },
+    "add-auth": {
+      "title": "How you authenticate",
+      "body": "Password, a private key file, or an SSH agent like Pageant. Passwords and key passphrases go into the Windows Credential Manager, never into the app's own database."
+    },
+    "add-socks": {
+      "title": "What the tunnel exposes",
+      "body": "Turn on a local SOCKS5 proxy and point a browser or curl at that port. You can also add static port forwards later, from the tunnel's row in the list."
+    },
+    "add-jump": {
+      "title": "Hopping through another tunnel",
+      "body": "\"Connect via\" makes this tunnel connect through another one's live session — the usual bastion setup. Connecting the inner tunnel dials the whole chain for you, outermost first."
+    },
+    "list": {
+      "title": "The tunnel list",
+      "body": "Toggle a tunnel with the switch. The dashed line animates while traffic can flow. Expand Forwards to add port forwards live — no reconnect needed. Tunnels that hop through another are indented under their parent."
+    },
+    "bulk": {
+      "title": "Search and bulk actions",
+      "body": "Ctrl+F drops in a search box to filter by name or host — Esc closes it. Connect or disconnect everything at once from here too."
+    },
+    "router": {
+      "title": "The proxy router",
+      "body": "Per-tunnel SOCKS ports make you pick a tunnel per application. The router flips that around: one local port, and rules choose a destination per connection."
+    },
+    "router-enable": {
+      "title": "Turning the router on",
+      "body": "It binds one SOCKS5 port on 127.0.0.1 only. A rule pointing at a tunnel that isn't up will connect that tunnel on demand, so you can leave everything disconnected and let traffic dial what it needs."
+    },
+    "router-rules": {
+      "title": "Rules decide where traffic goes",
+      "body": "Ordered top to bottom, first enabled match wins. Match on a host wildcard, a regex, or an IP range, then send it through a tunnel, straight out (direct), or block it. Anything unmatched takes the default action."
+    },
+    "router-proxy": {
+      "title": "Catching every app",
+      "body": "Tick this and Windows itself is pointed at the router, so every app follows your rules with no per-app setup. It's undone when the router stops — including after a crash."
+    },
+    "router-log": {
+      "title": "Why did that go direct?",
+      "body": "Every proxied connection is logged with the rule that decided it. This is the first place to look when a rule doesn't fire the way you expected."
+    },
+    "capture": {
+      "title": "Capturing an app that has no proxy setting",
+      "body": "RDP clients, CLI tools, DB clients — most apps have nowhere to type a proxy address. Capture launches one with a small hook injected, so its traffic reaches the router anyway. Rules decide where it goes from there, same as anything else."
+    },
+    "capture-launch": {
+      "title": "Launching a captured process",
+      "body": "Point it at an .exe (Browse or paste a path), add arguments if it needs them. Recently launched targets show up as quick-relaunch buttons above the form."
+    },
+    "capture-active": {
+      "title": "What's running",
+      "body": "Every captured process stays listed here with its PID, so you can stop one without hunting for it in Task Manager."
+    },
+    "capture-log": {
+      "title": "Where its traffic actually went",
+      "body": "Each connection a captured process makes shows up here with the rule's decision — same idea as the router's own decision log, scoped to just this process."
+    },
+    "settings-reconnect": {
+      "title": "Staying connected",
+      "body": "Keepalives are how a dead connection gets noticed at all; retries back off so a flapping server isn't hammered. Local ports stay held during an outage so nothing else can take them."
+    },
+    "settings-config": {
+      "title": "Moving to another machine",
+      "body": "Export writes your tunnels, router rules, and settings to one file. Secrets are only included if you set a passphrase — leave it blank and the file is safe to share."
+    },
+    "tray": {
+      "title": "It lives in the tray",
+      "body": "Closing the window only hides it — tunnels keep running. Reopen from the tray icon, toggle tunnels from its menu, and use the tray's Exit item when you actually want to quit."
+    }
+  },
+  "stepProgress": "Step {{current}} of {{total}}",
+  "skip": "Skip",
+  "back": "Back",
+  "next": "Next",
+  "done": "Done"
+}

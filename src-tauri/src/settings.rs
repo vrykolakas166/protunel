@@ -32,6 +32,13 @@ pub struct Settings {
     /// once-only auto-run on a fresh install.
     #[serde(default)]
     pub tour_completed: bool,
+    /// UI language: "en" or "vi".
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 fn default_notifications_enabled() -> bool {
@@ -58,6 +65,7 @@ impl Default for Settings {
             keepalive_interval_secs: 15,
             reconnect_max_attempts: 0,
             tour_completed: false,
+            language: default_language(),
         }
     }
 }

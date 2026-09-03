@@ -1,0 +1,6 @@
+{
+  "title": "Khóa máy chủ chưa xác định",
+  "body": "Máy chủ <host>{{host}}:{{port}}</host> đưa ra khóa {{algorithm}} chưa từng thấy trước đây. Hãy xác minh fingerprint qua kênh khác trước khi tin tưởng.",
+  "reject": "Từ chối",
+  "trustAndConnect": "Tin tưởng & Kết nối"
+}

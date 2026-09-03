@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
@@ -7,12 +8,15 @@ import { ConfigPanel } from "./components/ConfigPanel";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
 import { KnownHostsPanel } from "./components/KnownHostsPanel";
+import { LocalIps } from "./components/LocalIps";
 import { MessageBar } from "./components/MessageBar";
 import { RouterPanel } from "./components/RouterPanel";
+import { Sample1 } from "./components/Sample1";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
 import { useRouterEvents } from "./hooks/useRouterEvents";
+import { useLanguage } from "./hooks/useLanguage";
 import { useTheme } from "./hooks/useTheme";
 import { useTunnelEvents } from "./hooks/useTunnelEvents";
 import {
@@ -58,6 +62,7 @@ function suggestPort(tunnels: Tunnel[], settings: Settings | null): number {
 }
 
 function App() {
+  const { t } = useTranslation("app");
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [search, setSearch] = useState("");
@@ -77,6 +82,7 @@ function App() {
   const [updateInstalling, setUpdateInstalling] = useState(false);
 
   useTheme(settings?.theme ?? "system");
+  useLanguage(settings?.language);
 
   const router = useRouterEvents();
 
@@ -163,7 +169,7 @@ function App() {
     const query = search.trim().toLowerCase();
     if (!query) return tunnels;
     return tunnels.filter(
-      (t) => t.name.toLowerCase().includes(query) || t.host.toLowerCase().includes(query),
+      (tun) => tun.name.toLowerCase().includes(query) || tun.host.toLowerCase().includes(query),
     );
   }, [tunnels, search]);
 
@@ -228,7 +234,9 @@ function App() {
   return (
     <main className="flex h-screen flex-col bg-bg text-text">
       <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
-        <h1 className="font-display text-lg font-semibold text-text">ProdTunnel</h1>
+        <h1 className="sr-only">ProdTunnel</h1>
+        <Sample1 size={40} className="shrink-0" />
+        <LocalIps className="flex-1" />
 
         <div className="ml-auto flex items-center gap-1.5">
           <button
@@ -236,8 +244,8 @@ function App() {
             data-tour="router"
             title={
               router.status === "running"
-                ? `Router listening on 127.0.0.1:${router.port}`
-                : "Rule-based proxy router"
+                ? t("routerListening", { port: router.port })
+                : t("routerTooltip")
             }
             className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
@@ -250,22 +258,22 @@ function App() {
                     : "bg-slate"
               }`}
             />
-            Router
+            {t("router")}
           </button>
           <button
             onClick={() => setShowCapture(true)}
             data-tour="capture"
-            title="Launch an app with its traffic routed through the router"
+            title={t("captureTooltip")}
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
-            Capture
+            {t("capture")}
           </button>
           <button
             onClick={() => setShowSettings(true)}
             data-tour="settings"
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
-            Settings
+            {t("settings")}
           </button>
         </div>
       </header>
@@ -274,13 +282,13 @@ function App() {
 
       {pendingUpdate && (
         <div className="flex items-center justify-between gap-3 border-b border-border bg-accent/10 px-4 py-2 text-sm text-text">
-          <span>Update v{pendingUpdate.version} available.</span>
+          <span>{t("updateAvailable", { version: pendingUpdate.version })}</span>
           <button
             onClick={installUpdate}
             disabled={updateInstalling}
             className="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {updateInstalling ? "Installing…" : "Install & restart"}
+            {updateInstalling ? t("installing") : t("installAndRestart")}
           </button>
         </div>
       )}
@@ -294,21 +302,21 @@ function App() {
           disabled={filteredTunnels.length === 0}
           className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
         >
-          Connect all
+          {t("connectAll")}
         </button>
         <button
           onClick={() => setPendingBulkAction("disconnect")}
           disabled={filteredTunnels.length === 0}
           className="rounded bg-coral px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
         >
-          Disconnect all
+          {t("disconnectAll")}
         </button>
         <button
           onClick={() => setFormState({ mode: "add" })}
           data-tour="add"
           className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
         >
-          Add tunnel
+          {t("addTunnel")}
         </button>
       </div>
 
@@ -320,7 +328,7 @@ function App() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
-              placeholder="Search… (Esc to close)"
+              placeholder={t("searchPlaceholder")}
               data-tour="search"
               className="w-48 rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
             />
@@ -329,7 +337,7 @@ function App() {
                 setShowSearch(false);
                 setSearch("");
               }}
-              aria-label="Close search"
+              aria-label={t("closeSearch")}
               className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -387,6 +395,7 @@ function App() {
       )}
       {showConfig && (
         <ConfigPanel
+          tunnels={tunnels}
           onClose={() => setShowConfig(false)}
           onImported={() => {
             void refresh();
@@ -400,8 +409,8 @@ function App() {
       {!showTour && (
         <button
           onClick={() => setShowTour(true)}
-          title="Show the guided tour"
-          aria-label="Show the guided tour"
+          title={t("showGuidedTour")}
+          aria-label={t("showGuidedTour")}
           className="fixed bottom-4 left-4 z-40 flex h-10 w-10 items-center justify-center rounded-full border border-border bg-surface text-base font-semibold text-muted shadow-lg transition-colors hover:bg-surface-hover hover:text-text"
         >
           ?
@@ -416,8 +425,8 @@ function App() {
 
       {pendingDelete && (
         <ConfirmDialog
-          title="Delete tunnel"
-          message={`Delete "${pendingDelete.name}"? This disconnects it and removes its saved credentials.`}
+          title={t("deleteTunnelTitle")}
+          message={t("deleteTunnelMessage", { name: pendingDelete.name })}
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
         />
@@ -425,13 +434,13 @@ function App() {
 
       {pendingBulkAction && (
         <ConfirmDialog
-          title={pendingBulkAction === "connect" ? "Connect all tunnels" : "Disconnect all tunnels"}
+          title={pendingBulkAction === "connect" ? t("connectAllTitle") : t("disconnectAllTitle")}
           message={
             pendingBulkAction === "connect"
-              ? "Connect every tunnel in the list?"
-              : "Disconnect every active tunnel?"
+              ? t("connectAllMessage")
+              : t("disconnectAllMessage")
           }
-          confirmLabel={pendingBulkAction === "connect" ? "Connect all" : "Disconnect all"}
+          confirmLabel={pendingBulkAction === "connect" ? t("connectAll") : t("disconnectAll")}
           tone={pendingBulkAction === "connect" ? "accent" : "danger"}
           onConfirm={confirmBulkAction}
           onCancel={() => setPendingBulkAction(null)}

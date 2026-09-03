@@ -1,0 +1,29 @@
+{
+  "title": "Chụp tiến trình",
+  "description": "Khởi chạy một ứng dụng với toàn bộ lưu lượng TCP đi ra được chuyển hướng qua cổng SOCKS5 của router, dành cho các ứng dụng không có tuỳ chọn proxy riêng (client RDP, công cụ dòng lệnh, client cơ sở dữ liệu có IP đích thay đổi khi chạy). Quy tắc router sẽ quyết định lưu lượng đi đâu, giống như mọi kết nối được định tuyến khác.",
+  "hookWarning": "Cơ chế này hoạt động bằng cách chèn một hook nhỏ vào tiến trình được khởi chạy. Một số phần mềm diệt virus có thể cảnh báo về hành vi này dù không có gì độc hại thực sự — nếu Windows Defender cảnh báo, đó là lý do.",
+  "routerNotRunning": "Router hiện chưa chạy. Khởi chạy một tiến trình chụp ở đây sẽ tự động khởi động router trước.",
+  "launch": {
+    "heading": "Khởi chạy tiến trình cần chụp",
+    "recentLabel": "Gần đây:",
+    "executableLabel": "Tệp thực thi",
+    "executablePlaceholder": "C:\\đường-dẫn\\đến\\app.exe",
+    "browse": "Duyệt…",
+    "argumentsLabel": "Tham số (tuỳ chọn)",
+    "argumentsPlaceholder": "--flag value",
+    "labelLabel": "Nhãn (tuỳ chọn)",
+    "labelPlaceholder": "RedisInsight",
+    "launchButton": "Khởi chạy"
+  },
+  "active": {
+    "heading": "Tiến trình đang chụp",
+    "empty": "Chưa có tiến trình nào đang chạy.",
+    "pid": "pid {{pid}}",
+    "stop": "Dừng"
+  },
+  "log": {
+    "heading": "Kết nối gần đây",
+    "empty": "Chưa có kết nối nào được định tuyến.",
+    "pid": "pid {{pid}}"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "empty": "No tunnels yet. Add one to open a socket.",
+  "expandDependents": "Expand dependents",
+  "collapseDependents": "Collapse dependents",
+  "connect": "Connect",
+  "disconnect": "Disconnect",
+  "portForwards": "Port forwards",
+  "forwards": "Forwards",
+  "copySocksCommand": "Copy curl --socks5 command",
+  "copied": "copied",
+  "via": "via {{name}}",
+  "reconnecting": "Reconnecting… {{message}}",
+  "noForwardsYet": "No port forwards yet.",
+  "removeForward": "Remove forward",
+  "remove": "Remove",
+  "remoteHostPlaceholder": "remote host",
+  "remotePortPlaceholder": "remote port",
+  "localPortPlaceholder": "local port",
+  "add": "Add"
+}

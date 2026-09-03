@@ -1,0 +1,39 @@
+{
+  "title": {
+    "add": "Add tunnel",
+    "edit": "Edit tunnel",
+    "clone": "Clone tunnel"
+  },
+  "name": "Name",
+  "clonedName": "{{name}} copy",
+  "host": "Host",
+  "port": "Port",
+  "username": "Username",
+  "authentication": "Authentication",
+  "authKind": {
+    "password": "Password",
+    "privateKey": "Private key file",
+    "agent": "SSH agent (Pageant)"
+  },
+  "keyFilePath": "Key file path",
+  "password": "Password",
+  "keyPassphrase": "Key passphrase (optional)",
+  "secretPlaceholder": {
+    "edit": "Leave blank to keep existing",
+    "clone": "Not carried over — re-enter"
+  },
+  "showSecret": {
+    "show": "Show",
+    "hide": "Hide"
+  },
+  "showSecretAria": {
+    "show": "Show password",
+    "hide": "Hide password"
+  },
+  "enableSocks": "Enable local SOCKS5 proxy",
+  "localSocksPort": "Local SOCKS port",
+  "connectVia": "Connect via",
+  "directConnection": "Direct connection",
+  "connectOnStartup": "Connect automatically on startup",
+  "add": "Add"
+}

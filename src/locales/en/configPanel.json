@@ -1,0 +1,42 @@
+{
+  "title": "Export / import config",
+  "disposition": {
+    "new": "new",
+    "overwrite": "updates existing",
+    "nameConflict": "same name, different tunnel"
+  },
+  "export": {
+    "heading": "Export",
+    "description": "Choose what goes into the JSON file.",
+    "tunnelsCheckbox": "Tunnels + port forwards ({{selected}} of {{total}} selected)",
+    "routerCheckbox": "Router config + rules",
+    "settingsCheckbox": "Settings",
+    "knownHostsCheckbox": "Known hosts",
+    "passphraseLabel": "Passphrase — leave blank to export without any secrets",
+    "passphrasePlaceholder": "(no secrets)",
+    "secretsIncludedNote": "SSH passwords and key passphrases will be included, encrypted with this passphrase. There is no way to recover them if you forget it.",
+    "secretsExcludedNote": "SSH passwords and key passphrases stay in the Windows Credential Manager and are not written to the file.",
+    "chooseFileAndExport": "Choose file & export",
+    "exportedWithSecrets": "Exported to {{path}} — secrets included, encrypted.",
+    "exportedNoSecrets": "Exported to {{path}} — no secrets included."
+  },
+  "import": {
+    "heading": "Import",
+    "hint": "Nothing is changed until you confirm on the next screen.",
+    "chooseFile": "Choose file…",
+    "summary": "Imported: {{added}} added, {{updated}} updated, {{rules}} router rules, {{secrets}} secrets, {{hosts}} known hosts.",
+    "writtenBy": "written by v{{version}} on {{date}}",
+    "tunnelsCheckbox": "Tunnels ({{count}})",
+    "conflictWarning": "{{count}} imported tunnel(s) share a name with one you already have, but are a different tunnel.",
+    "conflictReplace": "Replace mine. Unticked, they come in as separate copies named \"… (imported)\".",
+    "routerCheckbox": "Router config + rules — <replaces>replaces</replaces> your {{current}} rule(s) with {{incoming}}",
+    "settingsCheckbox": "Settings",
+    "knownHostsCheckbox": "Known hosts ({{count}}) — merged; yours always win",
+    "secretsUnlocked": "Secrets ({{count}} unlocked)",
+    "secretsLocked": "Secrets — locked",
+    "passphrasePlaceholder": "passphrase used at export",
+    "unlock": "Unlock",
+    "noSecretsNote": "This file contains no secrets — you will need to re-enter passwords and key passphrases for imported tunnels.",
+    "importButton": "Import"
+  }
+}

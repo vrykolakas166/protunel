@@ -1,0 +1,29 @@
+{
+  "title": "Process capture",
+  "description": "Launches an app with its outbound TCP traffic redirected into the router's SOCKS5 port, for apps that have no proxy setting of their own (RDP clients, CLI tools, DB clients whose target IP changes at runtime). Router rules decide where it actually goes, same as any other routed connection.",
+  "hookWarning": "This works by injecting a small hook into the launched process. Some antivirus tools flag that pattern even though nothing malicious is happening — if Defender warns, that's why.",
+  "routerNotRunning": "The router isn't running. Launching a capture here will start it first.",
+  "launch": {
+    "heading": "Launch a captured process",
+    "recentLabel": "Recent:",
+    "executableLabel": "Executable",
+    "executablePlaceholder": "C:\\path\\to\\app.exe",
+    "browse": "Browse…",
+    "argumentsLabel": "Arguments (optional)",
+    "argumentsPlaceholder": "--flag value",
+    "labelLabel": "Label (optional)",
+    "labelPlaceholder": "RedisInsight",
+    "launchButton": "Launch"
+  },
+  "active": {
+    "heading": "Active captures",
+    "empty": "Nothing running yet.",
+    "pid": "pid {{pid}}",
+    "stop": "Stop"
+  },
+  "log": {
+    "heading": "Recent connections",
+    "empty": "Nothing routed yet.",
+    "pid": "pid {{pid}}"
+  }
+}

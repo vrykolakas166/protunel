@@ -1,0 +1,8 @@
+{
+  "title": "Host đã tin cậy",
+  "tooltip": "Lần đầu kết nối tới một server, khóa host của nó sẽ hiển thị để bạn quyết định có tin cậy hay không. Sau đó, nếu khóa thay đổi, kết nối sẽ bị từ chối thẳng thay vì âm thầm chấp nhận — đây là cơ chế bảo vệ bạn khỏi server bị giả mạo hoặc bị thay thế. Bỏ tin cậy một host tại đây để được hỏi lại lần sau.",
+  "description": "Danh sách khóa host đã được tin cậy qua hộp thoại xác nhận lúc kết nối. Bỏ tin cậy một host nghĩa là lần kết nối tiếp theo tới host đó sẽ hỏi lại.",
+  "emptyState": "Chưa có host nào được tin cậy.",
+  "forget": "Bỏ tin cậy",
+  "trustedAt": "Đã tin cậy {{date}}"
+}

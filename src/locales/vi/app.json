@@ -1,0 +1,23 @@
+{
+  "routerListening": "Router đang nghe trên 127.0.0.1:{{port}}",
+  "routerTooltip": "Router proxy theo luật",
+  "router": "Router",
+  "captureTooltip": "Chạy ứng dụng với traffic định tuyến qua router",
+  "capture": "Chụp",
+  "settings": "Cài đặt",
+  "updateAvailable": "Có bản cập nhật v{{version}}.",
+  "installing": "Đang cài đặt…",
+  "installAndRestart": "Cài & khởi động lại",
+  "connectAll": "Kết nối tất cả",
+  "disconnectAll": "Ngắt tất cả",
+  "addTunnel": "Thêm tunnel",
+  "searchPlaceholder": "Tìm kiếm… (Esc để đóng)",
+  "closeSearch": "Đóng tìm kiếm",
+  "showGuidedTour": "Hiện hướng dẫn sử dụng",
+  "deleteTunnelTitle": "Xóa tunnel",
+  "deleteTunnelMessage": "Xóa \"{{name}}\"? Thao tác này sẽ ngắt kết nối và xóa thông tin đăng nhập đã lưu.",
+  "connectAllTitle": "Kết nối tất cả tunnel",
+  "disconnectAllTitle": "Ngắt tất cả tunnel",
+  "connectAllMessage": "Kết nối mọi tunnel trong danh sách?",
+  "disconnectAllMessage": "Ngắt mọi tunnel đang hoạt động?"
+}

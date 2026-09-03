@@ -1,0 +1,44 @@
+{
+  "title": "Settings",
+  "theme": {
+    "system": "Match system",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "sections": {
+    "appearance": "Appearance",
+    "startupAndNotifications": "Startup & notifications",
+    "connections": "Connections",
+    "dataAndSecurity": "Data & security",
+    "about": "About"
+  },
+  "themeLabel": "Theme",
+  "languageLabel": "Language",
+  "language": {
+    "en": "English",
+    "vi": "Tiếng Việt"
+  },
+  "launchOnStartup": "Launch ProdTunnel when Windows starts",
+  "showNotifications": "Show Windows notifications",
+  "autoReconnect": "Reconnect automatically when a tunnel drops",
+  "keepaliveLabel": "Keepalive (s)",
+  "keepaliveTooltip": "Seconds between keepalive pings so a dead connection gets noticed. 0 disables keepalives.",
+  "retriesLabel": "Retries",
+  "retriesTooltip": "Give up reconnecting after this many consecutive failed attempts. 0 means never give up.",
+  "portMinLabel": "Port min",
+  "portMinTooltip": "Lower bound of the local SOCKS port range suggested when adding a new tunnel.",
+  "portMaxLabel": "Port max",
+  "portMaxTooltip": "Upper bound of the local SOCKS port range suggested when adding a new tunnel.",
+  "exportImportConfig": "Export / import config",
+  "knownHosts": "Known hosts",
+  "checkForUpdates": "Check for updates",
+  "checking": "Checking…",
+  "updateAvailable": "Update available: v{{version}}",
+  "upToDate": "You're up to date.",
+  "checkFailed": "Check failed: {{error}}",
+  "downloading": "Downloading…",
+  "installingUpdate": "Installing…",
+  "installedRestarting": "Installed. Restarting…",
+  "installFailed": "Install failed: {{error}}",
+  "installAndRestart": "Install v{{version}} & restart"
+}

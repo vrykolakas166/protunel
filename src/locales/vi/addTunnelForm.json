@@ -1,0 +1,39 @@
+{
+  "title": {
+    "add": "Thêm tunnel",
+    "edit": "Sửa tunnel",
+    "clone": "Nhân bản tunnel"
+  },
+  "name": "Tên",
+  "clonedName": "{{name}} (bản sao)",
+  "host": "Host",
+  "port": "Cổng",
+  "username": "Tên đăng nhập",
+  "authentication": "Xác thực",
+  "authKind": {
+    "password": "Mật khẩu",
+    "privateKey": "Tệp private key",
+    "agent": "SSH agent (Pageant)"
+  },
+  "keyFilePath": "Đường dẫn tệp key",
+  "password": "Mật khẩu",
+  "keyPassphrase": "Passphrase của key (tùy chọn)",
+  "secretPlaceholder": {
+    "edit": "Để trống nếu muốn giữ nguyên",
+    "clone": "Không được sao chép — nhập lại"
+  },
+  "showSecret": {
+    "show": "Hiện",
+    "hide": "Ẩn"
+  },
+  "showSecretAria": {
+    "show": "Hiện mật khẩu",
+    "hide": "Ẩn mật khẩu"
+  },
+  "enableSocks": "Bật proxy SOCKS5 cục bộ",
+  "localSocksPort": "Cổng SOCKS cục bộ",
+  "connectVia": "Kết nối qua",
+  "directConnection": "Kết nối trực tiếp",
+  "connectOnStartup": "Tự động kết nối khi khởi động",
+  "add": "Thêm"
+}

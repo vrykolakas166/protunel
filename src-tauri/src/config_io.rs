@@ -142,13 +142,41 @@ pub fn open(sealed: &SealedSecrets, passphrase: &str) -> Result<Vec<u8>, String>
         .map_err(|_| "wrong passphrase (or the file has been modified)".to_string())
 }
 
+/// Which parts of the config to write. Mirrors `ImportSections` so the export
+/// and import screens offer the same granularity.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportSections {
+    pub tunnels: bool,
+    /// Ids to include when `tunnels` is true. Empty means none, not "all" —
+    /// the frontend always sends the checked set explicitly.
+    pub tunnel_ids: Vec<Uuid>,
+    pub router: bool,
+    pub settings: bool,
+    pub known_hosts: bool,
+}
+
 fn build_bundle(
     app: &AppHandle,
     state: &AppState,
     passphrase: Option<&str>,
+    sections: &ExportSections,
 ) -> Result<ConfigBundle, String> {
-    let tunnels = state.db.list().map_err(|e| e.to_string())?;
+    let tunnels: Vec<Tunnel> = if sections.tunnels {
+        let ids: std::collections::HashSet<Uuid> = sections.tunnel_ids.iter().copied().collect();
+        state
+            .db
+            .list()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter(|t| ids.contains(&t.id))
+            .collect()
+    } else {
+        Vec::new()
+    };
 
+    // Scoped to the tunnels actually being exported, so narrowing the tunnel
+    // selection also narrows which secrets leave the machine.
     let secrets = match passphrase {
         None => None,
         Some(passphrase) => {
@@ -171,10 +199,26 @@ fn build_bundle(
         exported_at: now_secs(),
         app_version: app.package_info().version.to_string(),
         tunnels,
-        router_config: state.router.config(),
-        router_rules: state.db.list_router_rules().map_err(|e| e.to_string())?,
-        settings: state.settings.get(),
-        known_hosts: state.known_hosts.list(),
+        router_config: if sections.router {
+            state.router.config()
+        } else {
+            RouterConfig::default()
+        },
+        router_rules: if sections.router {
+            state.db.list_router_rules().map_err(|e| e.to_string())?
+        } else {
+            Vec::new()
+        },
+        settings: if sections.settings {
+            state.settings.get()
+        } else {
+            Settings::default()
+        },
+        known_hosts: if sections.known_hosts {
+            state.known_hosts.list()
+        } else {
+            Vec::new()
+        },
         secrets,
     })
 }
@@ -202,9 +246,10 @@ pub async fn export_config(
     app: AppHandle,
     state: State<'_, AppState>,
     passphrase: Option<String>,
+    sections: ExportSections,
 ) -> Result<Option<String>, String> {
     let passphrase = passphrase.filter(|p| !p.is_empty());
-    let bundle = build_bundle(&app, &state, passphrase.as_deref())?;
+    let bundle = build_bundle(&app, &state, passphrase.as_deref(), &sections)?;
     let json = serde_json::to_string_pretty(&bundle).map_err(|e| e.to_string())?;
 
     let (tx, rx) = tokio::sync::oneshot::channel();

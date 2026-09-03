@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 export type ModalSize = "sm" | "md" | "lg" | "xl";
 
@@ -28,6 +29,7 @@ export function Modal({
   borderClassName = "border-border",
   children,
 }: Props) {
+  const { t } = useTranslation("common");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div
@@ -36,7 +38,7 @@ export function Modal({
       >
         <button
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("close")}
           className="absolute right-3 top-3 rounded p-1.5 text-muted hover:bg-surface-hover hover:text-text"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">

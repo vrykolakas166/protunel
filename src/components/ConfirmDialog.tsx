@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal";
 
 interface Props {
@@ -22,11 +23,12 @@ const TONE_BUTTON: Record<"danger" | "accent", string> = {
 export function ConfirmDialog({
   title,
   message,
-  confirmLabel = "Delete",
+  confirmLabel,
   tone = "danger",
   onConfirm,
   onCancel,
 }: Props) {
+  const { t } = useTranslation("common");
   return (
     <Modal
       title={<h2 className="font-display text-base font-semibold text-text">{title}</h2>}
@@ -40,13 +42,13 @@ export function ConfirmDialog({
           onClick={onCancel}
           className="rounded px-3 py-1.5 text-sm font-medium text-muted hover:bg-surface-hover hover:text-text"
         >
-          Cancel
+          {t("cancel")}
         </button>
         <button
           onClick={onConfirm}
           className={`rounded px-3 py-1.5 text-sm font-medium text-white ${TONE_BUTTON[tone]}`}
         >
-          {confirmLabel}
+          {confirmLabel ?? t("delete")}
         </button>
       </div>
     </Modal>

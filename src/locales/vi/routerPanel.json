@@ -1,0 +1,59 @@
+{
+  "title": "Router proxy",
+  "deletedTunnel": "(tunnel đã bị xóa)",
+  "status": {
+    "running": "đang lắng nghe tại :{{port}}",
+    "stopped": "đã dừng"
+  },
+  "stats": "↑ {{up}} ↓ {{down}} · {{count}} kết nối đang mở",
+  "description": "Một cổng SOCKS5 cục bộ duy nhất, chọn tunnel theo từng đích đến. Các quy tắc được xét lần lượt từ trên xuống, quy tắc đang bật đầu tiên khớp sẽ thắng; kết nối không khớp quy tắc nào sẽ dùng hành động mặc định. Trỏ công cụ của bạn tới đây bằng <code>--socks5-hostname</code> để tên máy chủ được đưa vào cho các quy tắc xét.",
+  "runRouter": "Chạy router",
+  "listenPortLabel": "Cổng lắng nghe (chỉ 127.0.0.1)",
+  "copyAddressTitle": "Sao chép địa chỉ",
+  "copy": "sao chép",
+  "copied": "đã sao chép",
+  "defaultActionLabel": "Khi không khớp quy tắc nào",
+  "defaultTunnelLabel": "Tunnel mặc định",
+  "defaultTunnelPlaceholder": "Chọn một tunnel…",
+  "setSystemProxy": "Trỏ proxy hệ thống Windows vào đây trong khi đang chạy",
+  "bypassListLabel": "Danh sách bỏ qua (cách nhau bằng dấu chấm phẩy; các mục này không qua router)",
+  "pacDescription": "Được nối qua một script PAC, vì thiết lập proxy <code>socks=</code> thuần của Windows nghĩa là SOCKS4, trong khi listener này dùng SOCKS5.",
+  "pacServing": "Đang phục vụ tại <code>{{url}}</code>",
+  "resolveForIpRules": "Phân giải tên máy chủ cục bộ để các quy tắc IP/CIDR có thể khớp",
+  "ruleIgnored": "Bỏ qua quy tắc — {{error}}",
+  "ruleKind": {
+    "hostWildcard": "Wildcard tên máy chủ",
+    "hostRegex": "Regex tên máy chủ",
+    "ipCidr": "IP CIDR",
+    "all": "Tất cả"
+  },
+  "ruleKindPlaceholder": {
+    "all": "(khớp mọi kết nối)"
+  },
+  "ruleAction": {
+    "tunnel": "Tunnel",
+    "direct": "Trực tiếp",
+    "block": "Chặn"
+  },
+  "ruleTable": {
+    "empty": "Chưa có quy tắc nào. Khi không có quy tắc, mọi kết nối sẽ dùng hành động mặc định.",
+    "enableRule": "Bật quy tắc",
+    "disableRule": "Tắt quy tắc",
+    "anyPort": "bất kỳ",
+    "moveUp": "Chuyển lên",
+    "moveDown": "Chuyển xuống"
+  },
+  "ruleForm": {
+    "editTitle": "Sửa quy tắc",
+    "addTitle": "Thêm quy tắc",
+    "anyPortPlaceholder": "cổng bất kỳ",
+    "tunnelPlaceholder": "Chọn tunnel…",
+    "add": "Thêm"
+  },
+  "decisionLog": {
+    "title": "Quyết định gần đây",
+    "showingOf": "đang hiển thị {{shown}} trên tổng {{total}}",
+    "empty": "Chưa có kết nối nào được định tuyến.",
+    "showMore": "Xem thêm"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "title": "Cài đặt",
+  "theme": {
+    "system": "Theo hệ thống",
+    "light": "Sáng",
+    "dark": "Tối"
+  },
+  "sections": {
+    "appearance": "Giao diện",
+    "startupAndNotifications": "Khởi động & thông báo",
+    "connections": "Kết nối",
+    "dataAndSecurity": "Dữ liệu & bảo mật",
+    "about": "Giới thiệu"
+  },
+  "themeLabel": "Chủ đề",
+  "languageLabel": "Ngôn ngữ",
+  "language": {
+    "en": "English",
+    "vi": "Tiếng Việt"
+  },
+  "launchOnStartup": "Khởi chạy ProdTunnel cùng Windows",
+  "showNotifications": "Hiện thông báo Windows",
+  "autoReconnect": "Tự động kết nối lại khi tunnel bị rớt",
+  "keepaliveLabel": "Keepalive (giây)",
+  "keepaliveTooltip": "Số giây giữa các lần ping keepalive để phát hiện kết nối chết. 0 để tắt keepalive.",
+  "retriesLabel": "Số lần thử lại",
+  "retriesTooltip": "Ngừng kết nối lại sau số lần thất bại liên tiếp này. 0 nghĩa là không bao giờ bỏ cuộc.",
+  "portMinLabel": "Cổng nhỏ nhất",
+  "portMinTooltip": "Giới hạn dưới của dải cổng SOCKS cục bộ được gợi ý khi thêm tunnel mới.",
+  "portMaxLabel": "Cổng lớn nhất",
+  "portMaxTooltip": "Giới hạn trên của dải cổng SOCKS cục bộ được gợi ý khi thêm tunnel mới.",
+  "exportImportConfig": "Xuất / nhập cấu hình",
+  "knownHosts": "Máy chủ đã biết",
+  "checkForUpdates": "Kiểm tra cập nhật",
+  "checking": "Đang kiểm tra…",
+  "updateAvailable": "Có bản cập nhật: v{{version}}",
+  "upToDate": "Bạn đang dùng bản mới nhất.",
+  "checkFailed": "Kiểm tra thất bại: {{error}}",
+  "downloading": "Đang tải…",
+  "installingUpdate": "Đang cài đặt…",
+  "installedRestarting": "Đã cài đặt. Đang khởi động lại…",
+  "installFailed": "Cài đặt thất bại: {{error}}",
+  "installAndRestart": "Cài v{{version}} & khởi động lại"
+}

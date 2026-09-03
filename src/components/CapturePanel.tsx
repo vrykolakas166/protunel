@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   launchCapture,
   listActiveCaptures,
@@ -26,6 +27,7 @@ interface Props {
 }
 
 export function CapturePanel({ runtime, onClose }: Props) {
+  const { t } = useTranslation("capturePanel");
   const [exePath, setExePath] = useState("");
   const [args, setArgs] = useState("");
   const [label, setLabel] = useState("");
@@ -109,38 +111,31 @@ export function CapturePanel({ runtime, onClose }: Props) {
 
   return (
     <Modal
-      title={<h2 className="font-display text-base font-semibold text-text">Process capture</h2>}
+      title={<h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>}
       onClose={onClose}
       size="xl"
     >
       <div className="flex flex-col gap-4">
-        <p className="text-xs text-muted">
-          Launches an app with its outbound TCP traffic redirected into the router's SOCKS5
-          port, for apps that have no proxy setting of their own (RDP clients, CLI tools, DB
-          clients whose target IP changes at runtime). Router rules decide where it actually
-          goes, same as any other routed connection.
-        </p>
+        <p className="text-xs text-muted">{t("description")}</p>
 
         <p className="rounded border border-amber/40 bg-amber/10 p-2 text-[11px] text-text">
-          This works by injecting a small hook into the launched process. Some antivirus tools
-          flag that pattern even though nothing malicious is happening — if Defender warns,
-          that's why.
+          {t("hookWarning")}
         </p>
 
         {!running && (
           <p className="rounded border border-coral/40 bg-coral/10 p-2 text-xs text-text">
-            The router isn't running. Launching a capture here will start it first.
+            {t("routerNotRunning")}
           </p>
         )}
 
         {error && <p className="text-sm text-coral">{error}</p>}
 
         <div data-tour="capture-launch" className="space-y-2 rounded border border-border bg-bg p-3">
-          <p className="text-xs font-medium text-muted">Launch a captured process</p>
+          <p className="text-xs font-medium text-muted">{t("launch.heading")}</p>
 
           {recent.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-muted">Recent:</span>
+              <span className="text-[11px] text-muted">{t("launch.recentLabel")}</span>
               {recent.map((r) => (
                 <button
                   key={r.exePath}
@@ -156,40 +151,40 @@ export function CapturePanel({ runtime, onClose }: Props) {
           )}
 
           <div>
-            <label className={labelClass}>Executable</label>
+            <label className={labelClass}>{t("launch.executableLabel")}</label>
             <div className="flex items-center gap-1.5">
               <input
                 className={inputClass}
                 value={exePath}
                 onChange={(e) => setExePath(e.target.value)}
-                placeholder="C:\path\to\app.exe"
+                placeholder={t("launch.executablePlaceholder")}
               />
               <button
                 onClick={choose}
                 disabled={busy}
                 className="shrink-0 rounded border border-border px-2.5 py-1.5 text-xs font-medium text-text hover:bg-surface-hover disabled:opacity-50"
               >
-                Browse…
+                {t("launch.browse")}
               </button>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className={labelClass}>Arguments (optional)</label>
+              <label className={labelClass}>{t("launch.argumentsLabel")}</label>
               <input
                 className={inputClass}
                 value={args}
                 onChange={(e) => setArgs(e.target.value)}
-                placeholder="--flag value"
+                placeholder={t("launch.argumentsPlaceholder")}
               />
             </div>
             <div>
-              <label className={labelClass}>Label (optional)</label>
+              <label className={labelClass}>{t("launch.labelLabel")}</label>
               <input
                 className={inputClass}
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
-                placeholder="RedisInsight"
+                placeholder={t("launch.labelPlaceholder")}
               />
             </div>
           </div>
@@ -198,14 +193,14 @@ export function CapturePanel({ runtime, onClose }: Props) {
             disabled={busy || !exePath}
             className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            Launch
+            {t("launch.launchButton")}
           </button>
         </div>
 
         <div data-tour="capture-active" className="space-y-1 rounded border border-border bg-bg p-3">
-          <p className="text-xs font-medium text-muted">Active captures</p>
+          <p className="text-xs font-medium text-muted">{t("active.heading")}</p>
           {captures.length === 0 ? (
-            <p className="py-4 text-center text-[11px] text-muted">Nothing running yet.</p>
+            <p className="py-4 text-center text-[11px] text-muted">{t("active.empty")}</p>
           ) : (
             <div className="space-y-1">
               {captures.map((c) => (
@@ -213,7 +208,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
                   key={c.id}
                   className="flex items-center gap-2 rounded border border-border bg-surface p-2 font-mono text-[11px] text-text"
                 >
-                  <span className="w-16 shrink-0 text-muted">pid {c.pid}</span>
+                  <span className="w-16 shrink-0 text-muted">{t("active.pid", { pid: c.pid })}</span>
                   <span className="min-w-0 flex-1 truncate" title={c.exePath}>
                     {c.label || c.exePath}
                   </span>
@@ -225,7 +220,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
                     disabled={busy}
                     className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-coral hover:bg-coral/10 disabled:opacity-40"
                   >
-                    Stop
+                    {t("active.stop")}
                   </button>
                 </div>
               ))}
@@ -234,9 +229,9 @@ export function CapturePanel({ runtime, onClose }: Props) {
         </div>
 
         <div data-tour="capture-log" className="space-y-1 rounded border border-border bg-bg p-3">
-          <p className="text-xs font-medium text-muted">Recent connections</p>
+          <p className="text-xs font-medium text-muted">{t("log.heading")}</p>
           {connections.length === 0 ? (
-            <p className="py-4 text-center text-[11px] text-muted">Nothing routed yet.</p>
+            <p className="py-4 text-center text-[11px] text-muted">{t("log.empty")}</p>
           ) : (
             <div className="max-h-48 space-y-1 overflow-y-auto">
               {connections.map((c, i) => (
@@ -247,7 +242,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
                   <span className="w-16 shrink-0 text-muted">
                     {new Date(c.at * 1000).toLocaleTimeString()}
                   </span>
-                  <span className="w-16 shrink-0 text-muted">pid {c.pid}</span>
+                  <span className="w-16 shrink-0 text-muted">{t("log.pid", { pid: c.pid })}</span>
                   <span className="min-w-0 flex-1 truncate text-text">
                     {c.host}:{c.port}
                   </span>

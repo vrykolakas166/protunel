@@ -1,0 +1,59 @@
+{
+  "title": "Proxy router",
+  "deletedTunnel": "(deleted tunnel)",
+  "status": {
+    "running": "listening on :{{port}}",
+    "stopped": "stopped"
+  },
+  "stats": "↑ {{up}} ↓ {{down}} · {{count}} open",
+  "description": "One local SOCKS5 port that picks a tunnel per destination. Rules are evaluated top to bottom and the first enabled match wins; anything unmatched takes the default action. Point tools at it with <code>--socks5-hostname</code> so the hostname reaches the rules.",
+  "runRouter": "Run the router",
+  "listenPortLabel": "Listen port (127.0.0.1 only)",
+  "copyAddressTitle": "Copy address",
+  "copy": "copy",
+  "copied": "copied",
+  "defaultActionLabel": "When nothing matches",
+  "defaultTunnelLabel": "Default tunnel",
+  "defaultTunnelPlaceholder": "Select a tunnel…",
+  "setSystemProxy": "Point the Windows system proxy here while running",
+  "bypassListLabel": "Bypass list (semicolon-separated; these never reach the router)",
+  "pacDescription": "Wired up with a PAC script, because Windows' plain <code>socks=</code> proxy setting means SOCKS4 and this listener speaks SOCKS5.",
+  "pacServing": "Serving <code>{{url}}</code>",
+  "resolveForIpRules": "Resolve hostnames locally so IP/CIDR rules can match them",
+  "ruleIgnored": "Rule ignored — {{error}}",
+  "ruleKind": {
+    "hostWildcard": "Host wildcard",
+    "hostRegex": "Host regex",
+    "ipCidr": "IP CIDR",
+    "all": "Everything"
+  },
+  "ruleKindPlaceholder": {
+    "all": "(matches everything)"
+  },
+  "ruleAction": {
+    "tunnel": "Tunnel",
+    "direct": "Direct",
+    "block": "Block"
+  },
+  "ruleTable": {
+    "empty": "No rules yet. Without any, every connection takes the default action.",
+    "enableRule": "Enable rule",
+    "disableRule": "Disable rule",
+    "anyPort": "any",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
+  },
+  "ruleForm": {
+    "editTitle": "Edit rule",
+    "addTitle": "Add rule",
+    "anyPortPlaceholder": "any port",
+    "tunnelPlaceholder": "Select tunnel…",
+    "add": "Add"
+  },
+  "decisionLog": {
+    "title": "Recent decisions",
+    "showingOf": "showing {{shown}} of {{total}}",
+    "empty": "Nothing routed yet.",
+    "showMore": "Show more"
+  }
+}

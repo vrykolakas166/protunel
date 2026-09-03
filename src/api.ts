@@ -5,6 +5,7 @@ import type {
   ImportPreview,
   ImportResult,
   ImportSections,
+  ExportSections,
   KnownHostEntry,
   LaunchCaptureInput,
   RecentCapture,
@@ -87,8 +88,8 @@ export const reorderRouterRules = (ids: string[]) =>
 export const listRouterDecisions = () => invoke<RoutingDecision[]>("list_router_decisions");
 
 /** Returns the written path, or null if the save dialog was cancelled. */
-export const exportConfig = (passphrase?: string) =>
-  invoke<string | null>("export_config", { passphrase: passphrase || null });
+export const exportConfig = (passphrase: string | undefined, sections: ExportSections) =>
+  invoke<string | null>("export_config", { passphrase: passphrase || null, sections });
 
 export const pickImportFile = () => invoke<string | null>("pick_import_file");
 
@@ -108,6 +109,8 @@ export const launchCapture = (input: LaunchCaptureInput) =>
   invoke<CapturedProcess>("launch_capture", { input });
 
 export const stopCapture = (id: string) => invoke<void>("stop_capture", { id });
+
+export const listLocalIps = () => invoke<string[]>("list_local_ips");
 
 export const listActiveCaptures = () => invoke<CapturedProcess[]>("list_active_captures");
 

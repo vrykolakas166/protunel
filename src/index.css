@@ -19,6 +19,18 @@
   --color-slate: #9ca3af;
 }
 
+/* Bare "r, g, b" triplets for use inside rgba(var(--x-rgb), a) — kept out of
+   @theme so Tailwind doesn't try to mint color utilities from them. Must
+   stay above `.dark` below: both selectors match <html class="dark"> at
+   equal specificity, so source order is what makes .dark win. Only
+   consumed by Sample1.css today. */
+:root {
+  --color-surface-rgb: 255, 255, 255;
+  --color-accent-rgb: 15, 155, 142;
+  --color-coral-rgb: 199, 55, 61;
+  --color-slate-rgb: 156, 163, 175;
+}
+
 .dark {
   --color-bg: #12151c;
   --color-surface: #1b1f29;
@@ -31,6 +43,11 @@
   --color-amber: #e8a33d;
   --color-coral: #e8595f;
   --color-slate: #4b5262;
+
+  --color-surface-rgb: 27, 31, 41;
+  --color-accent-rgb: 79, 209, 197;
+  --color-coral-rgb: 232, 89, 95;
+  --color-slate-rgb: 75, 82, 98;
 }
 
 @font-face {

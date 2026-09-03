@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
+import { Trans, useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
   addRouterRule,
@@ -31,18 +32,16 @@ const labelClass = "block text-xs font-medium text-muted";
 const ghostButton =
   "rounded px-1.5 py-0.5 text-[11px] font-medium text-muted hover:bg-surface-hover hover:text-text disabled:opacity-40";
 
-const KIND_LABEL: Record<RuleKind, string> = {
-  hostWildcard: "Host wildcard",
-  hostRegex: "Host regex",
-  ipCidr: "IP CIDR",
-  all: "Everything",
-};
+// Kind order used to populate the rule-kind <select>; labels come from
+// t(`ruleKind.${kind}`) so they stay translated.
+const RULE_KINDS: RuleKind[] = ["hostWildcard", "hostRegex", "ipCidr", "all"];
 
-const KIND_PLACEHOLDER: Record<RuleKind, string> = {
+// Pattern examples are regex/glob syntax, not language text — left untranslated.
+// Only the "all" case ("matches everything") is prose and goes through t().
+const KIND_PATTERN_EXAMPLE: Partial<Record<RuleKind, string>> = {
   hostWildcard: "*.example.com",
   hostRegex: "\\.corp\\.net$",
   ipCidr: "10.0.0.0/8",
-  all: "(matches everything)",
 };
 
 const ACTION_COLOR: Record<RuleAction, string> = {
@@ -67,6 +66,8 @@ interface Props {
 }
 
 export function RouterPanel({ tunnels, runtime, onClose }: Props) {
+  const { t } = useTranslation("routerPanel");
+  const { t: tc } = useTranslation("common");
   const [config, setConfig] = useState<RouterConfig | null>(null);
   const [rules, setRules] = useState<RouterRule[]>([]);
   const [decisions, setDecisions] = useState<RoutingDecision[]>([]);
@@ -77,9 +78,9 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
   const [copied, setCopied] = useState(false);
 
   const tunnelName = useMemo(() => {
-    const byId = new Map(tunnels.map((t) => [t.id, t.name]));
-    return (id: string | null) => (id ? (byId.get(id) ?? "(deleted tunnel)") : "—");
-  }, [tunnels]);
+    const byId = new Map(tunnels.map((tun) => [tun.id, tun.name]));
+    return (id: string | null) => (id ? (byId.get(id) ?? t("deletedTunnel")) : "—");
+  }, [tunnels, t]);
 
   const refreshRules = async () => setRules(await listRouterRules());
 
@@ -112,7 +113,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
     }
   };
 
-  const submitRule = async (e: FormEvent) => {
+  const submitRule = async (e: SubmitEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
@@ -180,17 +181,22 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
     <Modal
       title={
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-display text-base font-semibold text-text">Proxy router</h2>
+          <h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>
           <span className="flex items-center gap-1.5 text-xs text-muted">
             <span
               className={`h-1.5 w-1.5 rounded-full ${running ? "bg-accent" : "bg-slate"}`}
             />
-            {running ? `listening on :${runtime.port ?? config.port}` : "stopped"}
+            {running
+              ? t("status.running", { port: runtime.port ?? config.port })
+              : t("status.stopped")}
           </span>
           {running && runtime.stats && (
             <span className="font-mono text-[11px] text-muted">
-              ↑ {formatBytes(runtime.stats.bytesUp)} ↓ {formatBytes(runtime.stats.bytesDown)} ·{" "}
-              {runtime.stats.activeConnections} open
+              {t("stats", {
+                up: formatBytes(runtime.stats.bytesUp),
+                down: formatBytes(runtime.stats.bytesDown),
+                count: runtime.stats.activeConnections,
+              })}
             </span>
           )}
         </div>
@@ -200,75 +206,86 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
     >
       <div className="flex flex-col gap-4">
         <p className="text-xs text-muted">
-          One local SOCKS5 port that picks a tunnel per destination. Rules are evaluated top
-          to bottom and the first enabled match wins; anything unmatched takes the default
-          action. Point tools at it with{" "}
-          <code className="font-mono text-text">--socks5-hostname</code> so the hostname
-          reaches the rules.
+          <Trans
+            t={t}
+            i18nKey="description"
+            components={{ code: <code className="font-mono text-text" /> }}
+          />
         </p>
 
         <div className="grid grid-cols-2 gap-3 rounded border border-border bg-bg p-3">
-          <label
-            data-tour="router-enable"
-            className="col-span-2 flex items-center gap-2 text-sm text-text"
-          >
-            <input
-              type="checkbox"
-              checked={config.enabled}
+          <div data-tour="router-enable" className="col-span-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => saveConfig({ ...config, enabled: !config.enabled })}
               disabled={busy}
-              onChange={(e) => saveConfig({ ...config, enabled: e.target.checked })}
-            />
-            Run the router
-          </label>
+              aria-pressed={config.enabled}
+              aria-label={t("runRouter")}
+              className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
+                config.enabled ? "bg-accent" : "bg-slate/40"
+              }`}
+            >
+              <span
+                className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-surface shadow transition-transform ${
+                  config.enabled ? "translate-x-4" : ""
+                }`}
+              />
+            </button>
+            <span className="text-sm text-text">{t("runRouter")}</span>
+          </div>
 
-          <div>
-            <label className={labelClass}>Listen port (127.0.0.1 only)</label>
+          <div className={config.enabled ? "" : "opacity-50"}>
+            <label className={labelClass}>{t("listenPortLabel")}</label>
             <div className="flex items-center gap-1.5">
               <input
                 type="number"
                 className={inputClass}
                 value={config.port}
-                disabled={busy}
+                disabled={busy || !config.enabled}
                 onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })}
                 onBlur={() => saveConfig(config)}
               />
-              <button onClick={copyAddress} className={ghostButton} title="Copy address">
-                {copied ? "copied" : "copy"}
+              <button
+                onClick={copyAddress}
+                disabled={!config.enabled}
+                className={ghostButton}
+                title={t("copyAddressTitle")}>
+                {copied ? t("copied") : t("copy")}
               </button>
             </div>
           </div>
 
-          <div>
-            <label className={labelClass}>When nothing matches</label>
+          <div className={config.enabled ? "" : "opacity-50"}>
+            <label className={labelClass}>{t("defaultActionLabel")}</label>
             <select
               className={selectClass}
               value={config.defaultAction}
-              disabled={busy}
+              disabled={busy || !config.enabled}
               onChange={(e) =>
                 saveConfig({ ...config, defaultAction: e.target.value as RuleAction })
               }
             >
-              <option value="direct">Direct</option>
-              <option value="tunnel">Tunnel</option>
-              <option value="block">Block</option>
+              <option value="direct">{t("ruleAction.direct")}</option>
+              <option value="tunnel">{t("ruleAction.tunnel")}</option>
+              <option value="block">{t("ruleAction.block")}</option>
             </select>
           </div>
 
           {config.defaultAction === "tunnel" && (
-            <div className="col-span-2">
-              <label className={labelClass}>Default tunnel</label>
+            <div className={`col-span-2 ${config.enabled ? "" : "opacity-50"}`}>
+              <label className={labelClass}>{t("defaultTunnelLabel")}</label>
               <select
                 className={selectClass}
                 value={config.defaultTunnelId ?? ""}
-                disabled={busy}
+                disabled={busy || !config.enabled}
                 onChange={(e) =>
                   saveConfig({ ...config, defaultTunnelId: e.target.value || null })
                 }
               >
-                <option value="">Select a tunnel…</option>
-                {tunnels.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                <option value="">{t("defaultTunnelPlaceholder")}</option>
+                {tunnels.map((tun) => (
+                  <option key={tun.id} value={tun.id}>
+                    {tun.name}
                   </option>
                 ))}
               </select>
@@ -277,53 +294,60 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
 
           <label
             data-tour="router-proxy"
-            className="col-span-2 flex items-center gap-2 text-sm text-text"
+            className={`col-span-2 flex items-center gap-2 text-sm text-text ${
+              config.enabled ? "" : "opacity-50"
+            }`}
           >
             <input
               type="checkbox"
               checked={config.setSystemProxy}
-              disabled={busy}
+              disabled={busy || !config.enabled}
               onChange={(e) => saveConfig({ ...config, setSystemProxy: e.target.checked })}
             />
-            Point the Windows system proxy here while running
+            {t("setSystemProxy")}
           </label>
 
           {config.setSystemProxy && (
             <>
-              <div className="col-span-2">
-                <label className={labelClass}>
-                  Bypass list (semicolon-separated; these never reach the router)
-                </label>
+              <div className={`col-span-2 ${config.enabled ? "" : "opacity-50"}`}>
+                <label className={labelClass}>{t("bypassListLabel")}</label>
                 <input
                   className={inputClass}
                   value={config.bypassList}
-                  disabled={busy}
+                  disabled={busy || !config.enabled}
                   onChange={(e) => setConfig({ ...config, bypassList: e.target.value })}
                   onBlur={() => saveConfig(config)}
                 />
               </div>
               <p className="col-span-2 text-[11px] text-muted">
-                Wired up with a PAC script, because Windows' plain{" "}
-                <code className="font-mono">socks=</code> proxy setting means SOCKS4 and
-                this listener speaks SOCKS5.
+                <Trans t={t} i18nKey="pacDescription" components={{ code: <code className="font-mono" /> }} />
                 {runtime.pacUrl && (
                   <>
                     {" "}
-                    Serving <code className="font-mono text-text">{runtime.pacUrl}</code>
+                    <Trans
+                      t={t}
+                      i18nKey="pacServing"
+                      values={{ url: runtime.pacUrl }}
+                      components={{ code: <code className="font-mono text-text" /> }}
+                    />
                   </>
                 )}
               </p>
             </>
           )}
 
-          <label className="col-span-2 flex items-center gap-2 text-sm text-text">
+          <label
+            className={`col-span-2 flex items-center gap-2 text-sm text-text ${
+              config.enabled ? "" : "opacity-50"
+            }`}
+          >
             <input
               type="checkbox"
               checked={config.resolveForIpRules}
-              disabled={busy}
+              disabled={busy || !config.enabled}
               onChange={(e) => saveConfig({ ...config, resolveForIpRules: e.target.checked })}
             />
-            Resolve hostnames locally so IP/CIDR rules can match them
+            {t("resolveForIpRules")}
           </label>
         </div>
 
@@ -332,7 +356,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
         {runtime.compileErrors.length > 0 && (
           <div className="rounded border border-coral/40 bg-coral/10 p-2 text-[11px] text-coral">
             {runtime.compileErrors.map((e) => (
-              <p key={e}>Rule ignored — {e}</p>
+              <p key={e}>{t("ruleIgnored", { error: e })}</p>
             ))}
           </div>
         )}
@@ -360,7 +384,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
             className="space-y-2 rounded border border-border bg-bg p-3"
           >
           <p className="text-xs font-medium text-muted">
-            {editing ? "Edit rule" : "Add rule"}
+            {editing ? t("ruleForm.editTitle") : t("ruleForm.addTitle")}
           </p>
           <div className="flex flex-wrap items-center gap-1.5">
             <select
@@ -368,9 +392,9 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
               value={draft.kind}
               onChange={(e) => setDraft({ ...draft, kind: e.target.value as RuleKind })}
             >
-              {(Object.keys(KIND_LABEL) as RuleKind[]).map((kind) => (
+              {RULE_KINDS.map((kind) => (
                 <option key={kind} value={kind}>
-                  {KIND_LABEL[kind]}
+                  {t(`ruleKind.${kind}`)}
                 </option>
               ))}
             </select>
@@ -378,7 +402,11 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
             <input
               className={`${inputClass} min-w-0 flex-1`}
               value={draft.pattern}
-              placeholder={KIND_PLACEHOLDER[draft.kind]}
+              placeholder={
+                draft.kind === "all"
+                  ? t("ruleKindPlaceholder.all")
+                  : (KIND_PATTERN_EXAMPLE[draft.kind] ?? "")
+              }
               disabled={draft.kind === "all"}
               required={draft.kind !== "all"}
               onChange={(e) => setDraft({ ...draft, pattern: e.target.value })}
@@ -388,7 +416,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
               type="number"
               className={`${inputClass} w-24`}
               value={draft.port ?? ""}
-              placeholder="any port"
+              placeholder={t("ruleForm.anyPortPlaceholder")}
               onChange={(e) =>
                 setDraft({ ...draft, port: e.target.value ? Number(e.target.value) : null })
               }
@@ -399,9 +427,9 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
               value={draft.action}
               onChange={(e) => setDraft({ ...draft, action: e.target.value as RuleAction })}
             >
-              <option value="tunnel">Tunnel</option>
-              <option value="direct">Direct</option>
-              <option value="block">Block</option>
+              <option value="tunnel">{t("ruleAction.tunnel")}</option>
+              <option value="direct">{t("ruleAction.direct")}</option>
+              <option value="block">{t("ruleAction.block")}</option>
             </select>
 
             {draft.action === "tunnel" && (
@@ -411,10 +439,10 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
                 required
                 onChange={(e) => setDraft({ ...draft, targetTunnelId: e.target.value || null })}
               >
-                <option value="">Select tunnel…</option>
-                {tunnels.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
+                <option value="">{t("ruleForm.tunnelPlaceholder")}</option>
+                {tunnels.map((tun) => (
+                  <option key={tun.id} value={tun.id}>
+                    {tun.name}
                   </option>
                 ))}
               </select>
@@ -425,7 +453,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
               disabled={busy}
               className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
-              {editing ? "Save" : "Add"}
+              {editing ? tc("save") : t("ruleForm.add")}
             </button>
             {editing && (
               <button
@@ -436,7 +464,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
                 }}
                 className={ghostButton}
               >
-                Cancel
+                {tc("cancel")}
               </button>
             )}
             </div>
@@ -468,10 +496,13 @@ function RuleTable({
   onEdit: (rule: RouterRule) => void;
   onDelete: (rule: RouterRule) => void;
 }) {
+  const { t } = useTranslation("routerPanel");
+  const { t: tc } = useTranslation("common");
+
   if (rules.length === 0) {
     return (
       <p className="rounded border border-border bg-bg p-3 text-[11px] text-muted">
-        No rules yet. Without any, every connection takes the default action.
+        {t("ruleTable.empty")}
       </p>
     );
   }
@@ -490,22 +521,24 @@ function RuleTable({
             type="checkbox"
             checked={rule.enabled}
             disabled={busy}
-            title={rule.enabled ? "Disable rule" : "Enable rule"}
+            title={rule.enabled ? t("ruleTable.disableRule") : t("ruleTable.enableRule")}
             onChange={() => onToggle(rule)}
           />
-          <span className="w-24 shrink-0 truncate text-muted">{KIND_LABEL[rule.kind]}</span>
+          <span className="w-24 shrink-0 truncate text-muted">{t(`ruleKind.${rule.kind}`)}</span>
           <span className="min-w-0 flex-1 truncate">{rule.pattern || "*"}</span>
           <span className="w-16 shrink-0 text-muted">
-            {rule.port ? `:${rule.port}` : "any"}
+            {rule.port ? `:${rule.port}` : t("ruleTable.anyPort")}
           </span>
-          <span className={`w-16 shrink-0 ${ACTION_COLOR[rule.action]}`}>{rule.action}</span>
+          <span className={`w-16 shrink-0 ${ACTION_COLOR[rule.action]}`}>
+            {t(`ruleAction.${rule.action}`)}
+          </span>
           <span className="w-32 shrink-0 truncate text-muted">
             {rule.action === "tunnel" ? tunnelName(rule.targetTunnelId) : "—"}
           </span>
           <button
             onClick={() => onMove(index, -1)}
             disabled={busy || index === 0}
-            title="Move up"
+            title={t("ruleTable.moveUp")}
             className={ghostButton}
           >
             ↑
@@ -513,20 +546,20 @@ function RuleTable({
           <button
             onClick={() => onMove(index, 1)}
             disabled={busy || index === rules.length - 1}
-            title="Move down"
+            title={t("ruleTable.moveDown")}
             className={ghostButton}
           >
             ↓
           </button>
           <button onClick={() => onEdit(rule)} disabled={busy} className={ghostButton}>
-            Edit
+            {tc("edit")}
           </button>
           <button
             onClick={() => onDelete(rule)}
             disabled={busy}
             className="rounded px-1.5 py-0.5 text-[11px] font-medium text-coral hover:bg-coral/10 disabled:opacity-40"
           >
-            Delete
+            {tc("delete")}
           </button>
         </div>
       ))}
@@ -543,6 +576,7 @@ function DecisionLog({
   decisions: RoutingDecision[];
   tunnelName: (id: string | null) => string;
 }) {
+  const { t } = useTranslation("routerPanel");
   // Held independently of `decisions` so the 2s poll refreshing the data does
   // not collapse the list back while you are reading it.
   const [visible, setVisible] = useState(DECISION_PAGE);
@@ -551,16 +585,16 @@ function DecisionLog({
   return (
     <div className="space-y-1 rounded border border-border bg-bg p-3">
       <div className="flex items-center gap-2">
-        <p className="text-xs font-medium text-muted">Recent decisions</p>
+        <p className="text-xs font-medium text-muted">{t("decisionLog.title")}</p>
         {decisions.length > 0 && (
           <span className="text-[11px] text-muted">
-            showing {shown.length} of {decisions.length}
+            {t("decisionLog.showingOf", { shown: shown.length, total: decisions.length })}
           </span>
         )}
       </div>
 
       {decisions.length === 0 && (
-        <p className="text-[11px] text-muted">Nothing routed yet.</p>
+        <p className="text-[11px] text-muted">{t("decisionLog.empty")}</p>
       )}
 
       <div className="max-h-64 space-y-1 overflow-y-auto">
@@ -575,7 +609,9 @@ function DecisionLog({
             <span className="min-w-0 flex-1 truncate text-text">
               {d.host}:{d.port}
             </span>
-            <span className={`w-14 shrink-0 ${ACTION_COLOR[d.action]}`}>{d.action}</span>
+            <span className={`w-14 shrink-0 ${ACTION_COLOR[d.action]}`}>
+              {t(`ruleAction.${d.action}`)}
+            </span>
             <span className="w-28 shrink-0 truncate text-muted">
               {d.action === "tunnel" ? tunnelName(d.targetTunnelId) : "—"}
             </span>
@@ -596,7 +632,7 @@ function DecisionLog({
           onClick={() => setVisible((v) => v + DECISION_PAGE)}
           className={ghostButton}
         >
-          Show more
+          {t("decisionLog.showMore")}
         </button>
       )}
     </div>

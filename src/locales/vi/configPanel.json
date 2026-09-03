@@ -1,0 +1,42 @@
+{
+  "title": "Xuất / nhập cấu hình",
+  "disposition": {
+    "new": "mới",
+    "overwrite": "cập nhật tunnel đã có",
+    "nameConflict": "trùng tên, khác tunnel"
+  },
+  "export": {
+    "heading": "Xuất",
+    "description": "Chọn nội dung sẽ ghi vào file JSON.",
+    "tunnelsCheckbox": "Tunnel + port forward ({{selected}} / {{total}} đã chọn)",
+    "routerCheckbox": "Cấu hình + luật router",
+    "settingsCheckbox": "Cài đặt",
+    "knownHostsCheckbox": "Máy chủ đã biết",
+    "passphraseLabel": "Mật khẩu — để trống nếu không xuất bí mật nào",
+    "passphrasePlaceholder": "(không có bí mật)",
+    "secretsIncludedNote": "Mật khẩu SSH và passphrase khóa sẽ được đưa vào, mã hóa bằng mật khẩu này. Không có cách nào khôi phục nếu bạn quên nó.",
+    "secretsExcludedNote": "Mật khẩu SSH và passphrase khóa vẫn nằm trong Windows Credential Manager, không được ghi vào file.",
+    "chooseFileAndExport": "Chọn file & xuất",
+    "exportedWithSecrets": "Đã xuất tới {{path}} — có kèm bí mật, đã mã hóa.",
+    "exportedNoSecrets": "Đã xuất tới {{path}} — không kèm bí mật."
+  },
+  "import": {
+    "heading": "Nhập",
+    "hint": "Chưa có gì thay đổi cho đến khi bạn xác nhận ở màn hình tiếp theo.",
+    "chooseFile": "Chọn file…",
+    "summary": "Đã nhập: {{added}} tunnel mới, {{updated}} cập nhật, {{rules}} luật router, {{secrets}} bí mật, {{hosts}} máy chủ đã biết.",
+    "writtenBy": "được ghi bởi v{{version}} lúc {{date}}",
+    "tunnelsCheckbox": "Tunnel ({{count}})",
+    "conflictWarning": "{{count}} tunnel nhập vào trùng tên với tunnel bạn đã có, nhưng là tunnel khác.",
+    "conflictReplace": "Thay thế tunnel của tôi. Nếu bỏ chọn, chúng sẽ vào như bản sao riêng tên \"… (imported)\".",
+    "routerCheckbox": "Cấu hình + luật router — <replaces>thay thế</replaces> {{current}} luật hiện có bằng {{incoming}}",
+    "settingsCheckbox": "Cài đặt",
+    "knownHostsCheckbox": "Máy chủ đã biết ({{count}}) — gộp lại; ưu tiên của bạn",
+    "secretsUnlocked": "Bí mật ({{count}} đã mở khóa)",
+    "secretsLocked": "Bí mật — đang khóa",
+    "passphrasePlaceholder": "mật khẩu dùng lúc xuất",
+    "unlock": "Mở khóa",
+    "noSecretsNote": "File này không chứa bí mật nào — bạn cần nhập lại mật khẩu và passphrase khóa cho các tunnel đã nhập.",
+    "importButton": "Nhập"
+  }
+}

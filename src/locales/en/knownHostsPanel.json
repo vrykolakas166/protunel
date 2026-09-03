@@ -1,0 +1,8 @@
+{
+  "title": "Known hosts",
+  "tooltip": "The first time you reach a server its host key is shown and you decide whether to trust it. After that, a changed key is refused outright rather than silently accepted — this is what protects you from a swapped-out or spoofed server. Forget a host here to be asked again.",
+  "description": "Host keys trusted via the connect-time confirmation prompt. Forgetting one means the next connection to that host re-prompts.",
+  "emptyState": "No trusted hosts yet.",
+  "forget": "Forget",
+  "trustedAt": "Trusted {{date}}"
+}

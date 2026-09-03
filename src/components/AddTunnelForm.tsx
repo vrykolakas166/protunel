@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
+import { useTranslation } from "react-i18next";
 import type { AuthMethod, Tunnel, TunnelInput } from "../types";
 import { Modal } from "./Modal";
 
@@ -14,20 +15,16 @@ interface Props {
   onCancel: () => void;
 }
 
-const TITLE: Record<FormMode, string> = {
-  add: "Add tunnel",
-  edit: "Edit tunnel",
-  clone: "Clone tunnel",
-};
-
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text focus:border-accent focus:outline-none";
 const monoInputClass = `${inputClass} font-mono`;
 const labelClass = "block text-xs font-medium text-muted";
 
 export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit, onCancel }: Props) {
+  const { t } = useTranslation("addTunnelForm");
+  const { t: tc } = useTranslation("common");
   const [name, setName] = useState(
-    initial ? (mode === "clone" ? `${initial.name} copy` : initial.name) : "",
+    initial ? (mode === "clone" ? t("clonedName", { name: initial.name }) : initial.name) : "",
   );
   const [host, setHost] = useState(initial?.host ?? "");
   const [port, setPort] = useState(initial?.port ?? 22);
@@ -47,9 +44,9 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const jumpOptions = tunnels.filter((t) => t.id !== initial?.id);
+  const jumpOptions = tunnels.filter((tun) => tun.id !== initial?.id);
 
-  const submit = async (e: FormEvent) => {
+  const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setError(null);
     setBusy(true);
@@ -84,13 +81,13 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
 
   return (
     <Modal
-      title={<h2 className="font-display text-base font-semibold text-text">{TITLE[mode]}</h2>}
+      title={<h2 className="font-display text-base font-semibold text-text">{t(`title.${mode}`)}</h2>}
       onClose={onCancel}
       size="md"
     >
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className={labelClass}>Name</label>
+          <label className={labelClass}>{t("name")}</label>
           <input
             className={inputClass}
             value={name}
@@ -101,7 +98,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
 
         <div className="grid grid-cols-3 gap-2">
           <div className="col-span-2">
-            <label className={labelClass}>Host</label>
+            <label className={labelClass}>{t("host")}</label>
             <input
               className={monoInputClass}
               value={host}
@@ -110,7 +107,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
             />
           </div>
           <div>
-            <label className={labelClass}>Port</label>
+            <label className={labelClass}>{t("port")}</label>
             <input
               type="number"
               className={monoInputClass}
@@ -122,7 +119,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
         </div>
 
         <div>
-          <label className={labelClass}>Username</label>
+          <label className={labelClass}>{t("username")}</label>
           <input
             className={inputClass}
             value={username}
@@ -132,21 +129,21 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
         </div>
 
         <div data-tour="add-auth">
-          <label className={labelClass}>Authentication</label>
+          <label className={labelClass}>{t("authentication")}</label>
           <select
             className={inputClass}
             value={authKind}
             onChange={(e) => setAuthKind(e.target.value as AuthKind)}
           >
-            <option value="password">Password</option>
-            <option value="privateKey">Private key file</option>
-            <option value="agent">SSH agent (Pageant)</option>
+            <option value="password">{t("authKind.password")}</option>
+            <option value="privateKey">{t("authKind.privateKey")}</option>
+            <option value="agent">{t("authKind.agent")}</option>
           </select>
         </div>
 
         {authKind === "privateKey" && (
           <div>
-            <label className={labelClass}>Key file path</label>
+            <label className={labelClass}>{t("keyFilePath")}</label>
             <input
               className={monoInputClass}
               value={keyPath}
@@ -160,7 +157,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
         {(authKind === "password" || authKind === "privateKey") && (
           <div>
             <label className={labelClass}>
-              {authKind === "password" ? "Password" : "Key passphrase (optional)"}
+              {authKind === "password" ? t("password") : t("keyPassphrase")}
             </label>
             <div className="relative">
               <input
@@ -170,9 +167,9 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
                 onChange={(e) => setSecret(e.target.value)}
                 placeholder={
                   mode === "edit"
-                    ? "Leave blank to keep existing"
+                    ? t("secretPlaceholder.edit")
                     : mode === "clone"
-                      ? "Not carried over — re-enter"
+                      ? t("secretPlaceholder.clone")
                       : ""
                 }
               />
@@ -180,8 +177,8 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
                 type="button"
                 onClick={() => setShowSecret((current) => !current)}
                 tabIndex={-1}
-                title={showSecret ? "Hide" : "Show"}
-                aria-label={showSecret ? "Hide password" : "Show password"}
+                title={showSecret ? t("showSecret.hide") : t("showSecret.show")}
+                aria-label={showSecret ? t("showSecretAria.hide") : t("showSecretAria.show")}
                 className="absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-1 text-xs text-muted hover:text-text"
               >
                 {showSecret ? "🙈" : "👁"}
@@ -197,13 +194,13 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
               checked={socksEnabled}
               onChange={(e) => setSocksEnabled(e.target.checked)}
             />
-            Enable local SOCKS5 proxy
+            {t("enableSocks")}
           </label>
         </div>
 
         {socksEnabled && (
           <div>
-            <label className={labelClass}>Local SOCKS port</label>
+            <label className={labelClass}>{t("localSocksPort")}</label>
             <input
               type="number"
               className={monoInputClass}
@@ -215,16 +212,16 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
         )}
 
         <div data-tour="add-jump">
-          <label className={labelClass}>Connect via</label>
+          <label className={labelClass}>{t("connectVia")}</label>
           <select
             className={inputClass}
             value={jumpTunnelId}
             onChange={(e) => setJumpTunnelId(e.target.value)}
           >
-            <option value="">Direct connection</option>
-            {jumpOptions.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            <option value="">{t("directConnection")}</option>
+            {jumpOptions.map((tun) => (
+              <option key={tun.id} value={tun.id}>
+                {tun.name}
               </option>
             ))}
           </select>
@@ -236,7 +233,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
             checked={autoConnect}
             onChange={(e) => setAutoConnect(e.target.checked)}
           />
-          Connect automatically on startup
+          {t("connectOnStartup")}
         </label>
 
         {error && <p className="text-sm text-coral">{error}</p>}
@@ -247,14 +244,14 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
             onClick={onCancel}
             className="rounded px-3 py-1.5 text-sm font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
-            Cancel
+            {tc("cancel")}
           </button>
           <button
             type="submit"
             disabled={busy}
             className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
           >
-            {mode === "edit" ? "Save" : "Add"}
+            {mode === "edit" ? tc("save") : t("add")}
           </button>
         </div>
       </form>

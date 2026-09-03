@@ -1,0 +1,85 @@
+{
+  "steps": {
+    "welcome": {
+      "title": "Chào mừng đến với ProdTunnel",
+      "body": "Giới thiệu nhanh qua các tính năng chính. Chỉ mất vài phút, bạn có thể bỏ qua hoặc xem lại bất cứ lúc nào từ nút ?."
+    },
+    "add": {
+      "title": "Thêm một tunnel",
+      "body": "Một tunnel tương ứng với một kết nối SSH. Nút này mở form thêm tunnel — hãy xem qua các mục bên trong."
+    },
+    "add-auth": {
+      "title": "Cách xác thực",
+      "body": "Mật khẩu, tệp private key, hoặc SSH agent như Pageant. Mật khẩu và passphrase của key được lưu trong Windows Credential Manager, không bao giờ lưu trong cơ sở dữ liệu riêng của ứng dụng."
+    },
+    "add-socks": {
+      "title": "Tunnel cung cấp gì",
+      "body": "Bật một proxy SOCKS5 cục bộ và trỏ trình duyệt hoặc curl vào cổng đó. Bạn cũng có thể thêm các port forward tĩnh sau này, ngay từ dòng của tunnel trong danh sách."
+    },
+    "add-jump": {
+      "title": "Nhảy qua một tunnel khác",
+      "body": "\"Connect via\" giúp tunnel này kết nối thông qua phiên (session) đang hoạt động của một tunnel khác — mô hình bastion thường gặp. Kết nối tunnel bên trong sẽ tự động quay số cả chuỗi, bắt đầu từ tunnel ngoài cùng."
+    },
+    "list": {
+      "title": "Danh sách tunnel",
+      "body": "Bật/tắt tunnel bằng công tắc. Đường nét đứt sẽ chạy hoạt ảnh khi có traffic đi qua. Mở rộng mục Forwards để thêm port forward ngay khi đang chạy — không cần kết nối lại. Các tunnel nhảy qua tunnel khác sẽ được thụt vào dưới tunnel cha."
+    },
+    "bulk": {
+      "title": "Tìm kiếm và thao tác hàng loạt",
+      "body": "Ctrl+F mở ô tìm kiếm để lọc theo tên hoặc host — nhấn Esc để đóng. Bạn cũng có thể kết nối hoặc ngắt kết nối tất cả cùng lúc tại đây."
+    },
+    "router": {
+      "title": "Bộ định tuyến proxy (router)",
+      "body": "Với cổng SOCKS riêng cho từng tunnel, bạn phải chọn tunnel cho từng ứng dụng. Router đảo ngược cách làm đó: chỉ một cổng cục bộ duy nhất, và các rule sẽ chọn đích đến cho từng kết nối."
+    },
+    "router-enable": {
+      "title": "Bật router",
+      "body": "Router chỉ gắn (bind) một cổng SOCKS5 duy nhất trên 127.0.0.1. Một rule trỏ đến tunnel chưa kết nối sẽ tự động kết nối tunnel đó khi cần, nên bạn có thể để mọi thứ ở trạng thái ngắt kết nối và để traffic tự quay số khi cần."
+    },
+    "router-rules": {
+      "title": "Rule quyết định traffic đi đâu",
+      "body": "Các rule được xếp thứ tự từ trên xuống, rule đang bật khớp đầu tiên sẽ được áp dụng. Có thể khớp theo wildcard của host, regex, hoặc dải IP, sau đó gửi qua một tunnel, đi thẳng (direct), hoặc chặn lại. Traffic không khớp rule nào sẽ theo hành động mặc định."
+    },
+    "router-proxy": {
+      "title": "Bắt traffic từ mọi ứng dụng",
+      "body": "Bật tùy chọn này để chính Windows trỏ đến router, nhờ đó mọi ứng dụng đều tuân theo rule của bạn mà không cần cấu hình riêng từng app. Thiết lập này sẽ tự hoàn tác khi router dừng — kể cả khi ứng dụng bị crash."
+    },
+    "router-log": {
+      "title": "Vì sao kết nối đó lại đi direct?",
+      "body": "Mỗi kết nối đi qua proxy đều được ghi log kèm rule đã quyết định nó. Đây là nơi đầu tiên nên kiểm tra khi một rule không hoạt động như bạn mong đợi."
+    },
+    "capture": {
+      "title": "Capture ứng dụng không có tùy chọn proxy",
+      "body": "Client RDP, công cụ CLI, client cơ sở dữ liệu — hầu hết các ứng dụng này không có chỗ để nhập địa chỉ proxy. Capture sẽ khởi chạy ứng dụng kèm một hook nhỏ được inject vào, nhờ đó traffic của nó vẫn đến được router. Từ đó, rule sẽ quyết định traffic đi đâu, giống như mọi kết nối khác."
+    },
+    "capture-launch": {
+      "title": "Khởi chạy một tiến trình được capture",
+      "body": "Trỏ đến một tệp .exe (dùng nút Browse hoặc dán đường dẫn), thêm tham số nếu cần. Các mục đã khởi chạy gần đây sẽ hiện thành các nút khởi chạy nhanh phía trên form."
+    },
+    "capture-active": {
+      "title": "Các tiến trình đang chạy",
+      "body": "Mọi tiến trình được capture sẽ được liệt kê ở đây kèm PID, giúp bạn dừng một tiến trình mà không cần tìm trong Task Manager."
+    },
+    "capture-log": {
+      "title": "Traffic của nó thực sự đi đâu",
+      "body": "Mỗi kết nối mà tiến trình được capture tạo ra sẽ hiện ở đây kèm quyết định của rule — tương tự log quyết định của router, nhưng chỉ giới hạn trong tiến trình này."
+    },
+    "settings-reconnect": {
+      "title": "Duy trì kết nối",
+      "body": "Keepalive là cách duy nhất để phát hiện một kết nối đã chết; cơ chế backoff giúp không dồn dập thử lại khi server chập chờn. Cổng cục bộ vẫn được giữ trong lúc mất kết nối để không ứng dụng nào khác chiếm mất."
+    },
+    "settings-config": {
+      "title": "Chuyển sang máy khác",
+      "body": "Export sẽ ghi toàn bộ tunnel, rule của router và settings vào một tệp duy nhất. Thông tin bí mật chỉ được đưa vào nếu bạn đặt passphrase — để trống thì tệp này an toàn để chia sẻ."
+    },
+    "tray": {
+      "title": "Ứng dụng nằm ở khay hệ thống",
+      "body": "Đóng cửa sổ chỉ ẩn ứng dụng đi — các tunnel vẫn tiếp tục chạy. Mở lại từ biểu tượng khay hệ thống, bật/tắt tunnel ngay từ menu của nó, và dùng mục Exit trong khay khi bạn thực sự muốn thoát ứng dụng."
+    }
+  },
+  "stepProgress": "Bước {{current}}/{{total}}",
+  "skip": "Bỏ qua",
+  "back": "Quay lại",
+  "next": "Tiếp theo",
+  "done": "Xong"
+}

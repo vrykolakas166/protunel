@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { PortForward, Tunnel } from "../types";
 import type { Throughput, TunnelRuntimeState } from "../hooks/useTunnelEvents";
@@ -34,7 +35,6 @@ export function TunnelList({
   statuses,
   stats,
   throughput,
-  suggestedForwardPort,
   onToggle,
   onEdit,
   onClone,
@@ -42,6 +42,8 @@ export function TunnelList({
   onRefresh,
   onError,
 }: Props) {
+  const { t } = useTranslation("tunnelList");
+  const { t: tc } = useTranslation("common");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -73,7 +75,7 @@ export function TunnelList({
   if (tunnels.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-sm text-muted">
-        No tunnels yet. Add one to open a socket.
+        {t("empty")}
       </div>
     );
   }
@@ -92,13 +94,18 @@ export function TunnelList({
   );
 
   const rows: { tunnel: Tunnel; depth: number }[] = [];
-  for (const root of roots) {
-    rows.push({ tunnel: root, depth: 0 });
-    if (!collapsedGroups.has(root.id)) {
-      for (const child of childrenByParent.get(root.id) ?? []) {
-        rows.push({ tunnel: child, depth: 1 });
-      }
+  const visited = new Set<string>();
+  const pushSubtree = (tunnel: Tunnel, depth: number) => {
+    if (visited.has(tunnel.id)) return; // guards a jump-chain cycle from bad data
+    visited.add(tunnel.id);
+    rows.push({ tunnel, depth });
+    if (collapsedGroups.has(tunnel.id)) return;
+    for (const child of childrenByParent.get(tunnel.id) ?? []) {
+      pushSubtree(child, depth + 1);
     }
+  };
+  for (const root of roots) {
+    pushSubtree(root, 0);
   }
 
   return (
@@ -117,13 +124,16 @@ export function TunnelList({
         const tunnelStats = stats[tunnel.id];
         const tunnelThroughput = throughput[tunnel.id];
 
+        const treeTint = Math.min(20 + depth * 20, 90); // % accent mixed in; root lightest, deeper levels darker
+
         return (
           <li
             key={tunnel.id}
-            style={depth > 0 ? { marginLeft: 20 } : undefined}
-            className={`rounded-lg border border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${
-              depth > 0 ? "border-l-2 border-l-accent/40" : ""
-            }`}
+            style={{
+              marginLeft: depth > 0 ? depth * 20 : undefined,
+              borderLeftColor: `color-mix(in srgb, var(--color-accent) ${treeTint}%, transparent)`,
+            }}
+            className="rounded-lg border border-l-2 border-border bg-surface p-3 transition-colors hover:bg-surface-hover"
           >
             <div className="flex items-center gap-3">
               <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[status]}`} />
@@ -131,11 +141,21 @@ export function TunnelList({
               {hasChildren && (
                 <button
                   onClick={() => toggleGroup(tunnel.id)}
-                  title={isCollapsed ? "Expand dependents" : "Collapse dependents"}
+                  title={isCollapsed ? t("expandDependents") : t("collapseDependents")}
                   aria-expanded={!isCollapsed}
-                  className="shrink-0 rounded px-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+                  className="shrink-0 rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
                 >
-                  {isCollapsed ? "▸" : "▾"}
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                  >
+                    <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
               )}
 
@@ -152,7 +172,7 @@ export function TunnelList({
                 onClick={() => onToggle(tunnel)}
                 disabled={isBusy}
                 aria-pressed={isOn}
-                aria-label={isOn ? "Disconnect" : "Connect"}
+                aria-label={isOn ? t("disconnect") : t("connect")}
                 className={`relative h-5 w-9 shrink-0 rounded-full transition-colors disabled:opacity-60 ${
                   isOn ? "bg-accent" : "bg-slate/40"
                 }`}
@@ -166,17 +186,17 @@ export function TunnelList({
 
               <button
                 onClick={() => toggleExpanded(tunnel.id)}
-                title="Port forwards"
+                title={t("portForwards")}
                 aria-expanded={expanded.has(tunnel.id)}
                 className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
               >
-                {expanded.has(tunnel.id) ? "▾" : "▸"} Forwards
+                {expanded.has(tunnel.id) ? "▾" : "▸"} {t("forwards")}
                 {tunnel.forwards.length > 0 ? ` (${tunnel.forwards.length})` : ""}
               </button>
               <button
                 onClick={() => onClone(tunnel)}
-                title="Clone"
-                aria-label="Clone"
+                title={tc("clone")}
+                aria-label={tc("clone")}
                 className="rounded p-1.5 text-muted hover:bg-surface-hover hover:text-text"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -186,8 +206,8 @@ export function TunnelList({
               </button>
               <button
                 onClick={() => onEdit(tunnel)}
-                title="Edit"
-                aria-label="Edit"
+                title={tc("edit")}
+                aria-label={tc("edit")}
                 className="rounded p-1.5 text-muted hover:bg-surface-hover hover:text-text"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -201,8 +221,8 @@ export function TunnelList({
               </button>
               <button
                 onClick={() => onDelete(tunnel)}
-                title="Delete"
-                aria-label="Delete"
+                title={tc("delete")}
+                aria-label={tc("delete")}
                 className="rounded p-1.5 text-coral hover:bg-coral/10"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -221,10 +241,10 @@ export function TunnelList({
               {tunnel.socksEnabled && (
                 <button
                   onClick={() => copySocksCommand(tunnel)}
-                  title="Copy curl --socks5 command"
+                  title={t("copySocksCommand")}
                   className="shrink-0 rounded border border-border bg-bg px-1.5 py-0.5 text-text hover:border-accent hover:text-accent"
                 >
-                  {copiedId === tunnel.id ? "copied" : `:${tunnel.localSocksPort}`}
+                  {copiedId === tunnel.id ? t("copied") : `:${tunnel.localSocksPort}`}
                 </button>
               )}
               <div className="h-4 flex-1">
@@ -237,7 +257,12 @@ export function TunnelList({
               <span className="shrink-0 truncate text-muted">
                 {tunnel.username}@{tunnel.host}:{tunnel.port}
                 {tunnel.jumpTunnelId && (
-                  <> via {tunnels.find((t) => t.id === tunnel.jumpTunnelId)?.name ?? "?"}</>
+                  <>
+                    {" "}
+                    {t("via", {
+                      name: tunnels.find((tt) => tt.id === tunnel.jumpTunnelId)?.name ?? "?",
+                    })}
+                  </>
                 )}
               </span>
             </div>
@@ -250,7 +275,7 @@ export function TunnelList({
             )}
             {status === "reconnecting" && (
               <p className="mt-1.5 truncate text-[11px] text-amber">
-                Reconnecting… {runtime?.message ?? ""}
+                {t("reconnecting", { message: runtime?.message ?? "" })}
               </p>
             )}
             {status === "error" && runtime?.message && (
@@ -260,7 +285,6 @@ export function TunnelList({
             {expanded.has(tunnel.id) && (
               <ForwardsPanel
                 tunnel={tunnel}
-                suggestedForwardPort={suggestedForwardPort}
                 onRefresh={onRefresh}
                 onError={onError}
               />
@@ -272,31 +296,57 @@ export function TunnelList({
   );
 }
 
+/** Splits a pasted/typed "host:port" into its parts, e.g. for a remote-host
+ * field that also accepts the shorthand. `host` must contain no colon, which
+ * naturally excludes bare (unbracketed) IPv6 addresses rather than
+ * mis-splitting them. */
+function parseHostPort(value: string): { host: string; port: number } | null {
+  const match = value.match(/^([^\s:]+):(\d{1,5})$/);
+  if (!match) return null;
+  const port = Number(match[2]);
+  if (port < 1 || port > 65535) return null;
+  return { host: match[1], port };
+}
+
 function ForwardsPanel({
   tunnel,
-  suggestedForwardPort,
   onRefresh,
   onError,
 }: {
   tunnel: Tunnel;
-  suggestedForwardPort: number;
   onRefresh: () => Promise<void>;
   onError: (text: string) => void;
 }) {
+  const { t } = useTranslation("tunnelList");
   const [remoteHost, setRemoteHost] = useState("");
   const [remotePort, setRemotePort] = useState(0);
   const [localPort, setLocalPort] = useState(0);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: FormEvent) => {
+  const trySplitHostPort = (value: string) => {
+    const parsed = parseHostPort(value);
+    if (!parsed) return;
+    setRemoteHost(parsed.host);
+    setRemotePort(parsed.port);
+    setLocalPort(parsed.port);
+  };
+
+  const submit = async (e: SubmitEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await addPortForward(tunnel.id, { remoteHost, remotePort, localPort });
+      // Enter-to-submit fires before the remote-host field blurs, so its
+      // pending "host:port" split (see onBlur/onPaste below) may not have
+      // run yet — resolve it here too rather than trusting stale state.
+      const parsed = parseHostPort(remoteHost);
+      const host = parsed?.host ?? remoteHost;
+      const port = parsed?.port ?? remotePort;
+      const local = parsed?.port ?? localPort;
+      await addPortForward(tunnel.id, { remoteHost: host, remotePort: port, localPort: local });
       await onRefresh();
       setRemoteHost("");
       setRemotePort(0);
-      setLocalPort(suggestedForwardPort);
+      setLocalPort(0);
     } catch (err) {
       onError(String(err));
     } finally {
@@ -316,7 +366,7 @@ function ForwardsPanel({
   return (
     <div className="mt-2.5 space-y-1.5 rounded border border-border bg-bg p-2">
       {tunnel.forwards.length === 0 && (
-        <p className="text-[11px] text-muted">No port forwards yet.</p>
+        <p className="text-[11px] text-muted">{t("noForwardsYet")}</p>
       )}
       {tunnel.forwards.map((forward) => (
         <div key={forward.id} className="flex items-center gap-2 font-mono text-[11px] text-text">
@@ -325,10 +375,10 @@ function ForwardsPanel({
           </span>
           <button
             onClick={() => remove(forward)}
-            title="Remove forward"
+            title={t("removeForward")}
             className="shrink-0 rounded px-1.5 py-0.5 text-coral hover:bg-coral/10"
           >
-            Remove
+            {t("remove")}
           </button>
         </div>
       ))}
@@ -337,7 +387,15 @@ function ForwardsPanel({
         <input
           value={remoteHost}
           onChange={(e) => setRemoteHost(e.target.value)}
-          placeholder="remote host"
+          onPaste={(e) => {
+            // The paste hasn't landed in the input's value yet at this
+            // point in the event — read it back on the next tick once the
+            // browser has merged it in.
+            const input = e.currentTarget;
+            setTimeout(() => trySplitHostPort(input.value), 0);
+          }}
+          onBlur={(e) => trySplitHostPort(e.target.value)}
+          placeholder={t("remoteHostPlaceholder")}
           required
           className="min-w-0 flex-1 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
         />
@@ -345,7 +403,7 @@ function ForwardsPanel({
           type="number"
           value={remotePort || ""}
           onChange={(e) => setRemotePort(Number(e.target.value))}
-          placeholder="remote port"
+          placeholder={t("remotePortPlaceholder")}
           required
           className="w-24 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
         />
@@ -354,7 +412,7 @@ function ForwardsPanel({
           type="number"
           value={localPort || ""}
           onChange={(e) => setLocalPort(Number(e.target.value))}
-          placeholder="local port"
+          placeholder={t("localPortPlaceholder")}
           required
           className="w-24 rounded border border-border bg-surface px-1.5 py-1 font-mono text-[11px] text-text focus:border-accent focus:outline-none"
         />
@@ -363,7 +421,7 @@ function ForwardsPanel({
           disabled={busy}
           className="shrink-0 rounded bg-accent px-2 py-1 text-[11px] font-medium text-white hover:bg-accent-hover disabled:opacity-50"
         >
-          Add
+          {t("add")}
         </button>
       </form>
     </div>

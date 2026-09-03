@@ -1,0 +1,6 @@
+{
+  "title": "Unknown host key",
+  "body": "The host <host>{{host}}:{{port}}</host> presented a {{algorithm}} key that hasn't been seen before. Verify the fingerprint out-of-band before trusting it.",
+  "reject": "Reject",
+  "trustAndConnect": "Trust & Connect"
+}

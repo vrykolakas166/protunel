@@ -1,0 +1,20 @@
+{
+  "empty": "Chưa có tunnel nào. Thêm một cái để mở socket.",
+  "expandDependents": "Mở rộng các tunnel phụ thuộc",
+  "collapseDependents": "Thu gọn các tunnel phụ thuộc",
+  "connect": "Kết nối",
+  "disconnect": "Ngắt kết nối",
+  "portForwards": "Port forward",
+  "forwards": "Forward",
+  "copySocksCommand": "Sao chép lệnh curl --socks5",
+  "copied": "đã chép",
+  "via": "qua {{name}}",
+  "reconnecting": "Đang kết nối lại… {{message}}",
+  "noForwardsYet": "Chưa có port forward nào.",
+  "removeForward": "Xóa forward",
+  "remove": "Xóa",
+  "remoteHostPlaceholder": "host từ xa",
+  "remotePortPlaceholder": "cổng từ xa",
+  "localPortPlaceholder": "cổng cục bộ",
+  "add": "Thêm"
+}

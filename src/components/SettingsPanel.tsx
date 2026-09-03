@@ -1,9 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getSettings, updateSettings } from "../api";
 import type { Settings, ThemePreference } from "../types";
+import { SUPPORTED_LANGUAGES } from "../i18n";
 import { Modal } from "./Modal";
 
 interface Props {
@@ -19,10 +21,9 @@ const labelClass = "block text-xs font-medium text-muted";
 const sectionLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-muted";
 const checkboxRowClass = "flex items-center gap-2 text-sm text-text";
 
-const THEME_OPTIONS: { value: ThemePreference; label: string; icon: ReactNode }[] = [
+const THEME_OPTIONS: { value: ThemePreference; icon: ReactNode }[] = [
   {
     value: "system",
-    label: "Match system",
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <rect x="3" y="4" width="18" height="13" rx="1.5" />
@@ -32,7 +33,6 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: ReactNode }[
   },
   {
     value: "light",
-    label: "Light",
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <circle cx="12" cy="12" r="4" />
@@ -45,7 +45,6 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: ReactNode }[
   },
   {
     value: "dark",
-    label: "Dark",
     icon: (
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" strokeLinejoin="round" />
@@ -55,6 +54,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string; icon: ReactNode }[
 ];
 
 export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenHosts }: Props) {
+  const { t } = useTranslation("settingsPanel");
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,12 +91,12 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
       const update = await check();
       if (update) {
         setPendingUpdate(update);
-        setUpdateStatus(`Update available: v${update.version}`);
+        setUpdateStatus(t("updateAvailable", { version: update.version }));
       } else {
-        setUpdateStatus("You're up to date.");
+        setUpdateStatus(t("upToDate"));
       }
     } catch (err) {
-      setUpdateStatus(`Check failed: ${String(err)}`);
+      setUpdateStatus(t("checkFailed", { error: String(err) }));
     } finally {
       setCheckingUpdate(false);
     }
@@ -105,19 +105,19 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
   const installUpdate = async () => {
     if (!pendingUpdate) return;
     setInstalling(true);
-    setUpdateStatus("Downloading…");
+    setUpdateStatus(t("downloading"));
     try {
       await pendingUpdate.downloadAndInstall((event) => {
         if (event.event === "Progress") {
-          setUpdateStatus("Downloading…");
+          setUpdateStatus(t("downloading"));
         } else if (event.event === "Finished") {
-          setUpdateStatus("Installing…");
+          setUpdateStatus(t("installingUpdate"));
         }
       });
-      setUpdateStatus("Installed. Restarting…");
+      setUpdateStatus(t("installedRestarting"));
       await relaunch();
     } catch (err) {
-      setUpdateStatus(`Install failed: ${String(err)}`);
+      setUpdateStatus(t("installFailed", { error: String(err) }));
       setInstalling(false);
     }
   };
@@ -126,7 +126,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
 
   return (
     <Modal
-      title={<h2 className="font-display text-base font-semibold text-text">Settings</h2>}
+      title={<h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>}
       onClose={onClose}
       size="md"
     >
@@ -134,16 +134,16 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
         {error && <p className="text-sm text-coral">{error}</p>}
 
         <section className="space-y-2">
-          <p className={sectionLabelClass}>Appearance</p>
+          <p className={sectionLabelClass}>{t("sections.appearance")}</p>
           <div className="flex items-center justify-between gap-3">
-            <label className="text-sm text-text">Theme</label>
+            <label className="text-sm text-text">{t("themeLabel")}</label>
             <div className="flex items-center gap-1 rounded border border-border p-0.5">
-              {THEME_OPTIONS.map(({ value, label, icon }) => (
+              {THEME_OPTIONS.map(({ value, icon }) => (
                 <button
                   key={value}
                   type="button"
-                  title={label}
-                  aria-label={label}
+                  title={t(`theme.${value}`)}
+                  aria-label={t(`theme.${value}`)}
                   disabled={busy}
                   onClick={() => save({ ...settings, theme: value })}
                   className={`flex h-7 w-7 items-center justify-center rounded disabled:opacity-50 ${
@@ -157,10 +157,31 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               ))}
             </div>
           </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-sm text-text">{t("languageLabel")}</label>
+            <div className="flex items-center gap-1 rounded border border-border p-0.5">
+              {SUPPORTED_LANGUAGES.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => save({ ...settings, language: value })}
+                  className={`rounded px-2 py-1 text-xs font-medium disabled:opacity-50 ${
+                    settings.language === value
+                      ? "bg-accent text-white"
+                      : "text-muted hover:bg-surface-hover hover:text-text"
+                  }`}
+                >
+                  {t(`language.${value}`)}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="space-y-1.5 border-t border-border pt-3">
-          <p className={sectionLabelClass}>Startup &amp; notifications</p>
+          <p className={sectionLabelClass}>{t("sections.startupAndNotifications")}</p>
           <label className={checkboxRowClass}>
             <input
               type="checkbox"
@@ -168,7 +189,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               disabled={busy}
               onChange={(e) => save({ ...settings, autostartEnabled: e.target.checked })}
             />
-            Launch ProdTunnel when Windows starts
+            {t("launchOnStartup")}
           </label>
           <label className={checkboxRowClass}>
             <input
@@ -177,12 +198,12 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               disabled={busy}
               onChange={(e) => save({ ...settings, notificationsEnabled: e.target.checked })}
             />
-            Show Windows notifications
+            {t("showNotifications")}
           </label>
         </section>
 
         <section className="space-y-2 border-t border-border pt-3">
-          <p className={sectionLabelClass}>Connections</p>
+          <p className={sectionLabelClass}>{t("sections.connections")}</p>
           <label className={checkboxRowClass}>
             <input
               type="checkbox"
@@ -190,13 +211,13 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               disabled={busy}
               onChange={(e) => save({ ...settings, autoReconnectEnabled: e.target.checked })}
             />
-            Reconnect automatically when a tunnel drops
+            {t("autoReconnect")}
           </label>
 
           <div data-tour="settings-reconnect" className="grid grid-cols-4 gap-2">
             <div>
-              <label className={labelClass} title="Seconds between keepalive pings so a dead connection gets noticed. 0 disables keepalives.">
-                Keepalive (s)
+              <label className={labelClass} title={t("keepaliveTooltip")}>
+                {t("keepaliveLabel")}
               </label>
               <input
                 type="number"
@@ -210,8 +231,8 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               />
             </div>
             <div>
-              <label className={labelClass} title="Give up reconnecting after this many consecutive failed attempts. 0 means never give up.">
-                Retries
+              <label className={labelClass} title={t("retriesTooltip")}>
+                {t("retriesLabel")}
               </label>
               <input
                 type="number"
@@ -225,8 +246,8 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               />
             </div>
             <div>
-              <label className={labelClass} title="Lower bound of the local SOCKS port range suggested when adding a new tunnel.">
-                Port min
+              <label className={labelClass} title={t("portMinTooltip")}>
+                {t("portMinLabel")}
               </label>
               <input
                 type="number"
@@ -238,8 +259,8 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               />
             </div>
             <div>
-              <label className={labelClass} title="Upper bound of the local SOCKS port range suggested when adding a new tunnel.">
-                Port max
+              <label className={labelClass} title={t("portMaxTooltip")}>
+                {t("portMaxLabel")}
               </label>
               <input
                 type="number"
@@ -254,25 +275,25 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
         </section>
 
         <section data-tour="settings-config" className="space-y-2 border-t border-border pt-3">
-          <p className={sectionLabelClass}>Data &amp; security</p>
+          <p className={sectionLabelClass}>{t("sections.dataAndSecurity")}</p>
           <div className="flex items-center gap-2">
             <button
               onClick={onOpenConfig}
               className="rounded border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover"
             >
-              Export / import config
+              {t("exportImportConfig")}
             </button>
             <button
               onClick={onOpenHosts}
               className="rounded border border-border px-3 py-1.5 text-sm font-medium text-text hover:bg-surface-hover"
             >
-              Known hosts
+              {t("knownHosts")}
             </button>
           </div>
         </section>
 
         <section className="space-y-2 border-t border-border pt-3">
-          <p className={sectionLabelClass}>About</p>
+          <p className={sectionLabelClass}>{t("sections.about")}</p>
           <div className="flex items-center justify-between">
             <p className="font-mono text-xs text-muted">
               {version ? `v${version}` : "…"}
@@ -282,7 +303,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               disabled={checkingUpdate || installing}
               className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
             >
-              {checkingUpdate ? "Checking…" : "Check for updates"}
+              {checkingUpdate ? t("checking") : t("checkForUpdates")}
             </button>
           </div>
 
@@ -293,7 +314,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
               onClick={installUpdate}
               className="w-full rounded bg-amber px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
             >
-              Install v{pendingUpdate.version} &amp; restart
+              {t("installAndRestart", { version: pendingUpdate.version })}
             </button>
           )}
         </section>

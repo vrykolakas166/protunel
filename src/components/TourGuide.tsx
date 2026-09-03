@@ -1,122 +1,109 @@
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 /** Which modal the tour needs open for a step. `null` closes whatever is open. */
 export type TourPanel = "add" | "router" | "capture" | "settings";
 
-interface Step {
-  title: string;
-  body: string;
+interface StepDef {
+  /** Key into the `tourGuide` locale namespace's `steps` object. */
+  id: string;
   /** Value of a `data-tour` attribute to spotlight. Omitted = centred card. */
   target?: string;
   /** Panel the step lives inside. The tour opens and closes these itself. */
   panel?: TourPanel;
 }
 
-const STEPS: Step[] = [
+interface Step extends StepDef {
+  title: string;
+  body: string;
+}
+
+const STEP_DEFS: StepDef[] = [
   {
-    title: "Welcome to ProdTunnel",
-    body: "A quick pass over what everything does. Two minutes, and you can skip or replay it any time from the ? button.",
+    id: "welcome",
   },
   {
-    title: "Add a tunnel",
-    body: "A tunnel is one SSH connection. This button opens the form — let's look at what's in it.",
+    id: "add",
     target: "add",
   },
   {
-    title: "How you authenticate",
-    body: "Password, a private key file, or an SSH agent like Pageant. Passwords and key passphrases go into the Windows Credential Manager, never into the app's own database.",
+    id: "add-auth",
     target: "add-auth",
     panel: "add",
   },
   {
-    title: "What the tunnel exposes",
-    body: "Turn on a local SOCKS5 proxy and point a browser or curl at that port. You can also add static port forwards later, from the tunnel's row in the list.",
+    id: "add-socks",
     target: "add-socks",
     panel: "add",
   },
   {
-    title: "Hopping through another tunnel",
-    body: "\"Connect via\" makes this tunnel connect through another one's live session — the usual bastion setup. Connecting the inner tunnel dials the whole chain for you, outermost first.",
+    id: "add-jump",
     target: "add-jump",
     panel: "add",
   },
   {
-    title: "The tunnel list",
-    body: "Toggle a tunnel with the switch. The dashed line animates while traffic can flow. Expand Forwards to add port forwards live — no reconnect needed. Tunnels that hop through another are indented under their parent.",
+    id: "list",
     target: "list",
   },
   {
-    title: "Search and bulk actions",
-    body: "Ctrl+F drops in a search box to filter by name or host — Esc closes it. Connect or disconnect everything at once from here too.",
+    id: "bulk",
     target: "bulk",
   },
   {
-    title: "The proxy router",
-    body: "Per-tunnel SOCKS ports make you pick a tunnel per application. The router flips that around: one local port, and rules choose a destination per connection.",
+    id: "router",
     target: "router",
   },
   {
-    title: "Turning the router on",
-    body: "It binds one SOCKS5 port on 127.0.0.1 only. A rule pointing at a tunnel that isn't up will connect that tunnel on demand, so you can leave everything disconnected and let traffic dial what it needs.",
+    id: "router-enable",
     target: "router-enable",
     panel: "router",
   },
   {
-    title: "Rules decide where traffic goes",
-    body: "Ordered top to bottom, first enabled match wins. Match on a host wildcard, a regex, or an IP range, then send it through a tunnel, straight out (direct), or block it. Anything unmatched takes the default action.",
+    id: "router-rules",
     target: "router-rules",
     panel: "router",
   },
   {
-    title: "Catching every app",
-    body: "Tick this and Windows itself is pointed at the router, so every app follows your rules with no per-app setup. It's undone when the router stops — including after a crash.",
+    id: "router-proxy",
     target: "router-proxy",
     panel: "router",
   },
   {
-    title: "Why did that go direct?",
-    body: "Every proxied connection is logged with the rule that decided it. This is the first place to look when a rule doesn't fire the way you expected.",
+    id: "router-log",
     target: "router-log",
     panel: "router",
   },
   {
-    title: "Capturing an app that has no proxy setting",
-    body: "RDP clients, CLI tools, DB clients — most apps have nowhere to type a proxy address. Capture launches one with a small hook injected, so its traffic reaches the router anyway. Rules decide where it goes from there, same as anything else.",
+    id: "capture",
     target: "capture",
   },
   {
-    title: "Launching a captured process",
-    body: "Point it at an .exe (Browse or paste a path), add arguments if it needs them. Recently launched targets show up as quick-relaunch buttons above the form.",
+    id: "capture-launch",
     target: "capture-launch",
     panel: "capture",
   },
   {
-    title: "What's running",
-    body: "Every captured process stays listed here with its PID, so you can stop one without hunting for it in Task Manager.",
+    id: "capture-active",
     target: "capture-active",
     panel: "capture",
   },
   {
-    title: "Where its traffic actually went",
-    body: "Each connection a captured process makes shows up here with the rule's decision — same idea as the router's own decision log, scoped to just this process.",
+    id: "capture-log",
     target: "capture-log",
     panel: "capture",
   },
   {
-    title: "Staying connected",
-    body: "Keepalives are how a dead connection gets noticed at all; retries back off so a flapping server isn't hammered. Local ports stay held during an outage so nothing else can take them.",
+    id: "settings-reconnect",
     target: "settings-reconnect",
     panel: "settings",
   },
   {
-    title: "Moving to another machine",
-    body: "Export writes your tunnels, router rules, and settings to one file. Secrets are only included if you set a passphrase — leave it blank and the file is safe to share.",
+    id: "settings-config",
     target: "settings-config",
     panel: "settings",
   },
   {
-    title: "It lives in the tray",
-    body: "Closing the window only hides it — tunnels keep running. Reopen from the tray icon, toggle tunnels from its menu, and use the tray's Exit item when you actually want to quit.",
+    id: "tray",
   },
 ];
 
@@ -129,8 +116,19 @@ interface Props {
 }
 
 export function TourGuide({ onFinish, onRequestPanel }: Props) {
+  const { t } = useTranslation("tourGuide");
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
+
+  const STEPS: Step[] = useMemo(
+    () =>
+      STEP_DEFS.map((def) => ({
+        ...def,
+        title: t(`steps.${def.id}.title`),
+        body: t(`steps.${def.id}.body`),
+      })),
+    [t],
+  );
 
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
@@ -231,7 +229,7 @@ export function TourGuide({ onFinish, onRequestPanel }: Props) {
         style={cardStyle}
       >
         <p className="text-[11px] font-medium text-muted">
-          Step {index + 1} of {STEPS.length}
+          {t("stepProgress", { current: index + 1, total: STEPS.length })}
         </p>
         <h3 className="mt-1 font-display text-base font-semibold text-text">{step.title}</h3>
         <p className="mt-2 text-sm leading-relaxed text-muted">{step.body}</p>
@@ -241,7 +239,7 @@ export function TourGuide({ onFinish, onRequestPanel }: Props) {
             onClick={finish}
             className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
-            Skip
+            {t("skip")}
           </button>
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -249,13 +247,13 @@ export function TourGuide({ onFinish, onRequestPanel }: Props) {
               disabled={index === 0}
               className="rounded border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-hover disabled:opacity-40"
             >
-              Back
+              {t("back")}
             </button>
             <button
               onClick={() => (isLast ? finish() : setIndex((i) => i + 1))}
               className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover"
             >
-              {isLast ? "Done" : "Next"}
+              {isLast ? t("done") : t("next")}
             </button>
           </div>
         </div>
