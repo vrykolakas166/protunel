@@ -617,7 +617,7 @@ pub async fn launch_capture(
 
     let hook_dll_path = app
         .path()
-        .resolve("capture_hook.dll", tauri::path::BaseDirectory::Resource)
+        .resolve("resources/capture_hook.dll", tauri::path::BaseDirectory::Resource)
         .map_err(|e| format!("could not locate capture hook resource: {e}"))?;
 
     let launched =

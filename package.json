@@ -1,7 +1,7 @@
 {
   "name": "protunel",
   "private": true,
-  "version": "0.5.3",
+  "version": "0.5.31",
   "type": "module",
   "scripts": {
     "dev": "vite",
