@@ -68,11 +68,19 @@ pub fn run() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            // Closing the main window only hides it; exit is tray-only. The
+            // terminal window really closes.
+            tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // Its terminals would otherwise keep shells open on the server with
+            // nobody left to read them.
+            tauri::WindowEvent::Destroyed if window.label() == commands::TERMINAL_WINDOW => {
+                window.state::<AppState>().terminals.close_all();
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::list_tunnels,

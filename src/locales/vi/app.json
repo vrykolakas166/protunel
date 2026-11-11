@@ -4,6 +4,8 @@
   "router": "Router",
   "captureTooltip": "Chạy ứng dụng với traffic định tuyến qua router",
   "capture": "Chụp",
+  "terminal": "Terminal",
+  "terminalTooltip": "Mở terminal SSH trong cửa sổ mới",
   "settings": "Cài đặt",
   "updateAvailable": "Có bản cập nhật v{{version}}.",
   "installing": "Đang cài đặt…",

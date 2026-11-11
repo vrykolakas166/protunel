@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { listen } from "@tauri-apps/api/event";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
@@ -102,6 +103,13 @@ function App() {
     check()
       .then((update) => update && setPendingUpdate(update))
       .catch(() => {});
+    // The terminal window can add and edit hosts too.
+    const unlisten = listen("tunnels-changed", () => {
+      listTunnels().then(setTunnels).catch(() => {});
+    });
+    return () => {
+      unlisten.then((f) => f());
+    };
   }, []);
 
   const installUpdate = async () => {
@@ -239,6 +247,26 @@ function App() {
         <LocalIps className="flex-1" />
 
         <div className="ml-auto flex items-center gap-1.5">
+          <button
+            onClick={() =>
+              openTerminalWindow().catch((err) => setMessage({ text: String(err), isError: true }))
+            }
+            data-tour="terminal"
+            title={t("terminalTooltip")}
+            className="flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs font-medium text-text hover:border-accent hover:bg-surface-hover"
+          >
+            {/* Prompt glyph: this opens a shell, not a panel. */}
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+              <path d="M4.5 6l2 2-2 2M8 10h3" />
+            </svg>
+            {t("terminal")}
+            {/* Arrow out of a box: opens in its own window. */}
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true">
+              <path d="M7 1.5h3.5V5M10.5 1.5 5.5 6.5M9 7.5v2.5a.5.5 0 0 1-.5.5h-6.5a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5H4.5" />
+            </svg>
+          </button>
+          <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
           <button
             onClick={() => setShowRouter(true)}
             data-tour="router"

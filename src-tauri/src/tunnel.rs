@@ -15,6 +15,7 @@ use crate::events::{StatusEvent, TunnelStatus};
 use crate::router::RouterState;
 use crate::settings::SettingsStore;
 use crate::ssh::known_hosts::KnownHosts;
+use crate::ssh::terminal::Terminals;
 use crate::ssh::PendingHostKeyRequests;
 use crate::ssh::SshHandler;
 
@@ -42,6 +43,7 @@ pub struct AppState {
     pub settings: SettingsStore,
     pub router: RouterState,
     pub capture: CaptureState,
+    pub terminals: Terminals,
     running: Mutex<HashMap<Uuid, TunnelHandle>>,
     /// Last status emitted per tunnel. The status events are fire-and-forget, so
     /// a webview that reloads (or a tray menu rebuilt mid-reconnect) would
@@ -58,6 +60,7 @@ impl AppState {
             settings: SettingsStore::load(data_dir.join("settings.json")),
             router: RouterState::new(data_dir),
             capture: CaptureState::new(data_dir),
+            terminals: Terminals::default(),
             running: Mutex::new(HashMap::new()),
             statuses: Mutex::new(HashMap::new()),
         }

@@ -82,6 +82,11 @@ export function useTunnelEvents(onError?: (tunnelId: string, message: string) =>
       setHostKeyQueue((prev) => [...prev, event.payload]);
     });
 
+    // Both windows show the prompt; whichever answers it, the other drops it.
+    const unlistenHostKeyResolved = listen<string>("host-key-resolved", (event) => {
+      setHostKeyQueue((prev) => prev.filter((p) => p.requestId !== event.payload));
+    });
+
     // Status arrives as events, so a reload (or a window opened after tunnels
     // were already up) starts blind. Seed from the backend's snapshot, without
     // clobbering any event that landed while this was in flight.
@@ -101,6 +106,7 @@ export function useTunnelEvents(onError?: (tunnelId: string, message: string) =>
       unlistenStatus.then((f) => f());
       unlistenStats.then((f) => f());
       unlistenHostKey.then((f) => f());
+      unlistenHostKeyResolved.then((f) => f());
     };
   }, []);
 

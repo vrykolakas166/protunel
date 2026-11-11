@@ -11,6 +11,8 @@ interface Props {
   initial?: Tunnel | null;
   suggestedPort?: number;
   tunnels: Tunnel[];
+  /** SOCKS toggle for a brand-new tunnel; hosts added for the terminal start without one. */
+  defaultSocksEnabled?: boolean;
   onSubmit: (input: TunnelInput, secret?: string) => Promise<void>;
   onCancel: () => void;
 }
@@ -20,7 +22,15 @@ const inputClass =
 const monoInputClass = `${inputClass} font-mono`;
 const labelClass = "block text-xs font-medium text-muted";
 
-export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit, onCancel }: Props) {
+export function AddTunnelForm({
+  mode,
+  initial,
+  suggestedPort,
+  tunnels,
+  defaultSocksEnabled = true,
+  onSubmit,
+  onCancel,
+}: Props) {
   const { t } = useTranslation("addTunnelForm");
   const { t: tc } = useTranslation("common");
   const [name, setName] = useState(
@@ -39,7 +49,7 @@ export function AddTunnelForm({ mode, initial, suggestedPort, tunnels, onSubmit,
     initial?.localSocksPort ?? suggestedPort ?? 1080,
   );
   const [autoConnect, setAutoConnect] = useState(mode === "edit" ? (initial?.autoConnect ?? false) : false);
-  const [socksEnabled, setSocksEnabled] = useState(initial?.socksEnabled ?? true);
+  const [socksEnabled, setSocksEnabled] = useState(initial?.socksEnabled ?? defaultSocksEnabled);
   const [jumpTunnelId, setJumpTunnelId] = useState(initial?.jumpTunnelId ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

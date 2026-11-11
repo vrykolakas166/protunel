@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::ipc::{Channel, InvokeResponseBody};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::{mpsc, oneshot};
@@ -13,13 +14,19 @@ use uuid::Uuid;
 
 use crate::capture::{self, CapturedProcess};
 use crate::db::{PortForward, PortForwardInput, Tunnel, TunnelInput};
-use crate::events::StatusEvent;
+use crate::events::{
+    StatusEvent, HOST_KEY_RESOLVED_EVENT, SETTINGS_CHANGED_EVENT, TUNNELS_CHANGED_EVENT,
+};
 use crate::router::rules::{self, RouterRule, RouterRuleInput};
 use crate::router::RoutingDecision;
 use crate::secrets;
+use crate::ssh::terminal::{self, TerminalExit, TerminalInput};
 use crate::settings::{RouterConfig, Settings};
 use crate::tunnel::{ForwardCommand, TunnelHandle};
 use crate::AppState;
+
+/// Label of the terminal window; `lib.rs` tears its terminals down on destroy.
+pub const TERMINAL_WINDOW: &str = "terminal";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,7 +74,7 @@ pub fn add_tunnel(
     if let Some(secret) = secret {
         secrets::set_secret(tunnel.id, &secret).map_err(|e| e.to_string())?;
     }
-    crate::tray::rebuild_menu(&app);
+    tunnels_changed(&app);
     Ok(tunnel)
 }
 
@@ -96,7 +103,7 @@ pub fn update_tunnel(
     if let Some(secret) = secret {
         secrets::set_secret(tunnel.id, &secret).map_err(|e| e.to_string())?;
     }
-    crate::tray::rebuild_menu(&app);
+    tunnels_changed(&app);
     Ok(tunnel)
 }
 
@@ -254,10 +261,10 @@ pub async fn wait_for_session(state: &AppState, id: Uuid, timeout: Duration) -> 
             return Ok(());
         }
         if !state.is_connected(id) {
-            return Err("jump tunnel disconnected before it finished connecting".to_string());
+            return Err("tunnel disconnected before it finished connecting".to_string());
         }
         if Instant::now() >= deadline {
-            return Err("timed out waiting for jump tunnel to connect".to_string());
+            return Err("timed out waiting for tunnel to connect".to_string());
         }
         tokio::time::sleep(Duration::from_millis(150)).await;
     }
@@ -352,14 +359,77 @@ pub fn disconnect_all(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn confirm_host_key(state: State<AppState>, request_id: Uuid) -> Result<(), String> {
+pub fn confirm_host_key(app: AppHandle, state: State<AppState>, request_id: Uuid) -> Result<(), String> {
     state.pending_host_key.resolve(request_id, true);
+    let _ = app.emit(HOST_KEY_RESOLVED_EVENT, request_id);
     Ok(())
 }
 
 #[tauri::command]
-pub fn reject_host_key(state: State<AppState>, request_id: Uuid) -> Result<(), String> {
+pub fn reject_host_key(app: AppHandle, state: State<AppState>, request_id: Uuid) -> Result<(), String> {
     state.pending_host_key.resolve(request_id, false);
+    let _ = app.emit(HOST_KEY_RESOLVED_EVENT, request_id);
+    Ok(())
+}
+
+/// Rebuilds the tray and tells every window to reload its tunnel list. Call
+/// after any change to the set of tunnels or their names/hosts.
+pub fn tunnels_changed(app: &AppHandle) {
+    crate::tray::rebuild_menu(app);
+    let _ = app.emit(TUNNELS_CHANGED_EVENT, ());
+}
+
+/// Shows the terminal window, creating it on first use. Async on purpose:
+/// building a window from a sync command deadlocks on Windows.
+#[tauri::command]
+pub async fn open_terminal_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(TERMINAL_WINDOW) {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+    WebviewWindowBuilder::new(&app, TERMINAL_WINDOW, WebviewUrl::App("terminal.html".into()))
+        .title("protunel — Terminal")
+        .inner_size(1180.0, 740.0)
+        .min_inner_size(640.0, 400.0)
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn terminal_open(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    tunnel_id: Uuid,
+    cols: u32,
+    rows: u32,
+    on_output: Channel<InvokeResponseBody>,
+    on_exit: Channel<TerminalExit>,
+) -> Result<Uuid, String> {
+    terminal::open(&app, &state, tunnel_id, cols, rows, on_output, on_exit).await
+}
+
+#[tauri::command]
+pub fn terminal_write(state: State<AppState>, id: Uuid, data: String) -> Result<(), String> {
+    state.terminals.send(id, TerminalInput::Data(data.into_bytes()))
+}
+
+#[tauri::command]
+pub fn terminal_write_many(state: State<AppState>, ids: Vec<Uuid>, data: String) -> Result<(), String> {
+    state.terminals.send_many(&ids, data.as_bytes())
+}
+
+#[tauri::command]
+pub fn terminal_resize(state: State<AppState>, id: Uuid, cols: u32, rows: u32) -> Result<(), String> {
+    state.terminals.send(id, TerminalInput::Resize { cols, rows })
+}
+
+#[tauri::command]
+pub fn terminal_close(state: State<AppState>, id: Uuid) -> Result<(), String> {
+    // Already gone (shell exited first) is the outcome the caller wanted.
+    let _ = state.terminals.send(id, TerminalInput::Close);
     Ok(())
 }
 

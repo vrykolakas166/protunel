@@ -150,3 +150,45 @@ select {
      whatever the static class would otherwise show for one frame. */
   animation: search-drop-in 0.16s ease-out both;
 }
+
+/* While something is being dragged (terminal panes, tabs, hosts): one cursor
+   everywhere and no text selection kicking in under the pointer. */
+body.dragging,
+body.dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+/* Terminals must not see a drag passing over them: with mouse reporting on
+   (htop, mc, vim) every move and the final release would reach the remote
+   app as real input. The pane box underneath stays the drop target. */
+body.dragging .xterm,
+body.dragging .xterm * {
+  pointer-events: none !important;
+}
+
+/* Popup entrance (Modal). Same 180ms as the window growing to fit it
+   (windowFit.ts), so the two read as one motion. */
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+.modal-backdrop {
+  animation: modal-backdrop-in 0.18s ease-out both;
+}
+.modal-panel {
+  animation: modal-panel-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal-backdrop,
+  .modal-panel {
+    animation: none;
+  }
+}

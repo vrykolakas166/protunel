@@ -79,7 +79,6 @@ export interface KnownHostEntry {
   trustedAt: number;
 }
 
-export type ThemePreference = "system" | "light" | "dark";
 
 export type RuleKind = "hostWildcard" | "hostRegex" | "ipCidr" | "all";
 
@@ -224,7 +223,8 @@ export interface CaptureConnection {
 }
 
 export interface Settings {
-  theme: ThemePreference;
+  /** A theme id, or "system" to follow Windows between themeLight and themeDark. */
+  theme: string;
   autostartEnabled: boolean;
   portRangeMin: number;
   portRangeMax: number;
@@ -234,4 +234,13 @@ export interface Settings {
   reconnectMaxAttempts: number;
   tourCompleted: boolean;
   language: string;
+  themeLight: string;
+  themeDark: string;
+}
+
+export interface TerminalExit {
+  /** The remote shell's exit code, when the server reported one. */
+  exitStatus: number | null;
+  /** Why the terminal ended abnormally (session lost, write failed). */
+  message: string | null;
 }

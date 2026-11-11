@@ -5,7 +5,7 @@
   "identifier": "com.admin.protunel",
   "build": {
     "beforeDevCommand": "node scripts/build-hook-dll.mjs dev && bun run dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:5420",
     "beforeBuildCommand": "node scripts/build-hook-dll.mjs && bun run build",
     "frontendDist": "../dist"
   },

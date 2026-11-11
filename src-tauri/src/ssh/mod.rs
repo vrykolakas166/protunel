@@ -3,6 +3,7 @@ pub mod forward;
 pub mod known_hosts;
 pub mod pipe;
 pub mod socks;
+pub mod terminal;
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

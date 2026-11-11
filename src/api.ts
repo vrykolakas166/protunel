@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type Channel } from "@tauri-apps/api/core";
 import type {
   CaptureConnection,
   CapturedProcess,
@@ -18,6 +18,7 @@ import type {
   RoutingDecision,
   Settings,
   StatusEvent,
+  TerminalExit,
   Tunnel,
   TunnelInput,
 } from "./types";
@@ -33,6 +34,9 @@ export const updateTunnel = (id: string, input: TunnelInput, secret?: string) =>
   invoke<Tunnel>("update_tunnel", { id, input, secret });
 
 export const deleteTunnel = (id: string) => invoke<void>("delete_tunnel", { id });
+
+/** Saves the display order of tunnels; ids are the full list, top to bottom. */
+export const reorderTunnels = (ids: string[]) => invoke<void>("reorder_tunnels", { ids });
 
 export const addPortForward = (tunnelId: string, input: PortForwardInput) =>
   invoke<PortForward>("add_port_forward", { tunnelId, input });
@@ -118,3 +122,27 @@ export const listRecentCaptures = () => invoke<RecentCapture[]>("list_recent_cap
 
 export const listCaptureConnections = () =>
   invoke<CaptureConnection[]>("list_capture_connections");
+
+export const openTerminalWindow = () => invoke<void>("open_terminal_window");
+
+/** Opens a PTY shell on the tunnel's session, connecting the tunnel first if
+ * needed. Output arrives on `onOutput` as raw bytes. Resolves to the terminal id. */
+export const terminalOpen = (
+  tunnelId: string,
+  cols: number,
+  rows: number,
+  onOutput: Channel<ArrayBuffer>,
+  onExit: Channel<TerminalExit>,
+) => invoke<string>("terminal_open", { tunnelId, cols, rows, onOutput, onExit });
+
+export const terminalWrite = (id: string, data: string) =>
+  invoke<void>("terminal_write", { id, data });
+
+/** Broadcast: the same input to several terminals, in order, in one call. */
+export const terminalWriteMany = (ids: string[], data: string) =>
+  invoke<void>("terminal_write_many", { ids, data });
+
+export const terminalResize = (id: string, cols: number, rows: number) =>
+  invoke<void>("terminal_resize", { id, cols, rows });
+
+export const terminalClose = (id: string) => invoke<void>("terminal_close", { id });

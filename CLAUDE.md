@@ -8,7 +8,7 @@ Package manager is **Bun**. Rust side needs the MSVC toolchain (Windows-only app
 
 ```sh
 bun install
-bun run tauri dev        # Vite on :1420 + Rust app, both hot-reloaded
+bun run tauri dev        # Vite on :5420 + Rust app, both hot-reloaded
 bun run tauri build      # installers under src-tauri/target/release/bundle/
 bun run bump 0.3.3       # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
 ```
@@ -108,6 +108,37 @@ compiled snapshot and the live listener stay in step with the database.
 **DNS**: neither `ssh/socks.rs` nor the router calls `resolve_dns()`. Hostnames go
 to the SSH server unresolved, which is what makes rule matching and internal-only
 names work. Re-adding a local resolve would break both.
+
+### Terminal (`src-tauri/src/ssh/terminal.rs`, `src/terminal/`)
+
+Interactive shells in a second window (label `terminal`, page `terminal.html`,
+its own Vite entry and `capabilities/terminal.json`). Hosts *are* tunnels — a
+terminal-only host is a tunnel with `socks_enabled = false` — so they share the
+vault, TOFU, jump chain and config export/import with no extra storage.
+
+- A terminal never owns a connection: `terminal::open` runs `connect_one` +
+  `wait_for_session`, then opens a PTY `session` channel on the tunnel's live
+  handle. It dies with that session; the frontend offers Enter-to-reconnect.
+- Output goes over a per-terminal `ipc::Channel` as `InvokeResponseBody::Raw`
+  (an `ArrayBuffer` in JS — never JSON number arrays). The pump drains already
+  queued channel messages before sending, so bursts coalesce (≤64 KiB) while a
+  lone keystroke echo is never delayed by a timer.
+- Split panes: each tab is a binary tree (`src/terminal/layout.ts`, pure
+  functions) but `PaneLayer` renders the panes of **every tab** in one flat
+  layer, absolutely positioned and keyed by pane id. Never render per tab or
+  recurse the tree — a pane changing depth or tab would remount its
+  `TerminalView` and kill the shell. Drag-and-drop (`tabs.ts` `canDrop` /
+  `applyDrop`, `useDragDrop`) relies on this to move live sessions between
+  tabs; every move must keep pane ids.
+- Broadcast fans out in Rust (`terminal_write_many`) so every shell gets the
+  same bytes in the same order; the frontend only picks the target ids.
+- Only the `main` window hides on close; destroying the terminal window calls
+  `Terminals::close_all`.
+- Window shortcuts live in `src/terminal/shortcuts.ts` and xterm is told to
+  ignore exactly those keys. Keep them off plain Ctrl+letter: the shell owns
+  those (Ctrl+K kill-line, Ctrl+B tmux prefix).
+- Both windows show tunnels and host-key prompts, so `tunnels-changed` (emit
+  via `commands::tunnels_changed`) and `host-key-resolved` keep them in step.
 
 ### Config export/import (`src-tauri/src/config_io.rs`)
 

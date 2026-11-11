@@ -13,6 +13,7 @@ import enKnownHostsPanel from "../locales/en/knownHostsPanel.json";
 import enHostKeyPrompt from "../locales/en/hostKeyPrompt.json";
 import enApp from "../locales/en/app.json";
 import enLocalIps from "../locales/en/localIps.json";
+import enTerminal from "../locales/en/terminal.json";
 
 import viCommon from "../locales/vi/common.json";
 import viTunnelList from "../locales/vi/tunnelList.json";
@@ -26,6 +27,7 @@ import viKnownHostsPanel from "../locales/vi/knownHostsPanel.json";
 import viHostKeyPrompt from "../locales/vi/hostKeyPrompt.json";
 import viApp from "../locales/vi/app.json";
 import viLocalIps from "../locales/vi/localIps.json";
+import viTerminal from "../locales/vi/terminal.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "vi"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
@@ -47,6 +49,7 @@ void i18next.use(initReactI18next).init({
     "hostKeyPrompt",
     "app",
     "localIps",
+    "terminal",
   ],
   resources: {
     en: {
@@ -62,6 +65,7 @@ void i18next.use(initReactI18next).init({
       hostKeyPrompt: enHostKeyPrompt,
       app: enApp,
       localIps: enLocalIps,
+      terminal: enTerminal,
     },
     vi: {
       common: viCommon,
@@ -76,6 +80,7 @@ void i18next.use(initReactI18next).init({
       hostKeyPrompt: viHostKeyPrompt,
       app: viApp,
       localIps: viLocalIps,
+      terminal: viTerminal,
     },
   },
   interpolation: { escapeValue: false },

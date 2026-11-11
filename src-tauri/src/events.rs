@@ -77,3 +77,15 @@ pub struct RouterStatsEvent {
 }
 
 pub const ROUTER_STATS_EVENT: &str = "router-stats";
+
+/// A host-key prompt was answered (in any window), so every other window
+/// showing the same prompt can drop it.
+pub const HOST_KEY_RESOLVED_EVENT: &str = "host-key-resolved";
+
+/// The tunnel list in the database changed. The main and terminal windows both
+/// show it, and either can edit it, so neither can rely on refreshing itself.
+pub const TUNNELS_CHANGED_EVENT: &str = "tunnels-changed";
+
+/// Settings were saved (or imported). Carries the new `Settings`, so the
+/// terminal window can follow theme and language changes made in the main one.
+pub const SETTINGS_CHANGED_EVENT: &str = "settings-changed";
