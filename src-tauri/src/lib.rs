@@ -10,6 +10,7 @@ mod settings;
 mod ssh;
 mod tray;
 mod tunnel;
+mod window_anim;
 
 use tauri::{Manager, RunEvent};
 pub use tunnel::AppState;
@@ -116,6 +117,13 @@ pub fn run() {
             commands::list_active_captures,
             commands::list_recent_captures,
             commands::list_capture_connections,
+            commands::open_terminal_window,
+            window_anim::animate_window,
+            commands::terminal_open,
+            commands::terminal_write,
+            commands::terminal_write_many,
+            commands::terminal_resize,
+            commands::terminal_close,
             config_io::export_config,
             config_io::pick_import_file,
             config_io::preview_import,

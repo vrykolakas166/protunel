@@ -179,6 +179,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
 
   return (
     <Modal
+      dismissible={false}
       title={
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>

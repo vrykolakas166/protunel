@@ -91,6 +91,7 @@ export function AddTunnelForm({
 
   return (
     <Modal
+      dismissible={false}
       title={<h2 className="font-display text-base font-semibold text-text">{t(`title.${mode}`)}</h2>}
       onClose={onCancel}
       size="md"

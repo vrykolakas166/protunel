@@ -111,6 +111,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
 
   return (
     <Modal
+      dismissible={false}
       title={<h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>}
       onClose={onClose}
       size="xl"

@@ -143,6 +143,7 @@ export function ConfigPanel({ tunnels, onClose, onImported }: Props) {
 
   return (
     <Modal
+      dismissible={false}
       title={
         <h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>
       }

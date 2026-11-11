@@ -22,6 +22,7 @@ export function HostKeyPrompt({ request, onResolved }: Props) {
 
   return (
     <Modal
+      dismissible={false}
       title={<h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>}
       onClose={reject}
       size="md"
