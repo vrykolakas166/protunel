@@ -14,7 +14,7 @@
     },
     "add-socks": {
       "title": "What the tunnel exposes",
-      "body": "Turn on a local SOCKS5 proxy and point a browser or curl at that port. You can also add static port forwards later, from the tunnel's row in the list."
+      "body": "Turn on a local SOCKS5 proxy and point a browser or curl at that port. You can also add static port forwards later, from the tunnel's row in the list. A server you only want a shell on can leave SOCKS off."
     },
     "add-jump": {
       "title": "Hopping through another tunnel",
@@ -22,7 +22,7 @@
     },
     "list": {
       "title": "The tunnel list",
-      "body": "Toggle a tunnel with the switch. The dashed line animates while traffic can flow. Expand Forwards to add port forwards live — no reconnect needed. Tunnels that hop through another are indented under their parent."
+      "body": "Toggle a tunnel with the switch. The dashed line animates while traffic can flow. Expand Forwards to add port forwards live — no reconnect needed. Tunnels that hop through another are indented under their parent; drag the grip on the left to reorder them."
     },
     "bulk": {
       "title": "Search and bulk actions",
@@ -63,6 +63,14 @@
     "capture-log": {
       "title": "Where its traffic actually went",
       "body": "Each connection a captured process makes shows up here with the rule's decision — same idea as the router's own decision log, scoped to just this process."
+    },
+    "terminal": {
+      "title": "SSH terminal, in its own window",
+      "body": "Every tunnel is also a host here, sharing its saved login and live session. Drag a host or a tab onto the edge of a pane to split it, drag dividers to resize, and turn on broadcast to type into several servers at once. Ctrl+Shift+C / Ctrl+Shift+V copy and paste; selecting text copies it too."
+    },
+    "settings-theme": {
+      "title": "Themes",
+      "body": "Over a hundred and eighty colour themes. Hover a card to preview it on the whole window, click to keep it. \"Follow Windows\" switches between a light and a dark theme of your choice. The terminal window follows along."
     },
     "settings-reconnect": {
       "title": "Staying connected",

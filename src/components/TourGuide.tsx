@@ -93,6 +93,15 @@ const STEP_DEFS: StepDef[] = [
     panel: "capture",
   },
   {
+    id: "terminal",
+    target: "terminal",
+  },
+  {
+    id: "settings-theme",
+    target: "settings-theme",
+    panel: "settings",
+  },
+  {
     id: "settings-reconnect",
     target: "settings-reconnect",
     panel: "settings",

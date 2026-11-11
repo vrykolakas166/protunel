@@ -14,7 +14,7 @@
     },
     "add-socks": {
       "title": "Tunnel cung cấp gì",
-      "body": "Bật một proxy SOCKS5 cục bộ và trỏ trình duyệt hoặc curl vào cổng đó. Bạn cũng có thể thêm các port forward tĩnh sau này, ngay từ dòng của tunnel trong danh sách."
+      "body": "Bật một proxy SOCKS5 cục bộ và trỏ trình duyệt hoặc curl vào cổng đó. Bạn cũng có thể thêm các port forward tĩnh sau này, ngay từ dòng của tunnel trong danh sách. Server chỉ cần mở shell thì có thể tắt SOCKS."
     },
     "add-jump": {
       "title": "Nhảy qua một tunnel khác",
@@ -22,7 +22,7 @@
     },
     "list": {
       "title": "Danh sách tunnel",
-      "body": "Bật/tắt tunnel bằng công tắc. Đường nét đứt sẽ chạy hoạt ảnh khi có traffic đi qua. Mở rộng mục Forwards để thêm port forward ngay khi đang chạy — không cần kết nối lại. Các tunnel nhảy qua tunnel khác sẽ được thụt vào dưới tunnel cha."
+      "body": "Bật/tắt tunnel bằng công tắc. Đường nét đứt sẽ chạy hoạt ảnh khi có traffic đi qua. Mở rộng mục Forwards để thêm port forward ngay khi đang chạy — không cần kết nối lại. Các tunnel nhảy qua tunnel khác sẽ được thụt vào dưới tunnel cha; kéo tay nắm bên trái để sắp xếp lại thứ tự."
     },
     "bulk": {
       "title": "Tìm kiếm và thao tác hàng loạt",
@@ -63,6 +63,14 @@
     "capture-log": {
       "title": "Traffic của nó thực sự đi đâu",
       "body": "Mỗi kết nối mà tiến trình được capture tạo ra sẽ hiện ở đây kèm quyết định của rule — tương tự log quyết định của router, nhưng chỉ giới hạn trong tiến trình này."
+    },
+    "terminal": {
+      "title": "Terminal SSH, mở cửa sổ riêng",
+      "body": "Mỗi tunnel cũng là một host ở đây, dùng chung thông tin đăng nhập và phiên đang chạy. Kéo host hoặc tab vào mép một pane để chia màn hình, kéo đường phân cách để đổi kích thước, bật broadcast để gõ vào nhiều server cùng lúc. Ctrl+Shift+C / Ctrl+Shift+V để copy/dán; bôi đen là tự copy."
+    },
+    "settings-theme": {
+      "title": "Theme",
+      "body": "Hơn 180 theme màu. Rê chuột lên thẻ để xem trước trên cả cửa sổ, bấm để chọn. \"Theo Windows\" tự đổi giữa một theme sáng và một theme tối do bạn chọn. Cửa sổ terminal đổi theo."
     },
     "settings-reconnect": {
       "title": "Duy trì kết nối",

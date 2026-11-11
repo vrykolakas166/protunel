@@ -102,7 +102,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
       <div className="space-y-4">
         {error && <p className="text-sm text-coral">{error}</p>}
 
-        <section className="space-y-2">
+        <section data-tour="settings-theme" className="space-y-2">
           <p className={sectionLabelClass}>{t("sections.appearance")}</p>
           <ThemePicker settings={settings} disabled={busy} onChange={(next) => void save(next)} />
 
