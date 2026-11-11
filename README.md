@@ -1,7 +1,8 @@
 # protunel
 
 Desktop SSH tunnel manager for Windows. Add a host, flip a switch, get a local
-`socks5://127.0.0.1:<port>` proxy tunneled through SSH — no PuTTY/plink.
+`socks5://127.0.0.1:<port>` proxy tunneled through SSH — no PuTTY/plink. The same
+hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
 [Tauri](https://tauri.app) + React/TypeScript, embedded Rust SSH client.
 
 ## Features
@@ -14,14 +15,18 @@ Desktop SSH tunnel manager for Windows. Add a host, flip a switch, get a local
   outbound TCP through the router, no system proxy change
 - **Jump tunnels** — a tunnel connects through another tunnel's live session;
   connecting the inner one dials the whole chain
+- **SSH terminal** — its own window, tabs and drag-to-split panes, broadcast
+  typing to many servers at once; reuses the tunnel's live session
 - Auto-reconnect with backoff, keepalive dead-peer detection, local ports held
   across outages
 - TOFU host-key verification — unknown keys prompt with fingerprint; mismatches
   rejected, not silently trusted. Known-hosts manager to review/revoke
-- Live per-tunnel stats, connect/disconnect all, search, clone
+- Live per-tunnel stats, connect/disconnect all, search, clone, drag to reorder
 - System tray toggles, hide-to-tray, single-instance, OS notifications
 - Encrypted config export/import
-- Guided tour, signed auto-updater, System/Light/Dark theme
+- 189 colour themes with hover preview, or follow Windows with your own
+  light/dark pair
+- Guided tour, signed auto-updater
 
 Secrets (passwords, key passphrases) live in Windows Credential Manager via
 `keyring`, never in SQLite.
@@ -72,10 +77,44 @@ main thread runs, the process is killed rather than resumed unhooked. Captures
 survive an unclean shutdown and are re-adopted on restart (PID-reuse guarded by
 an exe-path check).
 
+## SSH terminal
+
+**Terminal** in the header opens a separate window. Every tunnel is a host
+there (add one with SOCKS off if you only want a shell). A terminal opens a PTY
+channel on the tunnel's existing session — connecting it, and its jump chain,
+if needed — so it shares credentials, host-key checks and the connection
+itself. If the session drops, press Enter to reconnect.
+
+- **Tabs and split panes** — drag a host from the sidebar tree, a tab, or a
+  pane header onto any edge of a pane to split it (a preview shows where it
+  lands); drop on the tab bar for a new tab. Moving a pane never restarts its
+  shell. Drag dividers to resize, double-click to even them out.
+- **Broadcast** — type into every pane of a tab at once, with per-pane opt-out.
+  Multi-line pastes to several servers ask first.
+- xterm.js with WebGL rendering; mouse apps (htop, mc, vim) work.
+- Echo latency and throughput in the footer.
+
+| Keys | Action |
+| --- | --- |
+| Ctrl+C | always SIGINT |
+| select text / Ctrl+Shift+C | copy |
+| Ctrl+Shift+V / right-click | paste |
+| Ctrl+Shift+D / Ctrl+Shift+E | split right / down with the same host |
+| Alt+arrows | move focus between panes |
+| Ctrl+Shift+Z | zoom pane |
+| Ctrl+Shift+B | toggle broadcast |
+| Ctrl+Shift+W | close pane |
+| Ctrl+Shift+K | find host |
+| Ctrl+Tab, Ctrl+1…9 | switch tab |
+
+Shortcuts stay off plain Ctrl+letter, which belongs to the shell.
+
 ## Export / import
 
 Settings → *Export / import config* writes one JSON file: tunnels, forwards,
-router config and rules, settings, known hosts.
+router config and rules, settings (including theme), known hosts. Terminal
+hosts are tunnels, so they come along; tunnels are written in display order and
+new ones are imported in that order.
 
 Secrets are separate. Blank passphrase → passwords/key passphrases are **not
 written** (stay in Credential Manager, file safe to share). With a passphrase
@@ -127,10 +166,13 @@ state.
 
 ```
 src/                React UI — panels, event hooks, typed IPC wrappers
+  terminal/          terminal window: panes, tabs, drag-and-drop, broadcast
+  themes/            theme catalogue and token derivation
 src-tauri/src/
   commands.rs        every #[tauri::command]; the IPC surface
   tunnel.rs          AppState: running tunnels, statuses, router state
-  ssh/               per-tunnel supervisor, SOCKS5 + local forwards, TOFU
+  ssh/               per-tunnel supervisor, SOCKS5 + local forwards, TOFU,
+                     terminal PTY channels
   router/            rule matcher, listener, Windows system proxy, PAC
   capture/           process launch + hook-DLL injection
   db.rs              SQLite: tunnels, forwards, router rules
@@ -146,7 +188,7 @@ files (settings, router config).
 
 ## Stack
 
-Tauri v2 · React 19 · TypeScript · Tailwind CSS v4 · `russh` · `fast-socks5` ·
+Tauri v2 · React 19 · TypeScript · Tailwind CSS v4 · xterm.js · `russh` · `fast-socks5` ·
 `rusqlite` · `regex` + `ipnet` · `minhook`
 
 ## License
