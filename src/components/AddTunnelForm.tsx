@@ -260,7 +260,7 @@ export function AddTunnelForm({
           <button
             type="submit"
             disabled={busy}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {mode === "edit" ? tc("save") : t("add")}
           </button>

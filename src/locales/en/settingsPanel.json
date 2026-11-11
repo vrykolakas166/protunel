@@ -1,10 +1,5 @@
 {
   "title": "Settings",
-  "theme": {
-    "system": "Match system",
-    "light": "Light",
-    "dark": "Dark"
-  },
   "sections": {
     "appearance": "Appearance",
     "startupAndNotifications": "Startup & notifications",
@@ -40,5 +35,16 @@
   "installingUpdate": "Installing…",
   "installedRestarting": "Installed. Restarting…",
   "installFailed": "Install failed: {{error}}",
-  "installAndRestart": "Install v{{version}} & restart"
+  "installAndRestart": "Install v{{version}} & restart",
+  "themeFixed": "One theme",
+  "themeSystem": "Follow Windows",
+  "themeSlotLight": "Light Windows",
+  "themeSlotDark": "Dark Windows",
+  "themeSearch": "Search {{count}} themes…",
+  "themeFilter": {
+    "all": "All",
+    "dark": "Dark",
+    "light": "Light"
+  },
+  "themeNoMatch": "No theme matches."
 }

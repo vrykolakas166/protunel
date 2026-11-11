@@ -15,7 +15,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
 use rand::TryRngCore;
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 use zeroize::Zeroize;
@@ -522,13 +522,14 @@ pub async fn apply_import(
     if sections.settings {
         state.settings.update(bundle.settings.clone());
         crate::commands::sync_autostart(&app, bundle.settings.autostart_enabled)?;
+        let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &bundle.settings);
     }
 
     if sections.known_hosts {
         result.known_hosts_added = state.known_hosts.merge(bundle.known_hosts.clone());
     }
 
-    crate::tray::rebuild_menu(&app);
+    crate::commands::tunnels_changed(&app);
     Ok(result)
 }
 

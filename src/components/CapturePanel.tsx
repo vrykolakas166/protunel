@@ -192,7 +192,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
           <button
             onClick={launch}
             disabled={busy || !exePath}
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {t("launch.launchButton")}
           </button>

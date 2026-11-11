@@ -35,6 +35,20 @@ pub struct Settings {
     /// UI language: "en" or "vi".
     #[serde(default = "default_language")]
     pub language: String,
+    /// Themes used while `theme` is "system": one for a light Windows, one
+    /// for a dark one. `theme` itself is either "system" or a theme id.
+    #[serde(default = "default_theme_light")]
+    pub theme_light: String,
+    #[serde(default = "default_theme_dark")]
+    pub theme_dark: String,
+}
+
+fn default_theme_light() -> String {
+    "protunel_light".to_string()
+}
+
+fn default_theme_dark() -> String {
+    "protunel_dark".to_string()
 }
 
 fn default_language() -> String {
@@ -66,6 +80,8 @@ impl Default for Settings {
             reconnect_max_attempts: 0,
             tour_completed: false,
             language: default_language(),
+            theme_light: default_theme_light(),
+            theme_dark: default_theme_dark(),
         }
     }
 }

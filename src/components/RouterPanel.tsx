@@ -452,7 +452,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
             <button
               type="submit"
               disabled={busy}
-              className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
             >
               {editing ? tc("save") : t("ruleForm.add")}
             </button>

@@ -1,10 +1,5 @@
 {
   "title": "Cài đặt",
-  "theme": {
-    "system": "Theo hệ thống",
-    "light": "Sáng",
-    "dark": "Tối"
-  },
   "sections": {
     "appearance": "Giao diện",
     "startupAndNotifications": "Khởi động & thông báo",
@@ -40,5 +35,16 @@
   "installingUpdate": "Đang cài đặt…",
   "installedRestarting": "Đã cài đặt. Đang khởi động lại…",
   "installFailed": "Cài đặt thất bại: {{error}}",
-  "installAndRestart": "Cài v{{version}} & khởi động lại"
+  "installAndRestart": "Cài v{{version}} & khởi động lại",
+  "themeFixed": "Một theme",
+  "themeSystem": "Theo Windows",
+  "themeSlotLight": "Windows sáng",
+  "themeSlotDark": "Windows tối",
+  "themeSearch": "Tìm trong {{count}} theme…",
+  "themeFilter": {
+    "all": "Tất cả",
+    "dark": "Tối",
+    "light": "Sáng"
+  },
+  "themeNoMatch": "Không có theme phù hợp."
 }

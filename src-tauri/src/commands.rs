@@ -632,6 +632,7 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
 pub fn update_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<Settings, String> {
     sync_autostart(&app, settings.autostart_enabled)?;
     state.settings.update(settings.clone());
+    let _ = app.emit(SETTINGS_CHANGED_EVENT, &settings);
     Ok(settings)
 }
 

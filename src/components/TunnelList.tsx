@@ -539,7 +539,7 @@ function ForwardsPanel({
         <button
           type="submit"
           disabled={busy}
-          className="shrink-0 rounded bg-accent px-2 py-1 text-[11px] font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          className="shrink-0 rounded bg-accent px-2 py-1 text-[11px] font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
         >
           {t("add")}
         </button>

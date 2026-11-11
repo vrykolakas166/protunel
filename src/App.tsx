@@ -18,7 +18,7 @@ import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
 import { useRouterEvents } from "./hooks/useRouterEvents";
 import { useLanguage } from "./hooks/useLanguage";
-import { useTheme } from "./hooks/useTheme";
+import { useTheme } from "./themes";
 import { useTunnelEvents } from "./hooks/useTunnelEvents";
 import {
   addTunnel,
@@ -84,7 +84,7 @@ function App() {
   const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
   const [updateInstalling, setUpdateInstalling] = useState(false);
 
-  useTheme(settings?.theme ?? "system");
+  useTheme(settings);
   useLanguage(settings?.language);
 
   const router = useRouterEvents();
@@ -333,7 +333,7 @@ function App() {
           <button
             onClick={installUpdate}
             disabled={updateInstalling}
-            className="rounded bg-accent px-3 py-1 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+            className="rounded bg-accent px-3 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {updateInstalling ? t("installing") : t("installAndRestart")}
           </button>
@@ -347,21 +347,21 @@ function App() {
         <button
           onClick={() => setPendingBulkAction("connect")}
           disabled={filteredTunnels.length === 0}
-          className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+          className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
         >
           {t("connectAll")}
         </button>
         <button
           onClick={() => setPendingBulkAction("disconnect")}
           disabled={filteredTunnels.length === 0}
-          className="rounded bg-coral px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+          className="rounded bg-coral px-3 py-1.5 text-xs font-medium text-on-coral hover:opacity-90 disabled:opacity-50"
         >
           {t("disconnectAll")}
         </button>
         <button
           onClick={() => setFormState({ mode: "add" })}
           data-tour="add"
-          className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover"
+          className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
         >
           {t("addTunnel")}
         </button>

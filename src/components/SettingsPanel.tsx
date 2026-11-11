@@ -1,12 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getSettings, updateSettings } from "../api";
-import type { Settings, ThemePreference } from "../types";
+import type { Settings } from "../types";
 import { SUPPORTED_LANGUAGES } from "../i18n";
 import { Modal } from "./Modal";
+import { ThemePicker } from "./ThemePicker";
 
 interface Props {
   onClose: () => void;
@@ -20,38 +21,6 @@ const inputClass =
 const labelClass = "block text-xs font-medium text-muted";
 const sectionLabelClass = "text-[10px] font-semibold uppercase tracking-wide text-muted";
 const checkboxRowClass = "flex items-center gap-2 text-sm text-text";
-
-const THEME_OPTIONS: { value: ThemePreference; icon: ReactNode }[] = [
-  {
-    value: "system",
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="4" width="18" height="13" rx="1.5" />
-        <path d="M8 21h8M12 17v4" strokeLinecap="round" />
-      </svg>
-    ),
-  },
-  {
-    value: "light",
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="4" />
-        <path
-          d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    value: "dark",
-    icon: (
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
-];
 
 export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenHosts }: Props) {
   const { t } = useTranslation("settingsPanel");
@@ -128,35 +97,14 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
     <Modal
       title={<h2 className="font-display text-base font-semibold text-text">{t("title")}</h2>}
       onClose={onClose}
-      size="md"
+      size="lg"
     >
       <div className="space-y-4">
         {error && <p className="text-sm text-coral">{error}</p>}
 
         <section className="space-y-2">
           <p className={sectionLabelClass}>{t("sections.appearance")}</p>
-          <div className="flex items-center justify-between gap-3">
-            <label className="text-sm text-text">{t("themeLabel")}</label>
-            <div className="flex items-center gap-1 rounded border border-border p-0.5">
-              {THEME_OPTIONS.map(({ value, icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  title={t(`theme.${value}`)}
-                  aria-label={t(`theme.${value}`)}
-                  disabled={busy}
-                  onClick={() => save({ ...settings, theme: value })}
-                  className={`flex h-7 w-7 items-center justify-center rounded disabled:opacity-50 ${
-                    settings.theme === value
-                      ? "bg-accent text-white"
-                      : "text-muted hover:bg-surface-hover hover:text-text"
-                  }`}
-                >
-                  {icon}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ThemePicker settings={settings} disabled={busy} onChange={(next) => void save(next)} />
 
           <div className="flex items-center justify-between gap-3">
             <label className="text-sm text-text">{t("languageLabel")}</label>
@@ -169,7 +117,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
                   onClick={() => save({ ...settings, language: value })}
                   className={`rounded px-2 py-1 text-xs font-medium disabled:opacity-50 ${
                     settings.language === value
-                      ? "bg-accent text-white"
+                      ? "bg-accent text-on-accent"
                       : "text-muted hover:bg-surface-hover hover:text-text"
                   }`}
                 >
@@ -301,7 +249,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
             <button
               onClick={checkForUpdates}
               disabled={checkingUpdate || installing}
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-hover disabled:opacity-50"
+              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
             >
               {checkingUpdate ? t("checking") : t("checkForUpdates")}
             </button>
@@ -312,7 +260,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
           {pendingUpdate && !installing && (
             <button
               onClick={installUpdate}
-              className="w-full rounded bg-amber px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+              className="w-full rounded bg-amber px-3 py-1.5 text-sm font-medium text-on-amber hover:opacity-90"
             >
               {t("installAndRestart", { version: pendingUpdate.version })}
             </button>

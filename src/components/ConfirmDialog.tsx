@@ -16,8 +16,8 @@ const TONE_BORDER: Record<"danger" | "accent", string> = {
 };
 
 const TONE_BUTTON: Record<"danger" | "accent", string> = {
-  danger: "bg-coral hover:opacity-90",
-  accent: "bg-accent hover:bg-accent-hover",
+  danger: "bg-coral text-on-coral hover:opacity-90",
+  accent: "bg-accent text-on-accent hover:bg-accent-hover",
 };
 
 export function ConfirmDialog({
@@ -46,7 +46,7 @@ export function ConfirmDialog({
         </button>
         <button
           onClick={onConfirm}
-          className={`rounded px-3 py-1.5 text-sm font-medium text-white ${TONE_BUTTON[tone]}`}
+          className={`rounded px-3 py-1.5 text-sm font-medium ${TONE_BUTTON[tone]}`}
         >
           {confirmLabel ?? t("delete")}
         </button>

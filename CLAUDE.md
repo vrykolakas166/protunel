@@ -201,9 +201,19 @@ transition and every tunnel add/edit/delete — tray checkmarks have no other up
 ### Frontend conventions
 
 - Tailwind v4, configured CSS-first in `src/index.css` via `@theme`. Semantic color
-  tokens only (`bg-surface`, `text-muted`, `bg-accent`, `bg-coral`) — dark mode swaps
-  the variables under `.dark`, which `useTheme` toggles. Raw palette classes break dark
-  mode.
+  tokens only (`bg-surface`, `text-muted`, `bg-accent`, `bg-coral`) — raw palette
+  classes break theming. Text on a coloured button is `text-on-accent` /
+  `text-on-coral` / `text-on-amber`, never `text-white`: many themes have light
+  accents.
+- Themes (`src/themes/`): `palettes.ts` is generated from Monkeytype's GPL-3.0
+  theme table (the project is GPL-3.0 for this reason; keep its one-line source
+  notice). `index.ts` derives every token plus the xterm ANSI palette from those
+  10 colours, enforcing readable contrast, and `useTheme(settings)` writes them as
+  CSS variables on `<html>` (overriding the `index.css` defaults) and returns the
+  theme. `settings.theme` is a theme id or `"system"` (then `themeLight` /
+  `themeDark`); legacy `"light"`/`"dark"` map to the two `protunel_*` themes.
+  The picker previews on hover via `setThemePreview`. `settings-changed` keeps
+  the terminal window in step.
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up.

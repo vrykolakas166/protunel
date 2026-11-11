@@ -151,4 +151,4 @@ Tauri v2 · React 19 · TypeScript · Tailwind CSS v4 · `russh` · `fast-socks5
 
 ## License
 
-[MIT](LICENSE).
+[GPL-3.0](LICENSE).
