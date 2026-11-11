@@ -16,5 +16,6 @@
   "remoteHostPlaceholder": "host từ xa",
   "remotePortPlaceholder": "cổng từ xa",
   "localPortPlaceholder": "cổng cục bộ",
-  "add": "Thêm"
+  "add": "Thêm",
+  "dragToReorder": "Kéo để sắp xếp"
 }

@@ -110,7 +110,8 @@ const SCHEMA: &str = "
         local_socks_port INTEGER NOT NULL,
         auto_connect INTEGER NOT NULL DEFAULT 0,
         jump_tunnel_id TEXT,
-        socks_enabled INTEGER NOT NULL DEFAULT 1
+        socks_enabled INTEGER NOT NULL DEFAULT 1,
+        position INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS port_forwards (
         id TEXT PRIMARY KEY,
@@ -135,6 +136,12 @@ fn migrate(conn: &Connection) {
     let _ = conn.execute("ALTER TABLE tunnels ADD COLUMN jump_tunnel_id TEXT", []);
     let _ = conn.execute(
         "ALTER TABLE tunnels ADD COLUMN socks_enabled INTEGER NOT NULL DEFAULT 1",
+        [],
+    );
+    // Display order, set by drag-and-drop. Existing rows all start at 0, which
+    // `ORDER BY position, name` turns into the old alphabetical order.
+    let _ = conn.execute(
+        "ALTER TABLE tunnels ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
         [],
     );
 }
@@ -211,7 +218,7 @@ impl Db {
 
     pub fn list(&self) -> rusqlite::Result<Vec<Tunnel>> {
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn.prepare(&format!("SELECT {COLUMNS} FROM tunnels ORDER BY name"))?;
+        let mut stmt = conn.prepare(&format!("SELECT {COLUMNS} FROM tunnels ORDER BY position, name"))?;
         let mut tunnels: Vec<Tunnel> = stmt.query_map([], row_to_tunnel)?.collect::<rusqlite::Result<_>>()?;
 
         let mut forward_stmt =
@@ -250,8 +257,9 @@ impl Db {
     pub fn insert(&self, t: &Tunnel) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO tunnels (id, name, host, port, username, auth_kind, auth_key_path, local_socks_port, auto_connect, jump_tunnel_id, socks_enabled)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            "INSERT INTO tunnels (id, name, host, port, username, auth_kind, auth_key_path, local_socks_port, auto_connect, jump_tunnel_id, socks_enabled, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                     (SELECT COALESCE(MAX(position), -1) + 1 FROM tunnels))",
             params![
                 t.id.to_string(),
                 t.name,
@@ -289,6 +297,21 @@ impl Db {
             ],
         )?;
         Ok(())
+    }
+
+    /// Display order. Position is never touched by [`Db::update`], so editing a
+    /// tunnel cannot move it; ids missing from `ids` keep their old position.
+    /// One transaction, so a failure part-way can't leave a half-applied order.
+    pub fn reorder_tunnels(&self, ids: &[Uuid]) -> rusqlite::Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        for (position, id) in ids.iter().enumerate() {
+            tx.execute(
+                "UPDATE tunnels SET position = ?2 WHERE id = ?1",
+                params![id.to_string(), position as i64],
+            )?;
+        }
+        tx.commit()
     }
 
     pub fn delete(&self, id: Uuid) -> rusqlite::Result<()> {
@@ -493,5 +516,52 @@ impl Db {
             params![tunnel_id.to_string()],
         )?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tunnel(name: &str) -> Tunnel {
+        Tunnel {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "root".to_string(),
+            auth: AuthMethod::Agent,
+            local_socks_port: 1080,
+            auto_connect: false,
+            forwards: Vec::new(),
+            jump_tunnel_id: None,
+            socks_enabled: false,
+        }
+    }
+
+    fn names(db: &Db) -> Vec<String> {
+        db.list().unwrap().into_iter().map(|t| t.name).collect()
+    }
+
+    #[test]
+    fn tunnel_order_survives_edits_and_new_tunnels_go_last() {
+        // ":memory:" is a fresh, private database per connection.
+        let db = Db::open(Path::new(":memory:")).unwrap();
+        let (b, a, c) = (tunnel("b"), tunnel("a"), tunnel("c"));
+        for t in [&b, &a, &c] {
+            db.insert(t).unwrap();
+        }
+        assert_eq!(names(&db), ["b", "a", "c"], "insertion order, not alphabetical");
+
+        db.reorder_tunnels(&[c.id, b.id, a.id]).unwrap();
+        assert_eq!(names(&db), ["c", "b", "a"]);
+
+        let mut renamed = b.clone();
+        renamed.name = "b2".to_string();
+        db.update(&renamed).unwrap();
+        assert_eq!(names(&db), ["c", "b2", "a"], "editing keeps the position");
+
+        db.insert(&tunnel("d")).unwrap();
+        assert_eq!(names(&db), ["c", "b2", "a", "d"]);
     }
 }

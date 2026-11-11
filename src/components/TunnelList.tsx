@@ -1,4 +1,4 @@
-import { useState, type SubmitEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { PortForward, Tunnel } from "../types";
@@ -28,6 +28,13 @@ interface Props {
   onDelete: (tunnel: Tunnel) => void;
   onRefresh: () => Promise<void>;
   onError: (text: string) => void;
+  /** New order of `tunnels` (ids, top to bottom) after a drag-and-drop. */
+  onReorder: (ids: string[]) => void;
+}
+
+/** The tunnel a row hangs under in the tree, or null for a top-level row. */
+function parentOf(tunnel: Tunnel, ids: Set<string>): string | null {
+  return tunnel.jumpTunnelId && ids.has(tunnel.jumpTunnelId) ? tunnel.jumpTunnelId : null;
 }
 
 export function TunnelList({
@@ -41,12 +48,97 @@ export function TunnelList({
   onDelete,
   onRefresh,
   onError,
+  onReorder,
 }: Props) {
   const { t } = useTranslation("tunnelList");
   const { t: tc } = useTranslation("common");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // While dragging: the live order (ids) and the row being dragged.
+  const [order, setOrder] = useState<string[] | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+  const lastTops = useRef(new Map<string, number>());
+
+  // FLIP: while a drag reshuffles rows, each row glides from where it was to
+  // where it now is instead of jumping.
+  useLayoutEffect(() => {
+    const tops = new Map<string, number>();
+    rowRefs.current.forEach((el, id) => {
+      const top = el.getBoundingClientRect().top;
+      tops.set(id, top);
+      const previous = lastTops.current.get(id);
+      if (dragId && previous !== undefined && Math.abs(previous - top) > 1) {
+        el.animate([{ transform: `translateY(${previous - top}px)` }, { transform: "none" }], {
+          duration: 160,
+          easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        });
+      }
+    });
+    lastTops.current = tops;
+  });
+
+  /**
+   * Drag by the grip only. A row moves among its siblings: top-level rows
+   * among top-level rows, a dependent among the dependents of the same
+   * parent. A drag can never change which tunnel another jumps through.
+   */
+  const startReorder = (tunnel: Tunnel) => (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    const ids = new Set(tunnels.map((tun) => tun.id));
+    const byId = new Map(tunnels.map((tun) => [tun.id, tun]));
+    const parent = parentOf(tunnel, ids);
+    const initial = tunnels.map((tun) => tun.id);
+    let current = initial;
+    setDragId(tunnel.id);
+    setOrder(current);
+
+    const move = (ev: PointerEvent) => {
+      const row = document
+        .elementFromPoint(ev.clientX, ev.clientY)
+        ?.closest<HTMLElement>("[data-tunnel-row]");
+      const targetId = row?.dataset.tunnelRow;
+      const target = targetId ? byId.get(targetId) : undefined;
+      if (!row || !target || target.id === tunnel.id || parentOf(target, ids) !== parent) return;
+      // Cross the target's middle before swapping, so a row doesn't flicker
+      // back and forth while the pointer sits on the boundary.
+      const rect = row.getBoundingClientRect();
+      const movingDown = current.indexOf(target.id) > current.indexOf(tunnel.id);
+      const past = movingDown
+        ? ev.clientY > rect.top + rect.height / 2
+        : ev.clientY < rect.top + rect.height / 2;
+      if (!past) return;
+      const next = current.filter((id) => id !== tunnel.id);
+      next.splice(next.indexOf(target.id) + (movingDown ? 1 : 0), 0, tunnel.id);
+      current = next;
+      setOrder(next);
+    };
+    const finish = (commit: boolean) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey, true);
+      if (commit && current.join() !== initial.join()) onReorder(current);
+      setDragId(null);
+      setOrder(null);
+    };
+    const onUp = () => finish(true);
+    const onCancel = () => finish(false);
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "Escape") return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      finish(false);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey, true);
+  };
 
   const toggleExpanded = (id: string) => {
     setExpanded((current) => {
@@ -80,16 +172,20 @@ export function TunnelList({
     );
   }
 
-  const tunnelIds = new Set(tunnels.map((t) => t.id));
+  const byIdAll = new Map(tunnels.map((tun) => [tun.id, tun]));
+  const ordered = order
+    ? order.map((id) => byIdAll.get(id)).filter((tun): tun is Tunnel => !!tun)
+    : tunnels;
+  const tunnelIds = new Set(ordered.map((t) => t.id));
   const childrenByParent = new Map<string, Tunnel[]>();
-  for (const tunnel of tunnels) {
+  for (const tunnel of ordered) {
     if (tunnel.jumpTunnelId && tunnelIds.has(tunnel.jumpTunnelId)) {
       const siblings = childrenByParent.get(tunnel.jumpTunnelId) ?? [];
       siblings.push(tunnel);
       childrenByParent.set(tunnel.jumpTunnelId, siblings);
     }
   }
-  const roots = tunnels.filter(
+  const roots = ordered.filter(
     (t) => !t.jumpTunnelId || !tunnelIds.has(t.jumpTunnelId),
   );
 
@@ -129,13 +225,37 @@ export function TunnelList({
         return (
           <li
             key={tunnel.id}
+            data-tunnel-row={tunnel.id}
+            ref={(el) => {
+              if (el) rowRefs.current.set(tunnel.id, el);
+              else rowRefs.current.delete(tunnel.id);
+            }}
             style={{
               marginLeft: depth > 0 ? depth * 20 : undefined,
               borderLeftColor: `color-mix(in srgb, var(--color-accent) ${treeTint}%, transparent)`,
             }}
-            className="rounded-lg border border-l-2 border-border bg-surface p-3 transition-colors hover:bg-surface-hover"
+            className={`rounded-lg border border-l-2 border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${
+              dragId === tunnel.id ? "relative z-10 shadow-lg ring-2 ring-accent" : ""
+            }`}
           >
             <div className="flex items-center gap-3">
+              <span
+                onPointerDown={startReorder(tunnel)}
+                title={t("dragToReorder")}
+                aria-label={t("dragToReorder")}
+                className={`-my-1 -ml-1.5 -mr-1.5 shrink-0 touch-none rounded px-0.5 py-1 hover:bg-surface-hover hover:text-text ${
+                  dragId === tunnel.id ? "cursor-grabbing text-accent" : "cursor-grab text-muted/60"
+                }`}
+              >
+                <svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor" aria-hidden="true">
+                  <circle cx="2" cy="2" r="1.1" />
+                  <circle cx="6" cy="2" r="1.1" />
+                  <circle cx="2" cy="7" r="1.1" />
+                  <circle cx="6" cy="7" r="1.1" />
+                  <circle cx="2" cy="12" r="1.1" />
+                  <circle cx="6" cy="12" r="1.1" />
+                </svg>
+              </span>
               <span className={`h-2 w-2 shrink-0 rounded-full ${DOT_COLOR[status]}`} />
 
               {hasChildren && (

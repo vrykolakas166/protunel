@@ -164,7 +164,9 @@ not TS — that keeps file contents off the IPC boundary and out of
   router rules.
   Migrations are additive `ALTER TABLE` calls in `migrate()` whose errors are ignored;
   a new column means touching `SCHEMA`, `migrate`, the `COLUMNS` const, `row_to_tunnel`,
-  `insert`, and `update` together.
+  `insert`, and `update` together. The exception is `tunnels.position` (display
+  order): it lives only in SQL — `insert` appends, `update` never touches it,
+  `reorder_tunnels` rewrites it — so editing a tunnel can't move it.
 - **OS credential vault** (`secrets.rs`, `keyring`) — passwords and key passphrases,
   keyed by tunnel UUID. Never in SQLite.
 - **JSON files** in `app_data_dir` — `settings.json`, `router.json` (both

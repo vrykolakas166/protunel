@@ -117,7 +117,15 @@ pub fn delete_tunnel(app: AppHandle, state: State<AppState>, id: Uuid) -> Result
     state.db.orphan_router_rules(id).map_err(|e| e.to_string())?;
     let _ = state.router.reload_rules(&state.db);
     let _ = secrets::delete_secret(id);
-    crate::tray::rebuild_menu(&app);
+    tunnels_changed(&app);
+    Ok(())
+}
+
+/// Saves the display order of tunnels (drag-and-drop in either window).
+#[tauri::command]
+pub fn reorder_tunnels(app: AppHandle, state: State<AppState>, ids: Vec<Uuid>) -> Result<(), String> {
+    state.db.reorder_tunnels(&ids).map_err(|e| e.to_string())?;
+    tunnels_changed(&app);
     Ok(())
 }
 

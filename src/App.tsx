@@ -29,6 +29,8 @@ import {
   disconnectTunnel,
   getSettings,
   listTunnels,
+  openTerminalWindow,
+  reorderTunnels,
   updateSettings,
   updateTunnel,
 } from "./api";
@@ -229,6 +231,23 @@ function App() {
     else if (action === "disconnect") await handleDisconnectAll();
   };
 
+  // `ids` is the new order of the rows on screen, which may be a search-filtered
+  // subset: those take the slots the visible tunnels held in the full list,
+  // and hidden tunnels keep theirs.
+  const handleReorder = async (ids: string[]) => {
+    const byId = new Map(tunnels.map((tun) => [tun.id, tun]));
+    const visible = new Set(ids);
+    let next = 0;
+    const merged = tunnels.map((tun) => (visible.has(tun.id) ? byId.get(ids[next++])! : tun));
+    setTunnels(merged);
+    try {
+      await reorderTunnels(merged.map((tun) => tun.id));
+    } catch (err) {
+      setMessage({ text: String(err), isError: true });
+      await refresh();
+    }
+  };
+
   const handleSubmit = async (input: TunnelInput, secret?: string) => {
     if (formState?.mode === "edit") {
       await updateTunnel(formState.tunnel.id, input, secret);
@@ -391,6 +410,7 @@ function App() {
           onDelete={setPendingDelete}
           onRefresh={refresh}
           onError={(text) => setMessage({ text, isError: true })}
+          onReorder={handleReorder}
         />
       </div>
 

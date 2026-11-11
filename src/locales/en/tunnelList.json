@@ -16,5 +16,6 @@
   "remoteHostPlaceholder": "remote host",
   "remotePortPlaceholder": "remote port",
   "localPortPlaceholder": "local port",
-  "add": "Add"
+  "add": "Add",
+  "dragToReorder": "Drag to reorder"
 }

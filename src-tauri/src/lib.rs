@@ -89,6 +89,7 @@ pub fn run() {
             commands::add_tunnel,
             commands::update_tunnel,
             commands::delete_tunnel,
+            commands::reorder_tunnels,
             commands::add_port_forward,
             commands::update_port_forward,
             commands::delete_port_forward,
