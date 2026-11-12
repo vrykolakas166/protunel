@@ -1,7 +1,7 @@
 [package]
 name = "protunel"
 version = "0.6.1"
-description = "Lightweight Windows desktop app for managing SSH SOCKS5 tunnels and local proxies without external SSH tools."
+description = "Lightweight desktop app (Windows, Linux) for managing SSH SOCKS5 tunnels and local proxies without external SSH tools."
 authors = ["Phuc Pham Hong"]
 edition = "2021"
 license = "GPL-3.0-only"
@@ -67,6 +67,10 @@ windows-sys = { version = "0.61.2", features = [
   "Win32_NetworkManagement_Ndis",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[target.'cfg(unix)'.dependencies]
+# `getifaddrs` for `network.rs`. Already in Cargo.lock via tokio.
+libc = "0.2"
 
 # The injected process-capture hook (src-tauri/capture-hook) is a separate
 # cdylib artifact built and bundled as a resource — see scripts/build-hook-dll.mjs

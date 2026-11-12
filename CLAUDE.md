@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Package manager is **Bun**. Rust side needs the MSVC toolchain (Windows-only app).
+Package manager is **Bun**. Targets Windows (MSVC toolchain) and Linux x86_64
+(WebKitGTK 4.1 + ayatana-appindicator dev packages; see `release.yml`).
+Windows-only features — process capture (`capture/`) and the system proxy
+(`router/system_proxy.rs`) — keep platform-neutral signatures with non-Windows
+stubs (`capture/unsupported.rs`), and the UI hides them via `src/platform.ts`.
+The hook DLL resource is declared only in `tauri.windows.conf.json`.
 
 ```sh
 bun install

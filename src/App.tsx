@@ -5,6 +5,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
 import { CapturePanel } from "./components/CapturePanel";
+import { isWindows } from "./platform";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
@@ -307,14 +308,16 @@ function App() {
             />
             {t("router")}
           </button>
-          <button
-            onClick={() => setShowCapture(true)}
-            data-tour="capture"
-            title={t("captureTooltip")}
-            className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
-          >
-            {t("capture")}
-          </button>
+          {isWindows && (
+            <button
+              onClick={() => setShowCapture(true)}
+              data-tour="capture"
+              title={t("captureTooltip")}
+              className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+            >
+              {t("capture")}
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             data-tour="settings"

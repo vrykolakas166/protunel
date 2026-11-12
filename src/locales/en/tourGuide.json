@@ -10,7 +10,7 @@
     },
     "add-auth": {
       "title": "How you authenticate",
-      "body": "Password, a private key file, or an SSH agent like Pageant. Passwords and key passphrases go into the Windows Credential Manager, never into the app's own database."
+      "body": "Password, a private key file, or an SSH agent (Pageant on Windows, $SSH_AUTH_SOCK on Linux). Passwords and key passphrases go into the OS credential vault, never into the app's own database."
     },
     "add-socks": {
       "title": "What the tunnel exposes",

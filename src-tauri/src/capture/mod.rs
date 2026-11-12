@@ -4,8 +4,17 @@
 //! it deliberately has no rule engine of its own — `router/` already has one,
 //! and captured connections are just another way traffic arrives at it.
 
+#[cfg(windows)]
 pub mod inject;
+#[cfg(windows)]
 pub mod pid_lookup;
+// Injection is Win32-only (CreateRemoteThread + a MinHook DLL). Elsewhere the
+// same functions exist but report the feature as unavailable, so the
+// bookkeeping below and its callers stay platform-neutral.
+#[cfg(not(windows))]
+mod unsupported;
+#[cfg(not(windows))]
+pub use unsupported::{inject, pid_lookup};
 
 use std::collections::{HashMap, VecDeque};
 use std::path::Path;

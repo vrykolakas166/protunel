@@ -1,13 +1,13 @@
 # protunel
 
-Desktop SSH tunnel manager for Windows. Add a host, flip a switch, get a local
+Desktop SSH tunnel manager for Windows and Linux (x86_64). Add a host, flip a switch, get a local
 `socks5://127.0.0.1:<port>` proxy tunneled through SSH — no PuTTY/plink. The same
 hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
 [Tauri](https://tauri.app) + React/TypeScript, embedded Rust SSH client.
 
 ## Features
 
-- Password, private-key, or SSH-agent (Pageant) auth
+- Password, private-key, or SSH-agent auth (Pageant on Windows, `$SSH_AUTH_SOCK` on Linux)
 - Per-tunnel SOCKS5 proxy and static local forwards (`-D`, `-L`)
 - **Proxy router** — one local SOCKS5 port, ordered rules pick a tunnel per
   *destination* instead of per app
@@ -28,8 +28,13 @@ hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
   light/dark pair
 - Guided tour, signed auto-updater
 
-Secrets (passwords, key passphrases) live in Windows Credential Manager via
-`keyring`, never in SQLite.
+Secrets (passwords, key passphrases) live in the OS vault via `keyring` —
+Windows Credential Manager, or the Secret Service (GNOME Keyring, KWallet) on
+Linux — never in SQLite.
+
+On Linux, process capture and the system-proxy toggle are unavailable (both are
+WinINET/Win32-specific); point apps at the router port or a tunnel's SOCKS
+port directly. The tray needs an AppIndicator-capable panel.
 
 ## Proxy router
 

@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use russh::client::{self, AuthResult};
-use russh::keys::agent::client::AgentClient;
+use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::agent::AgentIdentity;
 use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
 use tauri::{AppHandle, Emitter, Manager};
@@ -689,9 +689,7 @@ async fn authenticate_via_agent(
     session: &mut client::Handle<SshHandler>,
     tunnel: &Tunnel,
 ) -> Result<AuthResult, String> {
-    let mut agent = AgentClient::connect_pageant()
-        .await
-        .map_err(|e| format!("failed to connect to ssh-agent (Pageant): {e}"))?;
+    let mut agent = connect_agent().await?;
 
     let identities = agent
         .request_identities()
@@ -722,4 +720,18 @@ async fn authenticate_via_agent(
     }
 
     Err("ssh-agent did not have a key accepted by the server".to_string())
+}
+
+/// Pageant on Windows, `$SSH_AUTH_SOCK` elsewhere. Boxed so both platforms
+/// hand back the same client type.
+async fn connect_agent() -> Result<AgentClient<Box<dyn AgentStream + Send + Unpin>>, String> {
+    #[cfg(windows)]
+    let agent = AgentClient::connect_pageant()
+        .await
+        .map_err(|e| format!("failed to connect to ssh-agent (Pageant): {e}"))?;
+    #[cfg(unix)]
+    let agent = AgentClient::connect_env()
+        .await
+        .map_err(|e| format!("failed to connect to ssh-agent ($SSH_AUTH_SOCK): {e}"))?;
+    Ok(agent.dynamic())
 }

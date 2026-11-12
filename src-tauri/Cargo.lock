@@ -3918,6 +3918,7 @@ dependencies = [
  "fast-socks5",
  "ipnet",
  "keyring",
+ "libc",
  "log",
  "rand 0.9.5",
  "regex",

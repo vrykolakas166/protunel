@@ -10,7 +10,7 @@
     },
     "add-auth": {
       "title": "Cách xác thực",
-      "body": "Mật khẩu, tệp private key, hoặc SSH agent như Pageant. Mật khẩu và passphrase của key được lưu trong Windows Credential Manager, không bao giờ lưu trong cơ sở dữ liệu riêng của ứng dụng."
+      "body": "Mật khẩu, tệp private key, hoặc SSH agent (Pageant trên Windows, $SSH_AUTH_SOCK trên Linux). Mật khẩu và passphrase của key được lưu trong kho thông tin xác thực của hệ điều hành, không bao giờ lưu trong cơ sở dữ liệu riêng của ứng dụng."
     },
     "add-socks": {
       "title": "Tunnel cung cấp gì",

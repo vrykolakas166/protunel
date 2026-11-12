@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isWindows } from "../platform";
 
 /** Which modal the tour needs open for a step. `null` closes whatever is open. */
 export type TourPanel = "add" | "router" | "capture" | "settings";
@@ -11,6 +12,8 @@ interface StepDef {
   target?: string;
   /** Panel the step lives inside. The tour opens and closes these itself. */
   panel?: TourPanel;
+  /** Feature does not exist off Windows, so neither does its target. */
+  windowsOnly?: boolean;
 }
 
 interface Step extends StepDef {
@@ -65,6 +68,7 @@ const STEP_DEFS: StepDef[] = [
   },
   {
     id: "router-proxy",
+    windowsOnly: true,
     target: "router-proxy",
     panel: "router",
   },
@@ -75,20 +79,24 @@ const STEP_DEFS: StepDef[] = [
   },
   {
     id: "capture",
+    windowsOnly: true,
     target: "capture",
   },
   {
     id: "capture-launch",
+    windowsOnly: true,
     target: "capture-launch",
     panel: "capture",
   },
   {
     id: "capture-active",
+    windowsOnly: true,
     target: "capture-active",
     panel: "capture",
   },
   {
     id: "capture-log",
+    windowsOnly: true,
     target: "capture-log",
     panel: "capture",
   },
@@ -131,7 +139,7 @@ export function TourGuide({ onFinish, onRequestPanel }: Props) {
 
   const STEPS: Step[] = useMemo(
     () =>
-      STEP_DEFS.map((def) => ({
+      STEP_DEFS.filter((def) => isWindows || !def.windowsOnly).map((def) => ({
         ...def,
         title: t(`steps.${def.id}.title`),
         body: t(`steps.${def.id}.body`),

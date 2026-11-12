@@ -23,6 +23,7 @@ import type {
 } from "../types";
 import type { RouterRuntimeState } from "../hooks/useRouterEvents";
 import { Modal } from "./Modal";
+import { isWindows } from "../platform";
 
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text font-mono focus:border-accent focus:outline-none";
@@ -293,47 +294,51 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
             </div>
           )}
 
-          <label
-            data-tour="router-proxy"
-            className={`col-span-2 flex items-center gap-2 text-sm text-text ${
-              config.enabled ? "" : "opacity-50"
-            }`}
-          >
-            <input
-              type="checkbox"
-              checked={config.setSystemProxy}
-              disabled={busy || !config.enabled}
-              onChange={(e) => saveConfig({ ...config, setSystemProxy: e.target.checked })}
-            />
-            {t("setSystemProxy")}
-          </label>
-
-          {config.setSystemProxy && (
+          {isWindows && (
             <>
-              <div className={`col-span-2 ${config.enabled ? "" : "opacity-50"}`}>
-                <label className={labelClass}>{t("bypassListLabel")}</label>
+              <label
+                data-tour="router-proxy"
+                className={`col-span-2 flex items-center gap-2 text-sm text-text ${
+                  config.enabled ? "" : "opacity-50"
+                }`}
+              >
                 <input
-                  className={inputClass}
-                  value={config.bypassList}
+                  type="checkbox"
+                  checked={config.setSystemProxy}
                   disabled={busy || !config.enabled}
-                  onChange={(e) => setConfig({ ...config, bypassList: e.target.value })}
-                  onBlur={() => saveConfig(config)}
+                  onChange={(e) => saveConfig({ ...config, setSystemProxy: e.target.checked })}
                 />
-              </div>
-              <p className="col-span-2 text-[11px] text-muted">
-                <Trans t={t} i18nKey="pacDescription" components={{ code: <code className="font-mono" /> }} />
-                {runtime.pacUrl && (
-                  <>
-                    {" "}
-                    <Trans
-                      t={t}
-                      i18nKey="pacServing"
-                      values={{ url: runtime.pacUrl }}
-                      components={{ code: <code className="font-mono text-text" /> }}
+                {t("setSystemProxy")}
+              </label>
+
+              {config.setSystemProxy && (
+                <>
+                  <div className={`col-span-2 ${config.enabled ? "" : "opacity-50"}`}>
+                    <label className={labelClass}>{t("bypassListLabel")}</label>
+                    <input
+                      className={inputClass}
+                      value={config.bypassList}
+                      disabled={busy || !config.enabled}
+                      onChange={(e) => setConfig({ ...config, bypassList: e.target.value })}
+                      onBlur={() => saveConfig(config)}
                     />
-                  </>
-                )}
-              </p>
+                  </div>
+                  <p className="col-span-2 text-[11px] text-muted">
+                    <Trans t={t} i18nKey="pacDescription" components={{ code: <code className="font-mono" /> }} />
+                    {runtime.pacUrl && (
+                      <>
+                        {" "}
+                        <Trans
+                          t={t}
+                          i18nKey="pacServing"
+                          values={{ url: runtime.pacUrl }}
+                          components={{ code: <code className="font-mono text-text" /> }}
+                        />
+                      </>
+                    )}
+                  </p>
+                </>
+              )}
             </>
           )}
 

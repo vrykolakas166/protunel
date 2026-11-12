@@ -177,9 +177,10 @@ pub async fn start(app: &AppHandle) -> Result<(), String> {
 
     // Windows' fixed-proxy `socks=` setting means SOCKS4, which this SOCKS5
     // listener has to refuse, so system-wide wiring goes through a PAC script
-    // that can name SOCKS5 explicitly.
+    // that can name SOCKS5 explicitly. Windows-only: elsewhere the flag can
+    // still arrive in a config imported from Windows, and is ignored.
     let mut pac_url = None;
-    if config.set_system_proxy {
+    if cfg!(windows) && config.set_system_proxy {
         let script = pac::build_script(config.port, &config.bypass_list);
         let result = pac::spawn(script, cancel.clone())
             .await

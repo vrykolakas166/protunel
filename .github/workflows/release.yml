@@ -10,9 +10,21 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.04 rather than latest: the AppImage links against the build
+        # host's glibc, so the oldest supported base runs on the most distros.
+        platform: [windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: install Linux dependencies
+        if: startsWith(matrix.platform, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: install bun
         uses: oven-sh/setup-bun@v2

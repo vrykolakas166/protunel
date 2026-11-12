@@ -13,7 +13,7 @@
   "authKind": {
     "password": "Mật khẩu",
     "privateKey": "Tệp private key",
-    "agent": "SSH agent (Pageant)"
+    "agent": "SSH agent"
   },
   "keyFilePath": "Đường dẫn tệp key",
   "password": "Mật khẩu",

@@ -13,7 +13,7 @@
   "authKind": {
     "password": "Password",
     "privateKey": "Private key file",
-    "agent": "SSH agent (Pageant)"
+    "agent": "SSH agent"
   },
   "keyFilePath": "Key file path",
   "password": "Password",

@@ -9,6 +9,13 @@ import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+// Process capture is Windows-only (DLL injection), and the resource is only
+// declared in tauri.windows.conf.json, so other platforms have nothing to build.
+if (process.platform !== "win32") {
+  console.log("capture-hook: skipped (Windows-only)");
+  process.exit(0);
+}
+
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const srcTauri = join(root, "src-tauri");
 const profile = process.argv[2] === "dev" ? "dev" : "release";
