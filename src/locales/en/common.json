@@ -6,5 +6,7 @@
   "edit": "Edit",
   "clone": "Clone",
   "confirm": "Confirm",
-  "loading": "Loading…"
+  "loading": "Loading…",
+  "copy": "copy",
+  "copied": "copied"
 }

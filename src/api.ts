@@ -8,6 +8,7 @@ import type {
   ExportSections,
   KnownHostEntry,
   LaunchCaptureInput,
+  PlatformStatus,
   RecentCapture,
   PortForward,
   PortForwardInput,
@@ -115,6 +116,8 @@ export const launchCapture = (input: LaunchCaptureInput) =>
 export const stopCapture = (id: string) => invoke<void>("stop_capture", { id });
 
 export const listLocalIps = () => invoke<string[]>("list_local_ips");
+
+export const platformStatus = () => invoke<PlatformStatus>("platform_status");
 
 export const listActiveCaptures = () => invoke<CapturedProcess[]>("list_active_captures");
 

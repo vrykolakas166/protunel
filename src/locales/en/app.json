@@ -21,5 +21,12 @@
   "connectAllTitle": "Connect all tunnels",
   "disconnectAllTitle": "Disconnect all tunnels",
   "connectAllMessage": "Connect every tunnel in the list?",
-  "disconnectAllMessage": "Disconnect every active tunnel?"
+  "disconnectAllMessage": "Disconnect every active tunnel?",
+  "setup": {
+    "title": "Finish setting up this Linux session",
+    "dismiss": "Dismiss",
+    "vault": "No Secret Service is running, so saved passwords and key passphrases cannot be stored. Install gnome-keyring (or enable Secret Service integration in KeePassXC):",
+    "agent": "A tunnel uses the SSH agent, but SSH_AUTH_SOCK is not set for this session:",
+    "hyprlandNote": "Lines starting with exec-once / env go in ~/.config/hypr/hyprland.conf; log out and back in afterwards."
+  }
 }

@@ -15,7 +15,7 @@
     "passphraseLabel": "Mật khẩu — để trống nếu không xuất bí mật nào",
     "passphrasePlaceholder": "(không có bí mật)",
     "secretsIncludedNote": "Mật khẩu SSH và passphrase khóa sẽ được đưa vào, mã hóa bằng mật khẩu này. Không có cách nào khôi phục nếu bạn quên nó.",
-    "secretsExcludedNote": "Mật khẩu SSH và passphrase khóa vẫn nằm trong Windows Credential Manager, không được ghi vào file.",
+    "secretsExcludedNote": "Mật khẩu SSH và passphrase khóa vẫn nằm trong kho thông tin đăng nhập của hệ điều hành, không được ghi vào file.",
     "chooseFileAndExport": "Chọn file & xuất",
     "exportedWithSecrets": "Đã xuất tới {{path}} — có kèm bí mật, đã mã hóa.",
     "exportedNoSecrets": "Đã xuất tới {{path}} — không kèm bí mật."
@@ -29,6 +29,7 @@
     "tunnelsCheckbox": "Tunnel ({{count}})",
     "conflictWarning": "{{count}} tunnel nhập vào trùng tên với tunnel bạn đã có, nhưng là tunnel khác.",
     "conflictReplace": "Thay thế tunnel của tôi. Nếu bỏ chọn, chúng sẽ vào như bản sao riêng tên \"… (imported)\".",
+    "missingKeysWarning": "{{count}} tunnel dùng file private key không có trên máy này. File export chỉ chứa đường dẫn, không chứa key: hãy chép file key sang rồi sửa lại đường dẫn key của từng tunnel sau khi nhập.",
     "routerCheckbox": "Cấu hình + luật router — <replaces>thay thế</replaces> {{current}} luật hiện có bằng {{incoming}}",
     "settingsCheckbox": "Cài đặt",
     "knownHostsCheckbox": "Máy chủ đã biết ({{count}}) — gộp lại; ưu tiên của bạn",

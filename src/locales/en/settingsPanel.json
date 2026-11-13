@@ -13,7 +13,7 @@
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "launchOnStartup": "Launch ProdTunnel when Windows starts",
+  "launchOnStartup": "Launch ProdTunnel at login",
   "showNotifications": "Show Windows notifications",
   "autoReconnect": "Reconnect automatically when a tunnel drops",
   "keepaliveLabel": "Keepalive (s)",
@@ -46,5 +46,7 @@
     "dark": "Dark",
     "light": "Light"
   },
-  "themeNoMatch": "No theme matches."
+  "themeNoMatch": "No theme matches.",
+  "hyprlandAutostart": "Hyprland ignores the autostart entry this writes. Add this to ~/.config/hypr/hyprland.conf instead:",
+  "updatedByPackageManager": "Updates come from your package manager."
 }

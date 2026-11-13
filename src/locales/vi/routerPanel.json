@@ -55,5 +55,15 @@
     "showingOf": "đang hiển thị {{shown}} trên tổng {{total}}",
     "empty": "Chưa có kết nối nào được định tuyến.",
     "showMore": "Xem thêm"
+  },
+  "linuxProxy": {
+    "title": "Dùng router cho các app khác",
+    "hyprlandHeading": "Mọi app bạn mở (thêm vào ~/.config/hypr/hyprland.conf):",
+    "sessionHeading": "Mọi app chạy từ shell (thêm vào ~/.profile hoặc file rc của shell):",
+    "sessionNote": "Có hiệu lực sau khi đăng nhập lại. Áp dụng cho curl, git, đa số công cụ dòng lệnh, cùng Chromium, Chrome và app Electron ngoài GNOME/KDE. App nào bỏ qua <code>all_proxy</code> vẫn kết nối trực tiếp.",
+    "chromiumHeading": "Hoặc chỉ Chromium / Chrome — thêm vào lệnh chạy hoặc file .desktop:",
+    "firefoxHeading": "Firefox",
+    "firefoxSteps": "Settings → Network Settings → Manual proxy configuration: SOCKS Host <code>127.0.0.1</code>, port <code>{{port}}</code>, SOCKS v5, và tick <code>Proxy DNS when using SOCKS v5</code>.",
+    "failClosed": "App trỏ vào đây sẽ mất mạng khi router tắt — giữ \"Chạy router\" luôn bật và bật khởi động cùng hệ thống trong Cài đặt."
   }
 }

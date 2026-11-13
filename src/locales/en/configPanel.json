@@ -15,7 +15,7 @@
     "passphraseLabel": "Passphrase — leave blank to export without any secrets",
     "passphrasePlaceholder": "(no secrets)",
     "secretsIncludedNote": "SSH passwords and key passphrases will be included, encrypted with this passphrase. There is no way to recover them if you forget it.",
-    "secretsExcludedNote": "SSH passwords and key passphrases stay in the Windows Credential Manager and are not written to the file.",
+    "secretsExcludedNote": "SSH passwords and key passphrases stay in the OS credential vault and are not written to the file.",
     "chooseFileAndExport": "Choose file & export",
     "exportedWithSecrets": "Exported to {{path}} — secrets included, encrypted.",
     "exportedNoSecrets": "Exported to {{path}} — no secrets included."
@@ -29,6 +29,7 @@
     "tunnelsCheckbox": "Tunnels ({{count}})",
     "conflictWarning": "{{count}} imported tunnel(s) share a name with one you already have, but are a different tunnel.",
     "conflictReplace": "Replace mine. Unticked, they come in as separate copies named \"… (imported)\".",
+    "missingKeysWarning": "{{count}} tunnel(s) use a private-key file that does not exist on this machine. Only the path is exported, not the key: copy the key files over, then fix each tunnel's key path after importing.",
     "routerCheckbox": "Router config + rules — <replaces>replaces</replaces> your {{current}} rule(s) with {{incoming}}",
     "settingsCheckbox": "Settings",
     "knownHostsCheckbox": "Known hosts ({{count}}) — merged; yours always win",

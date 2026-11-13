@@ -10,6 +10,11 @@ Windows-only features — process capture (`capture/`) and the system proxy
 (`router/system_proxy.rs`) — keep platform-neutral signatures with non-Windows
 stubs (`capture/unsupported.rs`), and the UI hides them via `src/platform.ts`.
 The hook DLL resource is declared only in `tauri.windows.conf.json`.
+On Linux, `platform.rs` (`platform_status`) reports desktop, Secret Service and
+agent reachability, distro install command, and whether self-update applies
+(AppImage only); the frontend reads it once via `getPlatformStatus()` and drives
+`SetupNotice`, `LinuxProxyHelp` and the Hyprland autostart hint from it. Arch
+packaging lives in `packaging/arch/PKGBUILD` (repackages the release `.deb`).
 
 ```sh
 bun install

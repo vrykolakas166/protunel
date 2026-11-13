@@ -4,6 +4,7 @@ mod config_io;
 mod db;
 mod events;
 mod network;
+mod platform;
 mod router;
 mod secrets;
 mod settings;
@@ -15,8 +16,24 @@ mod window_anim;
 use tauri::{Manager, RunEvent};
 pub use tunnel::AppState;
 
+/// WebKitGTK's DMA-BUF renderer draws a blank white window on the NVIDIA
+/// proprietary driver (common on Arch + Wayland compositors). Falling back to
+/// the older renderer costs a little GPU efficiency and fixes it. Only on
+/// NVIDIA, and never over a value the user set themselves. Runs first thing,
+/// before any thread exists, which is what makes `set_var` sound.
+#[cfg(target_os = "linux")]
+fn work_around_nvidia_dmabuf() {
+    const VAR: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
+    if std::env::var_os(VAR).is_none() && std::path::Path::new("/proc/driver/nvidia").exists() {
+        std::env::set_var(VAR, "1");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    work_around_nvidia_dmabuf();
+
     let mut builder = tauri::Builder::default();
 
     #[cfg(desktop)]
@@ -130,6 +147,7 @@ pub fn run() {
             config_io::preview_import,
             config_io::apply_import,
             network::list_local_ips,
+            platform::platform_status,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application");

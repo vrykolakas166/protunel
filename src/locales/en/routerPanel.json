@@ -55,5 +55,15 @@
     "showingOf": "showing {{shown}} of {{total}}",
     "empty": "Nothing routed yet.",
     "showMore": "Show more"
+  },
+  "linuxProxy": {
+    "title": "Use the router for other apps",
+    "hyprlandHeading": "Every app you launch (add to ~/.config/hypr/hyprland.conf):",
+    "sessionHeading": "Every app started from your shell (add to ~/.profile or your shell rc):",
+    "sessionNote": "Takes effect after logging back in. Covers curl, git and most CLI tools, plus Chromium, Chrome and Electron apps outside GNOME/KDE. Apps that ignore <code>all_proxy</code> keep connecting directly.",
+    "chromiumHeading": "Or just Chromium / Chrome — add to the launch command or its .desktop file:",
+    "firefoxHeading": "Firefox",
+    "firefoxSteps": "Settings → Network Settings → Manual proxy configuration: SOCKS Host <code>127.0.0.1</code>, port <code>{{port}}</code>, SOCKS v5, and tick <code>Proxy DNS when using SOCKS v5</code>.",
+    "failClosed": "Apps pointed here lose the network while the router is off — keep \"Run the router\" on, and enable start-with-system in Settings."
   }
 }

@@ -13,7 +13,7 @@
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "launchOnStartup": "Khởi chạy ProdTunnel cùng Windows",
+  "launchOnStartup": "Khởi chạy ProdTunnel khi đăng nhập",
   "showNotifications": "Hiện thông báo Windows",
   "autoReconnect": "Tự động kết nối lại khi tunnel bị rớt",
   "keepaliveLabel": "Keepalive (giây)",
@@ -46,5 +46,7 @@
     "dark": "Tối",
     "light": "Sáng"
   },
-  "themeNoMatch": "Không có theme phù hợp."
+  "themeNoMatch": "Không có theme phù hợp.",
+  "hyprlandAutostart": "Hyprland bỏ qua mục autostart mà tuỳ chọn này ghi ra. Hãy thêm dòng sau vào ~/.config/hypr/hyprland.conf:",
+  "updatedByPackageManager": "Cập nhật qua trình quản lý gói của hệ thống."
 }

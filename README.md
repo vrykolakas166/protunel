@@ -32,10 +32,24 @@ Secrets (passwords, key passphrases) live in the OS vault via `keyring` —
 Windows Credential Manager, or the Secret Service (GNOME Keyring, KWallet) on
 Linux — never in SQLite.
 
-On Linux, process capture and the system-proxy toggle are unavailable (both are
-WinINET/Win32-specific); point apps at the router port or a tunnel's SOCKS
-port directly. The tray uses StatusNotifierItem (KDE, XFCE and most panels;
-GNOME needs the AppIndicator extension); left-click it to show or hide the window.
+## Linux
+
+Install the AppImage (needs `fuse2`), the `.deb`/`.rpm`, or on Arch build
+`packaging/arch/PKGBUILD` (`makepkg -si`), which uses the system WebKitGTK and
+updates through pacman.
+
+- **Vault**: needs a running Secret Service (`gnome-keyring`, or KeePassXC with
+  Secret Service on). The app checks at startup and shows the fix if it is missing.
+- **Tray**: StatusNotifierItem — KDE, XFCE, waybar's `tray` module; GNOME needs
+  the AppIndicator extension. Left-click toggles the window.
+- **Proxy for other apps**: there is no system-wide proxy setting to write, so
+  the router panel hands out ready-to-paste lines instead — `env` lines for
+  `hyprland.conf` (or `export` for a shell profile), a Chromium flag, and
+  Firefox steps, all filled in with the router port.
+- **Hyprland**: ignores XDG autostart; Settings shows the `exec-once` line when
+  start-at-login is on. On the NVIDIA driver the app disables WebKit's DMA-BUF
+  renderer itself, which otherwise draws a blank window.
+- Process capture and the automatic system-proxy toggle are Windows-only.
 
 ## Proxy router
 

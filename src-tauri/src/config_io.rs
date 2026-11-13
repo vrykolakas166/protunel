@@ -20,7 +20,7 @@ use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 use zeroize::Zeroize;
 
-use crate::db::{PortForward, Tunnel};
+use crate::db::{AuthMethod, PortForward, Tunnel};
 use crate::router::rules::RouterRule;
 use crate::secrets;
 use crate::settings::{RouterConfig, Settings};
@@ -308,6 +308,11 @@ pub struct TunnelPreview {
     pub name: String,
     pub host: String,
     pub disposition: TunnelDisposition,
+    /// The tunnel's private-key path, when that file does not exist on this
+    /// machine. Only the path is exported, never the key, so a bundle moved
+    /// between machines (or from Windows to Linux) can't connect until the
+    /// user copies the key over and fixes the path.
+    pub missing_key_path: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -387,6 +392,12 @@ pub async fn preview_import(
                 TunnelDisposition::NameConflict
             } else {
                 TunnelDisposition::New
+            },
+            missing_key_path: match &t.auth {
+                AuthMethod::PrivateKey { path } if !std::path::Path::new(path).is_file() => {
+                    Some(path.clone())
+                }
+                _ => None,
             },
         })
         .collect();

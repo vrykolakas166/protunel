@@ -1,0 +1,31 @@
+# Repackages the .deb from the GitHub release, so the app links the system
+# webkit2gtk-4.1 instead of the copy bundled in the AppImage (which is what
+# tends to break on rolling Arch). Updates come through pacman, not the
+# in-app updater — the app detects this and hides its update button.
+#
+#   cd packaging/arch && makepkg -si
+#
+# To move to a new release: bump pkgver, then `updpkgsums`.
+
+pkgname=protunel-bin
+pkgver=0.7.1
+pkgrel=1
+pkgdesc="SSH SOCKS5 tunnels, per-destination proxy router and SSH terminal"
+arch=('x86_64')
+url="https://github.com/vrykolakas166/protunel"
+license=('GPL-3.0-only')
+depends=('webkit2gtk-4.1' 'gtk3' 'hicolor-icon-theme')
+optdepends=(
+  'gnome-keyring: Secret Service vault for saved passwords and key passphrases'
+  'gcr-4: socket-activated SSH agent (gcr-ssh-agent.socket)'
+  'waybar: tray icon on Hyprland/sway (enable its "tray" module)'
+)
+provides=('protunel')
+conflicts=('protunel')
+source=("${url}/releases/download/v${pkgver}/protunel_${pkgver}_amd64.deb")
+sha256sums=('SKIP')
+
+package() {
+  bsdtar -xf data.tar.* -C "${pkgdir}"
+  chmod -R u=rwX,go=rX "${pkgdir}/usr"
+}

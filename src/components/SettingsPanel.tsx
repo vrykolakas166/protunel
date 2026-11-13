@@ -8,6 +8,8 @@ import type { Settings } from "../types";
 import { SUPPORTED_LANGUAGES } from "../i18n";
 import { Modal } from "./Modal";
 import { ThemePicker } from "./ThemePicker";
+import { CopyLine } from "./CopyLine";
+import { getPlatformStatus, isWindows } from "../platform";
 
 interface Props {
   onClose: () => void;
@@ -32,6 +34,19 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [installing, setInstalling] = useState(false);
+  /** Set only on Hyprland, which ignores XDG autostart entries. */
+  const [hyprlandLaunch, setHyprlandLaunch] = useState<string | null>(null);
+  const [selfUpdate, setSelfUpdate] = useState(true);
+
+  useEffect(() => {
+    if (isWindows) return;
+    getPlatformStatus()
+      .then((s) => {
+        setHyprlandLaunch(s.desktop.includes("hyprland") ? s.launchCommand : null);
+        setSelfUpdate(s.selfUpdate);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     getSettings().then(setSettings);
@@ -139,6 +154,12 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
             />
             {t("launchOnStartup")}
           </label>
+          {settings.autostartEnabled && hyprlandLaunch && (
+            <div className="space-y-1 pl-6 text-[11px] text-muted">
+              <p>{t("hyprlandAutostart")}</p>
+              <CopyLine text={`exec-once = ${hyprlandLaunch}`} />
+            </div>
+          )}
           <label className={checkboxRowClass}>
             <input
               type="checkbox"
@@ -246,13 +267,17 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
             <p className="font-mono text-xs text-muted">
               {version ? `v${version}` : "…"}
             </p>
-            <button
-              onClick={checkForUpdates}
-              disabled={checkingUpdate || installing}
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
-            >
-              {checkingUpdate ? t("checking") : t("checkForUpdates")}
-            </button>
+            {selfUpdate ? (
+              <button
+                onClick={checkForUpdates}
+                disabled={checkingUpdate || installing}
+                className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
+              >
+                {checkingUpdate ? t("checking") : t("checkForUpdates")}
+              </button>
+            ) : (
+              <p className="text-xs text-muted">{t("updatedByPackageManager")}</p>
+            )}
           </div>
 
           {updateStatus && <p className="text-xs text-muted">{updateStatus}</p>}

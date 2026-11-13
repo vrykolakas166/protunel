@@ -5,7 +5,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
 import { CapturePanel } from "./components/CapturePanel";
-import { isWindows } from "./platform";
+import { getPlatformStatus, isWindows } from "./platform";
 import { ConfigPanel } from "./components/ConfigPanel";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
@@ -15,6 +15,7 @@ import { MessageBar } from "./components/MessageBar";
 import { RouterPanel } from "./components/RouterPanel";
 import { Sample1 } from "./components/Sample1";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { SetupNotice } from "./components/SetupNotice";
 import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
 import { useRouterEvents } from "./hooks/useRouterEvents";
@@ -103,7 +104,8 @@ function App() {
       // Runs itself once on a fresh install, then never again unless replayed.
       if (!loaded.tourCompleted) setShowTour(true);
     });
-    check()
+    getPlatformStatus()
+      .then((status) => (status.selfUpdate ? check() : null))
       .then((update) => update && setPendingUpdate(update))
       .catch(() => {});
     // The terminal window can add and edit hosts too.
@@ -329,6 +331,8 @@ function App() {
       </header>
 
       <MessageBar text={message?.text ?? null} isError={message?.isError ?? false} />
+
+      <SetupNotice tunnels={tunnels} />
 
       {pendingUpdate && (
         <div className="flex items-center justify-between gap-3 border-b border-border bg-accent/10 px-4 py-2 text-sm text-text">

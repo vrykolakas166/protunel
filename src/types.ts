@@ -152,6 +152,8 @@ export interface TunnelPreview {
   name: string;
   host: string;
   disposition: TunnelDisposition;
+  /** Set when the tunnel's private-key file does not exist on this machine. */
+  missingKeyPath: string | null;
 }
 
 export interface ImportPreview {
@@ -243,4 +245,17 @@ export interface TerminalExit {
   exitStatus: number | null;
   /** Why the terminal ended abnormally (session lost, write failed). */
   message: string | null;
+}
+
+export interface PlatformStatus {
+  /** `XDG_CURRENT_DESKTOP`, lower-cased ("hyprland", "kde", …); empty on Windows. */
+  desktop: string;
+  vaultAvailable: boolean;
+  sshAgentAvailable: boolean;
+  /** e.g. "sudo pacman -S --needed"; empty when the distro is unknown. */
+  installCommand: string;
+  /** The AppImage or executable path, for an `exec-once` autostart line. */
+  launchCommand: string;
+  /** False for a package-manager install, which must not self-update. */
+  selfUpdate: boolean;
 }

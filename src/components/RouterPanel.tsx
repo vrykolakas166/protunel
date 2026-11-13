@@ -24,6 +24,7 @@ import type {
 import type { RouterRuntimeState } from "../hooks/useRouterEvents";
 import { Modal } from "./Modal";
 import { isWindows } from "../platform";
+import { LinuxProxyHelp } from "./LinuxProxyHelp";
 
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text font-mono focus:border-accent focus:outline-none";
@@ -341,6 +342,8 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
               )}
             </>
           )}
+
+          {!isWindows && <LinuxProxyHelp port={config.port} />}
 
           <label
             className={`col-span-2 flex items-center gap-2 text-sm text-text ${

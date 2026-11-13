@@ -140,6 +140,7 @@ export function ConfigPanel({ tunnels, onClose, onImported }: Props) {
     });
 
   const conflicts = preview?.tunnels.filter((tun) => tun.disposition === "nameConflict") ?? [];
+  const missingKeys = preview?.tunnels.filter((tun) => tun.missingKeyPath) ?? [];
 
   return (
     <Modal
@@ -293,6 +294,21 @@ export function ConfigPanel({ tunnels, onClose, onImported }: Props) {
                         </span>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {sections.tunnels && missingKeys.length > 0 && (
+                  <div className="rounded border border-coral/40 bg-coral/10 p-2 text-[11px] text-text">
+                    <p className="mb-1 text-coral">
+                      {t("import.missingKeysWarning", { count: missingKeys.length })}
+                    </p>
+                    <ul className="space-y-0.5 font-mono">
+                      {missingKeys.map((tun) => (
+                        <li key={tun.id} className="truncate">
+                          {tun.name}: <span className="text-muted">{tun.missingKeyPath}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
 
