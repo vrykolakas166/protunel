@@ -1,5 +1,5 @@
 use tauri::menu::{CheckMenuItemBuilder, Menu, MenuItemBuilder, PredefinedMenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::commands;
@@ -21,7 +21,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref()))
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::DoubleClick { .. } = event {
+            if is_toggle_gesture(&event) {
                 toggle_window(tray.app_handle());
             }
         })
@@ -82,6 +82,24 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
                 rebuild_menu(&app);
             });
         }
+    }
+}
+
+/// Double-click on Windows. The Linux StatusNotifierItem backend reports no
+/// double-click — a single left click is "activate" there, by convention and
+/// by protocol — so that is the gesture on Linux.
+fn is_toggle_gesture(event: &TrayIconEvent) -> bool {
+    if cfg!(target_os = "linux") {
+        matches!(
+            event,
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            }
+        )
+    } else {
+        matches!(event, TrayIconEvent::DoubleClick { .. })
     }
 }
 

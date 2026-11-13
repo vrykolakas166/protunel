@@ -19,7 +19,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2.12", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -72,6 +72,13 @@ windows-sys = { version = "0.61.2", features = [
 # `getifaddrs` for `network.rs`. Already in Cargo.lock via tokio.
 libc = "0.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Not used directly: enabling `ksni` on Tauri's own tray-icon (feature
+# unification) swaps the AppIndicator backend, which reports no clicks at all,
+# for StatusNotifierItem, which reports left-click activation. Must stay on the
+# same minor as the tray-icon tauri depends on, or two copies get built.
+tray-icon = { version = "0.25", default-features = false, features = ["ksni"] }
+
 # The injected process-capture hook (src-tauri/capture-hook) is a separate
 # cdylib artifact built and bundled as a resource — see scripts/build-hook-dll.mjs
 # — not linked into this crate. `default-members` keeps `cargo check`/`cargo test`
@@ -79,4 +86,3 @@ libc = "0.2"
 [workspace]
 members = ["capture-hook"]
 default-members = ["."]
-

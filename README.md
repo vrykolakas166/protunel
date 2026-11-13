@@ -34,7 +34,8 @@ Linux — never in SQLite.
 
 On Linux, process capture and the system-proxy toggle are unavailable (both are
 WinINET/Win32-specific); point apps at the router port or a tunnel's SOCKS
-port directly. The tray needs an AppIndicator-capable panel.
+port directly. The tray uses StatusNotifierItem (KDE, XFCE and most panels;
+GNOME needs the AppIndicator extension); left-click it to show or hide the window.
 
 ## Proxy router
 

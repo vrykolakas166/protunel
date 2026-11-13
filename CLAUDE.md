@@ -203,6 +203,12 @@ Closing the window hides it (`on_window_event` → `prevent_close` + `hide`); ex
 tray-only. `tray::rebuild_menu` rebuilds the whole menu and is called on every status
 transition and every tunnel add/edit/delete — tray checkmarks have no other update path.
 
+The toggle gesture is double-click on Windows, left click on Linux. Linux gets clicks
+only because `Cargo.toml` enables tray-icon's `ksni` feature (StatusNotifierItem);
+the default AppIndicator backend emits no tray events at all. That dependency must
+track the tray-icon minor Tauri uses (0.25 for tauri 2.12), or two copies build and
+the feature stops applying.
+
 ### Frontend conventions
 
 - Tailwind v4, configured CSS-first in `src/index.css` via `@theme`. Semantic color
