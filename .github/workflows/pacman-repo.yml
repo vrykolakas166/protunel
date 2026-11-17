@@ -1,0 +1,106 @@
+name: Pacman repo
+
+# The Release workflow publishes a DRAFT release with every asset already
+# uploaded, so the owner publishing it (event `published`) is the point where
+# the .deb is guaranteed to exist; no polling needed. Events caused by
+# GITHUB_TOKEN never start workflows, so the `pacman-repo` release this job
+# maintains cannot retrigger it (and is skipped below anyway).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to package (e.g. v0.7.3)'
+        required: true
+
+concurrency:
+  group: pacman-repo
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  repo:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name != 'pacman-repo'
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # gh runs from /home/builder/build (not a git checkout), so it can't infer the repo.
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      REPO_TAG: pacman-repo
+      REPO_NAME: protunel
+      GPG_KEY: ${{ secrets.PACMAN_GPG_KEY }}
+      GPG_KEY_ID: ${{ secrets.PACMAN_GPG_KEY_ID }}
+    steps:
+      - name: install tooling
+        run: |
+          pacman -Syu --noconfirm --needed base-devel pacman-contrib git github-cli
+          useradd -m builder
+
+      - uses: actions/checkout@v4.2.2
+
+      - name: set up signing (optional)
+        if: env.GPG_KEY != '' && env.GPG_KEY_ID != ''
+        run: |
+          echo "SIGN=1" >> "$GITHUB_ENV"
+          su builder -c "gpg --batch --import" <<< "$GPG_KEY"
+
+      - name: build package
+        run: |
+          set -euo pipefail
+          VER="${TAG#v}"
+          [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad tag: $TAG"; exit 1; }
+          install -d -o builder -g builder /home/builder/build
+          install -m 644 -o builder -g builder packaging/arch/PKGBUILD /home/builder/build/
+          cd /home/builder/build
+          sed -i "s/^pkgver=.*/pkgver=${VER}/; s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          sign=""; [ "${SIGN:-}" = 1 ] && sign="--sign --key $GPG_KEY_ID"
+          su builder -c "updpkgsums && makepkg -f --noconfirm $sign"
+          ls -l
+
+      - name: update pacman-repo release
+        run: |
+          set -euo pipefail
+          cd /home/builder/build
+          if ! gh release view "$REPO_TAG" >/dev/null 2>&1; then
+            gh release create "$REPO_TAG" --target "$GITHUB_SHA" \
+              --title "Pacman repository" --prerelease --latest=false \
+              --notes "Package repository for pacman. Managed by the Pacman repo workflow; see the README. Do not edit by hand."
+          fi
+          # Must never be "latest": the in-app updater reads releases/latest.
+          [ "$(gh release view "$REPO_TAG" --json isPrerelease -q .isPrerelease)" = true ] || gh release edit "$REPO_TAG" --prerelease --latest=false
+          [ "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" -q .tag_name)" != "$REPO_TAG" ] \
+            || { echo "pacman-repo became latest release"; exit 1; }
+
+          mkdir db && cd db
+          gh release download "$REPO_TAG" -p "$REPO_NAME.db.tar.gz" -p "$REPO_NAME.files.tar.gz" || true
+          pkg=$(ls ../*.pkg.tar.zst)
+          cp "$pkg" .
+          if [ "${SIGN:-}" = 1 ]; then
+            cp "$pkg.sig" .
+            chown -R builder . && su builder -c "repo-add -R --sign --key $GPG_KEY_ID $REPO_NAME.db.tar.gz $(basename "$pkg")"
+          else
+            repo-add -R "$REPO_NAME.db.tar.gz" "$(basename "$pkg")"
+          fi
+          # Release assets cannot be symlinks: ship real copies of the aliases.
+          for ext in db files; do
+            rm -f "$REPO_NAME.$ext"   # repo-add leaves a symlink here
+            cp -L "$REPO_NAME.$ext.tar.gz" "$REPO_NAME.$ext"
+            if [ -f "$REPO_NAME.$ext.tar.gz.sig" ]; then
+              rm -f "$REPO_NAME.$ext.sig"
+              cp -L "$REPO_NAME.$ext.tar.gz.sig" "$REPO_NAME.$ext.sig"
+            fi
+          done
+
+          new=$(basename "$pkg")
+          # Drop older package files so only the newest remains.
+          for old in $(gh release view "$REPO_TAG" --json assets -q '.assets[].name' \
+                       | grep -E '\.pkg\.tar\.zst(\.sig)?$' | grep -v -F "$new" || true); do
+            gh release delete-asset "$REPO_TAG" "$old" -y
+          done
+
+          gh release upload "$REPO_TAG" --clobber ./*.pkg.tar.zst* "$REPO_NAME".db* "$REPO_NAME".files*

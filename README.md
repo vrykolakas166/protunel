@@ -34,9 +34,24 @@ Linux — never in SQLite.
 
 ## Linux
 
-Install the AppImage (needs `fuse2`), the `.deb`/`.rpm`, or on Arch build
-`packaging/arch/PKGBUILD` (`makepkg -si`), which uses the system WebKitGTK and
-updates through pacman.
+Install the AppImage (needs `fuse2`), the `.deb`/`.rpm`, or on Arch use the
+pacman repo below (or build `packaging/arch/PKGBUILD` with `makepkg -si`); both
+use the system WebKitGTK.
+
+### Arch Linux (pacman repo)
+
+Add to `/etc/pacman.conf`:
+
+```ini
+[protunel]
+SigLevel = Optional TrustAll
+Server = https://github.com/vrykolakas166/protunel/releases/download/pacman-repo
+```
+
+Then `sudo pacman -Sy protunel-bin`. Updates arrive with `sudo pacman -Syu`; the
+in-app updater is hidden for this install ("Updates come from your package
+manager"). The repo is rebuilt from the release `.deb` whenever a release is
+published (`.github/workflows/pacman-repo.yml`).
 
 - **Vault**: needs a running Secret Service (`gnome-keyring`, or KeePassXC with
   Secret Service on). The app checks at startup and shows the fix if it is missing.
@@ -178,6 +193,12 @@ A `v*.*.*` tag triggers the `Release` workflow: signed installers, a draft
 GitHub release, and the `latest.json` the in-app updater polls. Requires the
 `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets
 (`bunx tauri signer generate`).
+
+Publishing the draft release (it holds all assets by then) triggers the
+`Pacman repo` workflow, which adds the `.deb` to the `pacman-repo` release. It
+can also be run by hand for any tag (Actions, "Pacman repo", Run workflow).
+Optional repo secrets `PACMAN_GPG_KEY` (armored private key) and
+`PACMAN_GPG_KEY_ID` sign the package and database.
 
 ## Architecture
 

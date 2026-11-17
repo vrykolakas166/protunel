@@ -14,7 +14,9 @@ On Linux, `platform.rs` (`platform_status`) reports desktop, Secret Service and
 agent reachability, distro install command, and whether self-update applies
 (AppImage only); the frontend reads it once via `getPlatformStatus()` and drives
 `SetupNotice`, `LinuxProxyHelp` and the Hyprland autostart hint from it. Arch
-packaging lives in `packaging/arch/PKGBUILD` (repackages the release `.deb`).
+packaging lives in `packaging/arch/PKGBUILD` (repackages the release `.deb`;
+`bun run bump` keeps its pkgver in step). `.github/workflows/pacman-repo.yml` publishes it
+to the `pacman-repo` prerelease (never "latest": the updater reads releases/latest).
 
 ```sh
 bun install
