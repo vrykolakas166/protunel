@@ -3,6 +3,8 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/install.sh | sudo bash
 #   curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/install.sh | sudo bash -s -- --uninstall
+#   curl -fsSL .../install.sh | sudo bash -s -- --disable   # pacman ignores the repo (e.g. if it is unreachable)
+#   curl -fsSL .../install.sh | sudo bash -s -- --enable    # undo --disable
 #
 # PACMAN_CONF / PACMAN_D / KEY_FILE exist so the file logic can be tested
 # against copies; leave them unset normally.
@@ -17,6 +19,7 @@ PACMAN_CONF="${PACMAN_CONF:-/etc/pacman.conf}"
 PACMAN_D="${PACMAN_D:-/etc/pacman.d}"
 REPO_CONF="$PACMAN_D/protunel.conf"
 INCLUDE_LINE="Include = $REPO_CONF"
+OFF_LINE="#$INCLUDE_LINE"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -24,7 +27,17 @@ mode=install
 for arg in "$@"; do
   case "$arg" in
     --uninstall) mode=uninstall ;;
-    -h|--help) echo "usage: install.sh [--uninstall]"; exit 0 ;;
+    --disable) mode=disable ;;
+    --enable) mode=enable ;;
+    -h|--help)
+      cat <<'USAGE'
+usage: install.sh [--uninstall | --disable | --enable]
+  (no option)  add the protunel repo and install the app
+  --uninstall  remove the app, the repo entry and the key
+  --disable    make pacman ignore the repo (the installed app stays)
+  --enable     turn the repo back on after --disable
+USAGE
+      exit 0 ;;
     *) die "unknown argument: $arg" ;;
   esac
 done
@@ -105,7 +118,17 @@ uninstall_repo() {
   if [ -f "$PACMAN_CONF" ]; then
     local tmp
     tmp="$(mktemp)"
-    grep -vxF "$INCLUDE_LINE" "$PACMAN_CONF" > "$tmp" || true
+    # Also drop the blank line the installer put right before the Include (if any).
+    awk -v on="$INCLUDE_LINE" -v off="$OFF_LINE" '
+      { lines[NR] = $0 }
+      END {
+        for (i = 1; i <= NR; i++) {
+          if (lines[i] == on || lines[i] == off) { if (out > 0 && last == "") out--; continue }
+          buf[++out] = lines[i]; last = lines[i]
+        }
+        for (i = 1; i <= out; i++) print buf[i]
+      }
+    ' "$PACMAN_CONF" > "$tmp"
     cat -- "$tmp" > "$PACMAN_CONF"
     rm -f -- "$tmp"
   fi
@@ -116,7 +139,47 @@ uninstall_repo() {
   echo "protunel and its repo configuration were removed."
 }
 
+disable_repo() {
+  [ -f "$PACMAN_CONF" ] || die "$PACMAN_CONF not found."
+  if grep -qxF "$INCLUDE_LINE" "$PACMAN_CONF"; then
+    local tmp
+    tmp="$(mktemp)"
+    awk -v on="$INCLUDE_LINE" -v off="$OFF_LINE" '$0 == on { print off; next } { print }' "$PACMAN_CONF" > "$tmp"
+    cat -- "$tmp" > "$PACMAN_CONF"
+    rm -f -- "$tmp"
+    echo "protunel repo disabled."
+  elif grep -qxF "$OFF_LINE" "$PACMAN_CONF"; then
+    echo "protunel repo is already disabled."
+  else
+    echo "protunel repo is not set up; nothing to disable."
+    return 0
+  fi
+  echo "pacman -Syu works again without the repo. The installed app is untouched."
+  echo "Turn the repo back on with: curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/install.sh | sudo bash -s -- --enable"
+}
+
+enable_repo() {
+  [ -f "$REPO_CONF" ] || die "$REPO_CONF not found: the repo is not set up. Run the installer without options first."
+  [ -f "$PACMAN_CONF" ] || die "$PACMAN_CONF not found."
+  if grep -qxF "$INCLUDE_LINE" "$PACMAN_CONF"; then
+    echo "protunel repo is already enabled."
+    return 0
+  fi
+  if grep -qxF "$OFF_LINE" "$PACMAN_CONF"; then
+    local tmp
+    tmp="$(mktemp)"
+    awk -v on="$INCLUDE_LINE" -v off="$OFF_LINE" '$0 == off { print on; next } { print }' "$PACMAN_CONF" > "$tmp"
+    cat -- "$tmp" > "$PACMAN_CONF"
+    rm -f -- "$tmp"
+  else
+    printf '\n%s\n' "$INCLUDE_LINE" >> "$PACMAN_CONF"
+  fi
+  echo "protunel repo enabled. Updates arrive with: sudo pacman -Syu"
+}
+
 case "$mode" in
   install) install_repo ;;
   uninstall) uninstall_repo ;;
+  disable) disable_repo ;;
+  enable) enable_repo ;;
 esac

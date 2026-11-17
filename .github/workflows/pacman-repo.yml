@@ -35,6 +35,7 @@ jobs:
       REPO_NAME: protunel
       GPG_KEY: ${{ secrets.PACMAN_GPG_KEY }}
       GPG_KEY_ID: ${{ secrets.PACMAN_GPG_KEY_ID }}
+      PACKAGER: protunel CI <protunel-repo@users.noreply.github.com>
     steps:
       - name: install tooling
         run: |
@@ -62,7 +63,7 @@ jobs:
           # --nodeps: package() only unpacks the release .deb, so the runtime
           # deps (webkit2gtk-4.1, gtk3...) aren't needed to build; pacman
           # resolves them on the user's machine at install time.
-          su builder -c "updpkgsums && makepkg -f --noconfirm --nodeps $sign"
+          su builder -c "updpkgsums && PACKAGER='$PACKAGER' makepkg -f --noconfirm --nodeps $sign"
           ls -l
 
       - name: update pacman-repo release
@@ -100,10 +101,77 @@ jobs:
           done
 
           new=$(basename "$pkg")
-          # Drop older package files so only the newest remains.
+          # Order matters so the repo is never left broken mid-way: the new
+          # package goes up first (the old db still points at the old package,
+          # which is still there), then the db that references it, and only
+          # then are the superseded packages removed.
+          gh release upload "$REPO_TAG" --clobber "$new" ${SIGN:+"$new.sig"}
+          gh release upload "$REPO_TAG" --clobber "$REPO_NAME".db* "$REPO_NAME".files*
           for old in $(gh release view "$REPO_TAG" --json assets -q '.assets[].name' \
                        | grep -E '\.pkg\.tar\.zst(\.sig)?$' | grep -v -F "$new" || true); do
             gh release delete-asset "$REPO_TAG" "$old" -y
           done
 
-          gh release upload "$REPO_TAG" --clobber ./*.pkg.tar.zst* "$REPO_NAME".db* "$REPO_NAME".files*
+      - name: verify published repo
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::verify published repo: $*"; exit 1; }
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${REPO_TAG}"
+          WANT=$(cd /home/builder/build && . ./PKGBUILD && echo "${pkgver}-${pkgrel}")
+          # Single source of truth for the trusted fingerprint: the installer.
+          FPR=$(grep -m1 -oE '^FPR=[0-9A-F]{40}' packaging/arch/install.sh | cut -d= -f2)
+          [ -n "$FPR" ] || fail "could not parse FPR from packaging/arch/install.sh"
+          ASC="$PWD/packaging/arch/protunel-repo.asc"
+          W=$(mktemp -d)
+          cd "$W"
+
+          # The release CDN can lag behind the upload, so retry downloads.
+          fetch() {
+            local n
+            for n in 1 2 3 4 5 6 7 8; do
+              curl -fsSL "$URL/$1" -o "$1" && return 0
+              echo "download of $1 failed (attempt $n), retrying..."; sleep 10
+            done
+            fail "could not download $URL/$1"
+          }
+
+          # Retry until the published db lists the version just built.
+          for n in 1 2 3 4 5 6 7 8; do
+            fetch "$REPO_NAME.db"
+            [ "${SIGN:-}" = 1 ] && fetch "$REPO_NAME.db.sig"
+            pkgfile=$(tar -xOf "$REPO_NAME.db" --wildcards '*/desc' | grep -A1 '^%FILENAME%$' | tail -n1 || true)
+            case "$pkgfile" in *"-${WANT}-"*.pkg.tar.zst) break ;; esac
+            echo "published db lists '${pkgfile:-nothing}', want ${WANT} (attempt $n), retrying..."
+            rm -f "$REPO_NAME.db" "$REPO_NAME.db.sig"; sleep 10
+          done
+          case "$pkgfile" in *"-${WANT}-"*.pkg.tar.zst) ;; *) fail "published db references '${pkgfile:-nothing}', expected version ${WANT}" ;; esac
+          fetch "$pkgfile"
+          [ "${SIGN:-}" = 1 ] && fetch "$pkgfile.sig"
+
+          CONF="$W/pacman.conf"
+          # Drop any pre-existing [protunel] section so ours is the only one.
+          awk '/^\[protunel\]/{skip=1;next} /^\[/{skip=0} !skip' /etc/pacman.conf > "$CONF"
+          DB="$W/db"; mkdir -p "$DB"
+          if [ "${SIGN:-}" = 1 ]; then
+            export GNUPGHOME="$W/gnupg"; mkdir -m 700 "$GNUPGHOME"
+            got=$(gpg --batch --with-colons --show-keys "$ASC" | awk -F: '$1=="fpr"{print toupper($10); exit}')
+            [ "$got" = "$FPR" ] || fail "packaging/arch/protunel-repo.asc fingerprint is ${got:-none}, install.sh trusts $FPR"
+            gpg --batch --import "$ASC"
+            gpg --batch --verify "$REPO_NAME.db.sig" "$REPO_NAME.db" || fail "bad signature on $REPO_NAME.db"
+            gpg --batch --verify "$pkgfile.sig" "$pkgfile" || fail "bad signature on $pkgfile"
+            GPGDIR="$W/pacman-gnupg"
+            pacman-key --gpgdir "$GPGDIR" --init
+            pacman-key --gpgdir "$GPGDIR" --add "$ASC"
+            pacman-key --gpgdir "$GPGDIR" --lsign-key "$FPR"
+            sig="Required"
+          else
+            sig="Optional TrustAll"
+          fi
+          printf '\n[%s]\nSigLevel = %s\nServer = %s\n' "$REPO_NAME" "$sig" "$URL" >> "$CONF"
+
+          # --disable-sandbox: the Landlock/alpm-user sandbox is unavailable in CI containers.
+          pm() { pacman --disable-sandbox --config "$CONF" --dbpath "$DB" ${GPGDIR:+--gpgdir "$GPGDIR"} "$@"; }
+          pm -Sy --noconfirm
+          got=$(pm -Si "$REPO_NAME/protunel-bin" | awk -F': *' '$1 ~ /^Version/ {print $2; exit}')
+          [ "$got" = "$WANT" ] || fail "pacman sees protunel-bin '${got:-none}', expected ${WANT}"
+          echo "Verified: pacman resolves protunel-bin ${got} from $URL"

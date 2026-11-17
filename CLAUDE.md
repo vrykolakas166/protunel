@@ -87,6 +87,17 @@ the first dispatch is manual since publishes made with `GITHUB_TOKEN` never star
   `Include` to `/etc/pacman.conf`, installs `protunel-bin`. Rotating the key means
   updating the FPR in `install.sh`, the README manual steps and the key file.
   `PACMAN_CONF`/`PACMAN_D`/`KEY_FILE`/`PROTUNEL_TEST=1` let it be tested on copies.
+  `--disable` / `--enable` comment / uncomment the `Include` line (idempotent, no
+  network or gpg) so a broken repo can't block `pacman -Syu`; `--uninstall` removes
+  either form of the line plus the blank line the installer added before it.
+- Workflow upload order is deliberate so the repo is never left broken: upload the new
+  package (+ .sig), then the db/files (+ .sig) with `--clobber`, and only then delete
+  older package assets. The last step, "verify published repo", downloads the live
+  db/package from the release, checks signatures with `gpg`, checks the key
+  fingerprint matches the `FPR` in `install.sh` (parsed by grep), and runs real
+  `pacman -Sy`/`-Si protunel-bin` against it (temp config/dbpath/gpgdir,
+  `--disable-sandbox`), failing unless the version equals the one just built.
+  Packages carry `PACKAGER="protunel CI <...>"`.
 
 ## Architecture
 
