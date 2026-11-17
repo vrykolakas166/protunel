@@ -156,7 +156,10 @@ connection instead of per application.
   cancel token. The compiled snapshot is `RwLock<Arc<Vec<CompiledRule>>>` and callers
   clone the `Arc` out before awaiting — never hold that lock across an await, and
   never recompile a regex on the connection path.
-- `listener.rs` — accept loop and dispatch. On-demand tunnel dials go through
+- `listener.rs` — accept loop and dispatch. `dispatch` peeks the first byte:
+  `G` goes to `serve_pac` (only an exact `GET /protunel.pac` is answered, so an
+  app that mistook the port for an HTTP proxy is still refused), anything else
+  is SOCKS5 as before. On-demand tunnel dials go through
   `RouterState::connect_lock`; without it, one page load races several
   `connect_one` calls past the `is_connected` check and orphans tunnel tasks.
 - `pac.rs` — loopback HTTP endpoint serving the PAC script. Required, not a
@@ -164,7 +167,15 @@ connection instead of per application.
   the SOCKS5 listener refuses, so the fixed-proxy setting cannot reach the router.
   The script must never grow a copy of the rule list — it forwards everything
   (minus the bypass list) and lets `rules.rs` decide — and must keep its
-  no-`DIRECT`-fallback ending so a dead router fails closed.
+  no-`DIRECT`-fallback ending so a dead router fails closed. That applies to
+  the Windows system-proxy copy (`build_script(.., false)`), which protunel
+  removes on exit. A second copy is served on the router port itself
+  (`/protunel.pac`) for hand-configured browsers and **does** end
+  `; DIRECT` (`build_script(.., true)`): protunel cannot unconfigure a browser
+  on exit, and a browser that fails to re-fetch its PAC keeps running the last
+  one it loaded (Firefox does), so without the fallback closing protunel cuts
+  it off the network. Do not rely on "unreachable PAC means direct". Chromium
+  refuses `file://` PAC URLs, so do not replace this with a file on disk.
 - `system_proxy.rs` — writes **only** `AutoConfigURL`; the fixed-proxy keys are
   captured in the backup but never set, so a user's existing proxy config
   survives. `system_proxy_backup.json` is written *before* the first registry

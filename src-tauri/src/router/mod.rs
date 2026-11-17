@@ -181,11 +181,11 @@ pub async fn start(app: &AppHandle) -> Result<(), String> {
     // still arrive in a config imported from Windows, and is ignored.
     let mut pac_url = None;
     if cfg!(windows) && config.set_system_proxy {
-        let script = pac::build_script(config.port, &config.bypass_list);
+        let script = pac::build_script(config.port, &config.bypass_list, false);
         let result = pac::spawn(script, cancel.clone())
             .await
             .and_then(|pac_port| {
-                let url = format!("http://127.0.0.1:{pac_port}/protunel.pac");
+                let url = format!("http://127.0.0.1:{pac_port}{}", pac::PAC_PATH);
                 system_proxy::enable(app, &url).map(|()| url)
             });
         match result {
@@ -208,7 +208,12 @@ pub async fn start(app: &AppHandle) -> Result<(), String> {
         pac_url,
     });
 
-    listener::spawn(app.clone(), listener, cancel);
+    // The router port also answers `GET /protunel.pac`, so browsers can be
+    // pointed at one fixed URL. This copy ends in `; DIRECT`: once protunel is
+    // closed the SOCKS port refuses connections and the browser goes direct,
+    // even though it keeps running the script it last fetched.
+    let browser_script = pac::build_script(config.port, &config.bypass_list, true);
+    listener::spawn(app.clone(), listener, cancel, Arc::from(pac::http_response(&browser_script)));
     emit_status(app, RouterStatus::Running, Some(config.port), None);
     Ok(())
 }

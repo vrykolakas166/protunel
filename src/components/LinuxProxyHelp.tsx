@@ -13,6 +13,10 @@ interface Props {
  * like Hyprland — so instead of pretending, this hands over the exact lines to
  * paste, already filled in with the router's port. `socks5h` (not `socks5`) so
  * hostnames reach the router's rules instead of being resolved locally.
+ *
+ * The PAC URL comes first: the router port serves it itself, so a browser
+ * pointed at it uses the router while protunel runs and connects directly once
+ * it is closed — nothing on the machine needs restoring.
  */
 export function LinuxProxyHelp({ port }: Props) {
   const { t } = useTranslation("routerPanel");
@@ -25,6 +29,7 @@ export function LinuxProxyHelp({ port }: Props) {
   }, []);
 
   const proxy = `socks5h://127.0.0.1:${port}`;
+  const pacUrl = `http://127.0.0.1:${port}/protunel.pac`;
   const hyprland = desktop.includes("hyprland");
   const code = <code className="font-mono text-text" />;
 
@@ -32,6 +37,17 @@ export function LinuxProxyHelp({ port }: Props) {
     <details className="col-span-2 rounded border border-border bg-surface p-2 text-[11px] text-muted">
       <summary className="cursor-pointer text-sm text-text">{t("linuxProxy.title")}</summary>
       <div className="mt-2 space-y-3">
+        <section className="space-y-1">
+          <p className="text-text">{t("linuxProxy.pacHeading")}</p>
+          <CopyLine text={pacUrl} />
+          <p>
+            <Trans t={t} i18nKey="linuxProxy.pacFirefox" components={{ code }} />
+          </p>
+          <p>{t("linuxProxy.pacChromium")}</p>
+          <CopyLine text={`--proxy-pac-url="${pacUrl}"`} />
+          <p>{t("linuxProxy.pacNote")}</p>
+        </section>
+
         <section className="space-y-1">
           <p className="text-text">
             {hyprland ? t("linuxProxy.hyprlandHeading") : t("linuxProxy.sessionHeading")}

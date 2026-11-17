@@ -7,10 +7,12 @@ use fast_socks5::util::target_addr::TargetAddr;
 use fast_socks5::{ReplyError, Socks5Command};
 use russh::client;
 use tauri::{AppHandle, Emitter, Manager};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
+use super::pac;
 use super::rules::{RuleAction, Target};
 use super::RoutingDecision;
 use crate::events::{RouterStatsEvent, ROUTER_STATS_EVENT};
@@ -24,8 +26,15 @@ use crate::AppState;
 /// giving up. Matches the jump-tunnel chain timeout in `commands::connect_one`.
 const ON_DEMAND_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How long a new connection may stay silent before we stop waiting to see
+/// whether it is SOCKS5 or a PAC fetch. Both kinds of client speak first.
+const FIRST_BYTE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Starts the accept loop and the stats ticker. Both stop when `cancel` fires.
-pub fn spawn(app: AppHandle, listener: TcpListener, cancel: CancellationToken) {
+///
+/// `pac_response` is the full HTTP response for `GET /protunel.pac`, served on
+/// this same port (see [`dispatch`]).
+pub fn spawn(app: AppHandle, listener: TcpListener, cancel: CancellationToken, pac_response: Arc<str>) {
     let stats_app = app.clone();
     let stats_cancel = cancel.clone();
     tokio::spawn(async move {
@@ -55,6 +64,7 @@ pub fn spawn(app: AppHandle, listener: TcpListener, cancel: CancellationToken) {
                 accepted = listener.accept() => {
                     let Ok((stream, _addr)) = accepted else { break };
                     let app = app.clone();
+                    let pac_response = pac_response.clone();
                     // Stopping the router drops in-flight connections too — the
                     // system proxy is being torn down under them anyway, so
                     // letting them linger would just hang apps on a dead route.
@@ -62,13 +72,48 @@ pub fn spawn(app: AppHandle, listener: TcpListener, cancel: CancellationToken) {
                     tokio::spawn(async move {
                         tokio::select! {
                             _ = cancel.cancelled() => {}
-                            _ = handle_connection(app, stream) => {}
+                            _ = dispatch(app, stream, pac_response) => {}
                         }
                     });
                 }
             }
         }
     });
+}
+
+/// Tells a SOCKS5 client from a PAC fetch by the first byte, without consuming
+/// it: SOCKS5 always opens with `0x05`, an HTTP request with a method name.
+/// Anything that is not a GET goes down the SOCKS5 path exactly as before.
+async fn dispatch(app: AppHandle, stream: TcpStream, pac_response: Arc<str>) {
+    let mut first = [0u8; 1];
+    let peeked = tokio::time::timeout(FIRST_BYTE_TIMEOUT, stream.peek(&mut first)).await;
+    match peeked {
+        Ok(Ok(1)) if first[0] == b'G' => serve_pac(stream, &pac_response).await,
+        // Closed before sending anything: nothing to serve either way.
+        Ok(Ok(0)) | Ok(Err(_)) => {}
+        _ => handle_connection(app, stream).await,
+    }
+}
+
+/// Answers `GET /protunel.pac` and closes. Any other GET (an app that took the
+/// router for an HTTP proxy, say) is dropped, as the SOCKS5 handshake would
+/// have refused it before this path existed.
+async fn serve_pac(mut stream: TcpStream, response: &str) {
+    let mut buf = [0u8; 1024];
+    let mut len = 0;
+    // Gather the request line; loopback delivers it in one read in practice,
+    // but nothing guarantees that.
+    while len < buf.len() && !buf[..len].contains(&b'\n') {
+        match tokio::time::timeout(FIRST_BYTE_TIMEOUT, stream.read(&mut buf[len..])).await {
+            Ok(Ok(n)) if n > 0 => len += n,
+            _ => return,
+        }
+    }
+    if !pac::is_pac_request(&buf[..len]) {
+        return;
+    }
+    let _ = stream.write_all(response.as_bytes()).await;
+    let _ = stream.shutdown().await;
 }
 
 async fn handle_connection(app: AppHandle, stream: TcpStream) {

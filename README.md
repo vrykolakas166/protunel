@@ -189,6 +189,7 @@ The AppImage updates itself from inside the app. It bundles its own WebKit, whic
 - Vault: needs a running Secret Service (`gnome-keyring`, or KeePassXC with Secret Service on). The app checks at startup and shows the fix if it is missing.
 - Tray: StatusNotifierItem. Works on KDE, XFCE and waybar's `tray` module. GNOME needs the AppIndicator extension. Left-click toggles the window.
 - Proxy for other apps: there is no system-wide proxy setting to write, so the router panel provides ready-to-paste lines instead. These are `env` lines for `hyprland.conf` (or `export` for a shell profile), a Chromium flag, and Firefox steps, all filled in with the router port.
+- Browsers: point them at `http://127.0.0.1:1090/protunel.pac` (the router port, which answers this one URL itself). While protunel runs they follow the router rules; once it is closed they connect directly, so nothing needs switching back. Firefox takes it under Network Settings, Chromium-based browsers via `--proxy-pac-url`. They do not accept a `file://` PAC.
 - Hyprland: ignores XDG autostart. Settings shows the `exec-once` line when start-at-login is on. On the NVIDIA driver the app disables WebKit's DMA-BUF renderer itself, which otherwise draws a blank window.
 - Process capture and the automatic system-proxy toggle are Windows-only.
 
@@ -206,6 +207,8 @@ One SOCKS5 port on `127.0.0.1`. Rules are evaluated top to bottom, and the first
 Each rule may require a destination port and resolves to tunnel, direct (bypass tunnels) or block. Unmatched traffic takes the default action. A rule targeting a down tunnel connects it on demand and holds the request until the session authenticates.
 
 Point apps at the router manually (`curl --socks5-hostname 127.0.0.1:1090 ...`), or tick "Point the Windows system proxy here". In that case the app serves a PAC script and sets only WinINET's `AutoConfigURL`. It restores the setting on stop, and replays the backup on next startup after a crash. PAC is required because Windows' plain `ProxyServer` setting means SOCKS4, which the listener refuses. The script forwards everything (minus the bypass list) with no `DIRECT` fallback, so a stopped router fails closed.
+
+The router port also serves a script at `http://127.0.0.1:<port>/protunel.pac`, for browsers configured by hand (mainly on Linux). That copy ends `; DIRECT`: with protunel closed the SOCKS port refuses connections and the browser connects directly, so it behaves as if no proxy were set. Browsers keep a failed proxy marked bad for a while (Firefox: `network.proxy.failover_timeout`, 30 minutes by default), so after starting protunel again, lower that value or restart the browser to reach internal sites right away. While protunel is closed, any local program could bind that port and serve its own PAC; on a machine shared with other users, prefer the manual SOCKS setting.
 
 The panel also has a rule test box and a decision log of recent connections. The router only binds `127.0.0.1`.
 
