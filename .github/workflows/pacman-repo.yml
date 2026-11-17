@@ -42,7 +42,7 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel pacman-contrib git github-cli
           useradd -m builder
 
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v7.0.1
 
       - name: set up signing (optional)
         if: env.GPG_KEY != '' && env.GPG_KEY_ID != ''
@@ -106,7 +106,12 @@ jobs:
           # which is still there), then the db that references it, and only
           # then are the superseded packages removed.
           gh release upload "$REPO_TAG" --clobber "$new" ${SIGN:+"$new.sig"}
-          gh release upload "$REPO_TAG" --clobber "$REPO_NAME".db* "$REPO_NAME".files*
+          # Explicit names: repo-add also leaves *.old backups that must not be published.
+          dbfiles=("$REPO_NAME".db "$REPO_NAME".db.tar.gz "$REPO_NAME".files "$REPO_NAME".files.tar.gz)
+          if [ "${SIGN:-}" = 1 ]; then
+            dbfiles+=("$REPO_NAME".db.sig "$REPO_NAME".db.tar.gz.sig "$REPO_NAME".files.sig "$REPO_NAME".files.tar.gz.sig)
+          fi
+          gh release upload "$REPO_TAG" --clobber "${dbfiles[@]}"
           for old in $(gh release view "$REPO_TAG" --json assets -q '.assets[].name' \
                        | grep -E '\.pkg\.tar\.zst(\.sig)?$' | grep -v -F "$new" || true); do
             gh release delete-asset "$REPO_TAG" "$old" -y
