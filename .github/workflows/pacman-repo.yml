@@ -59,7 +59,10 @@ jobs:
           cd /home/builder/build
           sed -i "s/^pkgver=.*/pkgver=${VER}/; s/^pkgrel=.*/pkgrel=1/" PKGBUILD
           sign=""; [ "${SIGN:-}" = 1 ] && sign="--sign --key $GPG_KEY_ID"
-          su builder -c "updpkgsums && makepkg -f --noconfirm $sign"
+          # --nodeps: package() only unpacks the release .deb, so the runtime
+          # deps (webkit2gtk-4.1, gtk3...) aren't needed to build; pacman
+          # resolves them on the user's machine at install time.
+          su builder -c "updpkgsums && makepkg -f --noconfirm --nodeps $sign"
           ls -l
 
       - name: update pacman-repo release
