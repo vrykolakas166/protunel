@@ -5,9 +5,7 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getSettings, updateSettings } from "../api";
 import type { Settings } from "../types";
-import { SUPPORTED_LANGUAGES } from "../i18n";
 import { Modal } from "./Modal";
-import { ThemePicker } from "./ThemePicker";
 import { CopyLine } from "./CopyLine";
 import { getPlatformStatus, isWindows } from "../platform";
 
@@ -117,33 +115,7 @@ export function SettingsPanel({ onClose, onSettingsChange, onOpenConfig, onOpenH
       <div className="space-y-4">
         {error && <p className="text-sm text-coral">{error}</p>}
 
-        <section data-tour="settings-theme" className="space-y-2">
-          <p className={sectionLabelClass}>{t("sections.appearance")}</p>
-          <ThemePicker settings={settings} disabled={busy} onChange={(next) => void save(next)} />
-
-          <div className="flex items-center justify-between gap-3">
-            <label className="text-sm text-text">{t("languageLabel")}</label>
-            <div className="flex items-center gap-1 rounded border border-border p-0.5">
-              {SUPPORTED_LANGUAGES.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => save({ ...settings, language: value })}
-                  className={`rounded px-2 py-1 text-xs font-medium disabled:opacity-50 ${
-                    settings.language === value
-                      ? "bg-accent text-on-accent"
-                      : "text-muted hover:bg-surface-hover hover:text-text"
-                  }`}
-                >
-                  {t(`language.${value}`)}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-1.5 border-t border-border pt-3">
+        <section className="space-y-1.5">
           <p className={sectionLabelClass}>{t("sections.startupAndNotifications")}</p>
           <label className={checkboxRowClass}>
             <input

@@ -10,6 +10,8 @@ interface Props {
   settings: Settings;
   disabled: boolean;
   onChange: (next: Settings) => void;
+  /** Fill the parent's height (a flex column) and scroll the grid inside it. */
+  fill?: boolean;
 }
 
 function ThemeCard({
@@ -51,7 +53,7 @@ function ThemeCard({
  * window. "Follow system" keeps one theme for a light Windows and one for a
  * dark one; the slot buttons choose which of the two a click sets.
  */
-export function ThemePicker({ settings, disabled, onChange }: Props) {
+export function ThemePicker({ settings, disabled, onChange, fill = false }: Props) {
   const { t } = useTranslation("settingsPanel");
   const followSystem = settings.theme === "system";
   const [slot, setSlot] = useState<Slot>("dark");
@@ -135,7 +137,7 @@ export function ThemePicker({ settings, disabled, onChange }: Props) {
   };
 
   return (
-    <div className="space-y-2.5">
+    <div className={fill ? "flex min-h-0 flex-1 flex-col gap-2.5" : "space-y-2.5"}>
       <div className="flex items-center justify-between gap-3">
         <label className="text-sm text-text">{t("themeLabel")}</label>
         <div className="flex items-center gap-1 rounded border border-border p-0.5">
@@ -173,7 +175,9 @@ export function ThemePicker({ settings, disabled, onChange }: Props) {
 
       <div
         onMouseLeave={() => setThemePreview(null)}
-        className="grid max-h-64 grid-cols-2 gap-2 overflow-y-auto p-1 sm:grid-cols-3"
+        className={`grid grid-cols-2 content-start gap-2 overflow-y-auto p-1 ${
+          fill ? "min-h-0 flex-1" : "max-h-64 sm:grid-cols-3"
+        }`}
       >
         {shown.map((theme) => (
           <ThemeCard

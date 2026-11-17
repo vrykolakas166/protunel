@@ -14,6 +14,7 @@ import { LocalIps } from "./components/LocalIps";
 import { MessageBar } from "./components/MessageBar";
 import { RouterPanel } from "./components/RouterPanel";
 import { Sample1 } from "./components/Sample1";
+import { PreferencesPanel } from "./components/PreferencesPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SetupNotice } from "./components/SetupNotice";
 import { TourGuide, type TourPanel } from "./components/TourGuide";
@@ -78,6 +79,7 @@ function App() {
   const [showRouter, setShowRouter] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
@@ -164,6 +166,7 @@ function App() {
     setShowRouter(panel === "router");
     setShowCapture(panel === "capture");
     setShowSettings(panel === "settings");
+    setShowPreferences(panel === "preferences");
     setFormState(panel === "add" ? { mode: "add" } : null);
   }, []);
 
@@ -327,6 +330,19 @@ function App() {
           >
             {t("settings")}
           </button>
+          <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+          {/* At the right edge because the drawer slides out of that edge. The
+              dot is the live accent colour, so it follows a hover preview too. */}
+          <button
+            onClick={() => setShowPreferences(true)}
+            data-tour="preferences"
+            title={t("preferencesTooltip")}
+            aria-label={t("preferences")}
+            className="flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold uppercase text-muted transition-colors hover:border-accent hover:bg-surface-hover hover:text-text"
+          >
+            <span className="h-2.5 w-2.5 rounded-full bg-accent ring-1 ring-black/10" aria-hidden="true" />
+            {settings?.language ?? "en"}
+          </button>
         </div>
       </header>
 
@@ -440,6 +456,13 @@ function App() {
         />
       )}
       {showCapture && <CapturePanel runtime={router} onClose={() => setShowCapture(false)} />}
+      {showPreferences && settings && (
+        <PreferencesPanel
+          settings={settings}
+          onClose={() => setShowPreferences(false)}
+          onSettingsChange={setSettings}
+        />
+      )}
       {showSettings && (
         <SettingsPanel
           onClose={() => setShowSettings(false)}

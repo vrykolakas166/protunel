@@ -68,9 +68,13 @@
       "title": "Terminal SSH, mở cửa sổ riêng",
       "body": "Mỗi tunnel cũng là một host ở đây, dùng chung thông tin đăng nhập và phiên đang chạy. Kéo host hoặc tab vào mép một pane để chia màn hình, kéo đường phân cách để đổi kích thước, bật broadcast để gõ vào nhiều server cùng lúc. Ctrl+Shift+C / Ctrl+Shift+V để copy/dán; bôi đen là tự copy."
     },
+    "preferences": {
+      "title": "Giao diện & ngôn ngữ",
+      "body": "Nút ở mép phải này mở Tùy chỉnh. Chấm màu là theme đang dùng, chữ là ngôn ngữ hiện tại — thay đổi áp dụng ngay, không cần bấm Lưu."
+    },
     "settings-theme": {
       "title": "Theme",
-      "body": "Hơn 180 theme màu. Rê chuột lên thẻ để xem trước trên cả cửa sổ, bấm để chọn. \"Theo hệ thống\" tự đổi giữa một theme sáng và một theme tối do bạn chọn. Cửa sổ terminal đổi theo."
+      "body": "Hơn 180 theme màu. Panel trượt ra từ cạnh phải và không làm tối cửa sổ, nên rê chuột lên thẻ là thấy ngay theme trên toàn bộ phía sau; bấm để chọn. \"Theo hệ thống\" tự đổi giữa một theme sáng và một theme tối do bạn chọn. Cửa sổ terminal đổi theo."
     },
     "settings-reconnect": {
       "title": "Duy trì kết nối",
@@ -78,7 +82,7 @@
     },
     "settings-config": {
       "title": "Chuyển sang máy khác",
-      "body": "Export sẽ ghi toàn bộ tunnel, rule của router và settings vào một tệp duy nhất. Thông tin bí mật chỉ được đưa vào nếu bạn đặt passphrase — để trống thì tệp này an toàn để chia sẻ."
+      "body": "Xuất / nhập cấu hình mở ra hai ô lớn. Xuất ghi tunnel, rule router và cài đặt vào một file; mật khẩu chỉ được đưa vào (đã mã hóa) nếu bạn đặt passphrase. Nhập cho xem trước mọi thay đổi, và hỏi passphrase ngay trước khi bạn xác nhận."
     },
     "tray": {
       "title": "Ứng dụng nằm ở khay hệ thống",

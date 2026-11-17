@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { isWindows } from "../platform";
 
 /** Which modal the tour needs open for a step. `null` closes whatever is open. */
-export type TourPanel = "add" | "router" | "capture" | "settings";
+export type TourPanel = "add" | "router" | "capture" | "preferences" | "settings";
 
 interface StepDef {
   /** Key into the `tourGuide` locale namespace's `steps` object. */
@@ -105,9 +105,13 @@ const STEP_DEFS: StepDef[] = [
     target: "terminal",
   },
   {
+    id: "preferences",
+    target: "preferences",
+  },
+  {
     id: "settings-theme",
     target: "settings-theme",
-    panel: "settings",
+    panel: "preferences",
   },
   {
     id: "settings-reconnect",

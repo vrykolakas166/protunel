@@ -68,9 +68,13 @@
       "title": "SSH terminal, in its own window",
       "body": "Every tunnel is also a host here, sharing its saved login and live session. Drag a host or a tab onto the edge of a pane to split it, drag dividers to resize, and turn on broadcast to type into several servers at once. Ctrl+Shift+C / Ctrl+Shift+V copy and paste; selecting text copies it too."
     },
+    "preferences": {
+      "title": "Theme & language",
+      "body": "This pill at the right edge opens Preferences. The dot is your current theme colour, the letters your language — changes apply instantly, no Save button."
+    },
     "settings-theme": {
       "title": "Themes",
-      "body": "Over a hundred and eighty colour themes. Hover a card to preview it on the whole window, click to keep it. \"Follow system\" switches between a light and a dark theme of your choice. The terminal window follows along."
+      "body": "Over a hundred and eighty colour themes. The panel slides in from the side without dimming the window, so hovering a card previews it on everything behind; click to keep it. \"Follow system\" switches between a light and a dark theme of your choice. The terminal window follows along."
     },
     "settings-reconnect": {
       "title": "Staying connected",
@@ -78,7 +82,7 @@
     },
     "settings-config": {
       "title": "Moving to another machine",
-      "body": "Export writes your tunnels, router rules, and settings to one file. Secrets are only included if you set a passphrase — leave it blank and the file is safe to share."
+      "body": "Export / import config opens two big tiles. Export writes tunnels, router rules and settings to one file; passwords are only included, encrypted, if you set a passphrase. Import shows exactly what will change first, and asks for that passphrase right before you confirm."
     },
     "tray": {
       "title": "It lives in the tray",

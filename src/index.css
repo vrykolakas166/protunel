@@ -195,3 +195,30 @@ body.dragging .xterm * {
     animation: none;
   }
 }
+
+/* Side drawer (Drawer.tsx): slides in from the right edge and fades. No
+   backdrop tint, so a theme preview behind it reads true. */
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+@keyframes drawer-out {
+  to {
+    opacity: 0;
+    transform: translateX(32px);
+  }
+}
+.drawer-panel {
+  animation: drawer-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.drawer-panel-out {
+  animation: drawer-out 0.16s ease-in both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel,
+  .drawer-panel-out {
+    animation: none;
+  }
+}

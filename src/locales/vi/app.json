@@ -28,5 +28,7 @@
     "vault": "Không có Secret Service nào đang chạy nên không lưu được mật khẩu và passphrase khóa. Cài gnome-keyring (hoặc bật tích hợp Secret Service trong KeePassXC):",
     "agent": "Có tunnel dùng SSH agent nhưng phiên này chưa có SSH_AUTH_SOCK:",
     "hyprlandNote": "Các dòng bắt đầu bằng exec-once / env đặt vào ~/.config/hypr/hyprland.conf; đăng xuất rồi đăng nhập lại để áp dụng."
-  }
+  },
+  "preferences": "Tùy chỉnh",
+  "preferencesTooltip": "Giao diện & ngôn ngữ"
 }

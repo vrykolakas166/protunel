@@ -48,5 +48,9 @@
   },
   "themeNoMatch": "No theme matches.",
   "hyprlandAutostart": "Hyprland ignores the autostart entry this writes. Add this to ~/.config/hypr/hyprland.conf instead:",
-  "updatedByPackageManager": "Updates come from your package manager."
+  "updatedByPackageManager": "Updates come from your package manager.",
+  "preferences": {
+    "title": "Preferences",
+    "hint": "Changes apply instantly — hover a theme to preview it on the window."
+  }
 }

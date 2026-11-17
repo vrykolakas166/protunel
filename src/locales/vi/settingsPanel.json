@@ -48,5 +48,9 @@
   },
   "themeNoMatch": "Không có theme phù hợp.",
   "hyprlandAutostart": "Hyprland bỏ qua mục autostart mà tuỳ chọn này ghi ra. Hãy thêm dòng sau vào ~/.config/hypr/hyprland.conf:",
-  "updatedByPackageManager": "Cập nhật qua trình quản lý gói của hệ thống."
+  "updatedByPackageManager": "Cập nhật qua trình quản lý gói của hệ thống.",
+  "preferences": {
+    "title": "Tùy chỉnh",
+    "hint": "Thay đổi áp dụng ngay — rê chuột lên theme để xem trước trên cửa sổ."
+  }
 }
