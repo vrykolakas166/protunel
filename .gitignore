@@ -26,3 +26,5 @@ dist-ssr
 # makepkg output
 packaging/arch/*
 !packaging/arch/PKGBUILD
+!packaging/arch/install.sh
+!packaging/arch/protunel-repo.asc

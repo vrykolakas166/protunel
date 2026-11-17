@@ -36,9 +36,57 @@ cd src-tauri && cargo test --lib router              # rule matcher + PAC tests
 Do not run `cargo clean -p protunel` — it evicts the whole dependency graph
 (~6 GiB) and costs a multi-minute rebuild, not just the local crate.
 
-Release: `bun run bump <x.y.z>`, commit, `git tag vX.Y.Z`, push tag. The `Release`
-workflow (`.github/workflows/release.yml`) builds signed installers and publishes a
-**draft** GitHub release plus the `latest.json` the in-app updater polls.
+Release: see "Packaging & releases" below.
+
+## Packaging & releases
+
+Release assets (per tag `vX.Y.Z`): `protunel_<v>_amd64.AppImage` (+ `.sig`),
+`protunel_<v>_amd64.deb`, `protunel-<v>-1.x86_64.rpm`, `protunel_<v>_x64-setup.exe`,
+`protunel_<v>_x64_en-US.msi`, `latest.json`. The in-app updater works only for
+Windows and AppImage (`platform.rs` `self_update`); `.deb`/`.rpm` are not updated.
+
+**Flow**
+
+```sh
+bun run bump <x.y.z>   # package.json, tauri.conf.json, Cargo.toml, Cargo.lock, packaging/arch/PKGBUILD
+git commit -am "Bump version to <x.y.z>"
+git tag v<x.y.z>
+git push origin master v<x.y.z>
+```
+
+A `v*.*.*` tag triggers the `Release` workflow: signed installers, a **draft**
+GitHub release, and the `latest.json` the in-app updater polls. Needs repo secrets
+`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+(`bunx tauri signer generate`). Publishing the draft (it holds all assets by then)
+triggers the `Pacman repo` workflow, which adds the `.deb` to the `pacman-repo`
+release. It can also be run by hand for any tag (Actions, "Pacman repo", Run workflow);
+the first dispatch is manual since publishes made with `GITHUB_TOKEN` never start workflows.
+
+**Arch (self-hosted signed pacman repo)**
+
+- `packaging/arch/PKGBUILD` (`protunel-bin`) repackages the release `.deb`, so the
+  app links the system `webkit2gtk-4.1` instead of the AppImage's bundled copy.
+  The app detects the package install and hides its updater ("Updates come from
+  your package manager"). `bump` rewrites pkgver, resets pkgrel and clears the
+  sha256; `updpkgsums` refills it (the workflow does this itself).
+- Build by hand: `cd packaging/arch && makepkg -si`.
+- `.github/workflows/pacman-repo.yml` builds with `makepkg --nodeps`: `package()`
+  only unpacks the `.deb`, so runtime deps (webkit2gtk-4.1, gtk3...) are not needed
+  to build; pacman resolves them on the user's machine.
+- The `pacman-repo` release must stay a **prerelease and never "latest"** — the
+  updater reads `releases/latest`. The workflow fails if it becomes latest.
+- Signing: secrets `PACMAN_GPG_KEY` (armored private key) and `PACMAN_GPG_KEY_ID`
+  sign the package and database (optional; without them the repo is unsigned).
+  Repo key fingerprint `017C5997B8FE5A79784BA2C29A38E414ECE95901`, public key in
+  `packaging/arch/protunel-repo.asc`. The private key lives on the owner's machine in a
+  dedicated GNUPGHOME (`~/.local/share/protunel-repo-gnupg`); never commit it.
+- Client setup is `packaging/arch/install.sh` (`curl ... | sudo bash`, `-s -- --uninstall`
+  to remove): verifies the key fingerprint against the hard-coded one before
+  `pacman-key --add`/`--lsign-key`, writes `/etc/pacman.d/protunel.conf`
+  (`SigLevel = Required`, `Server = .../releases/download/pacman-repo`), appends an
+  `Include` to `/etc/pacman.conf`, installs `protunel-bin`. Rotating the key means
+  updating the FPR in `install.sh`, the README manual steps and the key file.
+  `PACMAN_CONF`/`PACMAN_D`/`KEY_FILE`/`PROTUNEL_TEST=1` let it be tested on copies.
 
 ## Architecture
 
@@ -245,3 +293,25 @@ the feature stops applying.
 
 `src-tauri/capabilities/default.json` gates what the *frontend* may call. Plugins used
 only from Rust (notification, autostart) need no entry; anything invoked from TS does.
+
+## Stack and source layout
+
+Tauri v2 · React 19 · TypeScript · Tailwind CSS v4 · xterm.js · `russh` · `fast-socks5` ·
+`rusqlite` · `regex` + `ipnet` · `minhook`. Development needs [Bun](https://bun.sh) and,
+on Windows, the [Rust MSVC toolchain](https://www.rust-lang.org/tools/install).
+
+```
+src/                React UI — panels, event hooks, typed IPC wrappers
+  terminal/          terminal window: panes, tabs, drag-and-drop, broadcast
+  themes/            theme catalogue and token derivation
+src-tauri/src/
+  commands.rs        every #[tauri::command]; the IPC surface
+  tunnel.rs          AppState: running tunnels, statuses, router state
+  ssh/               per-tunnel supervisor, SOCKS5 + local forwards, TOFU,
+                     terminal PTY channels
+  router/            rule matcher, listener, Windows system proxy, PAC
+  capture/           process launch + hook-DLL injection
+  db.rs              SQLite: tunnels, forwards, router rules
+  secrets.rs         OS credential vault (keyring)
+  settings.rs        JSON-backed settings and router config
+```

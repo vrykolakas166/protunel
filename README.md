@@ -3,7 +3,6 @@
 Desktop SSH tunnel manager for Windows and Linux (x86_64). Add a host, flip a switch, get a local
 `socks5://127.0.0.1:<port>` proxy tunneled through SSH — no PuTTY/plink. The same
 hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
-[Tauri](https://tauri.app) + React/TypeScript, embedded Rust SSH client.
 
 ## Features
 
@@ -28,47 +27,103 @@ hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
   light/dark pair
 - Guided tour, signed auto-updater
 
-Secrets (passwords, key passphrases) live in the OS vault via `keyring` —
-Windows Credential Manager, or the Secret Service (GNOME Keyring, KWallet) on
-Linux — never in SQLite.
+Secrets (passwords, key passphrases) live in your OS vault — Windows Credential
+Manager, or the Secret Service (GNOME Keyring, KWallet) on Linux — never in the
+app's own database.
 
-## Linux
+## Install
 
-Install the AppImage (needs `fuse2`), the `.deb`/`.rpm`, or on Arch use the
-pacman repo below (or build `packaging/arch/PKGBUILD` with `makepkg -si`); both
-use the system WebKitGTK.
+Grab the latest build from the
+[Releases page](https://github.com/vrykolakas166/protunel/releases/latest).
 
-### Arch Linux (pacman repo)
+### Windows
 
-Packages and the repo database are signed with the repo key
-`017C5997B8FE5A79784BA2C29A38E414ECE95901` ([`packaging/arch/protunel-repo.asc`](packaging/arch/protunel-repo.asc)).
-Trust it once:
+Download `protunel_<version>_x64-setup.exe` (or the `.msi`) and run it. New
+versions are offered inside the app.
+
+### Arch Linux and derivatives
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/protunel-repo.asc \
-  | sudo pacman-key --add -
-sudo pacman-key --lsign-key 017C5997B8FE5A79784BA2C29A38E414ECE95901
+curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/install.sh | sudo bash
 ```
 
-Keep the repo in its own file, so it can be switched off with one line if it
-ever becomes unreachable. `/etc/pacman.d/protunel.conf`:
+This adds protunel's signed package repo and installs the app. Find it in your
+app launcher. Updates arrive with your normal `sudo pacman -Syu`.
 
-```ini
-[protunel]
-SigLevel = Required
-Server = https://github.com/vrykolakas166/protunel/releases/download/pacman-repo
+<details>
+<summary>Install by hand instead</summary>
+
+Packages and the repo database are signed with the repo key
+`017C5997B8FE5A79784BA2C29A38E414ECE95901`
+([`packaging/arch/protunel-repo.asc`](packaging/arch/protunel-repo.asc)).
+
+1. Trust the key:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/protunel-repo.asc \
+     | sudo pacman-key --add -
+   sudo pacman-key --lsign-key 017C5997B8FE5A79784BA2C29A38E414ECE95901
+   ```
+
+2. Create `/etc/pacman.d/protunel.conf`:
+
+   ```ini
+   [protunel]
+   SigLevel = Required
+   Server = https://github.com/vrykolakas166/protunel/releases/download/pacman-repo
+   ```
+
+   and add this line at the end of `/etc/pacman.conf`:
+
+   ```ini
+   Include = /etc/pacman.d/protunel.conf
+   ```
+
+3. `sudo pacman -Syu protunel-bin`
+
+</details>
+
+To uninstall (removes the app, the repo entry and the key):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/install.sh | sudo bash -s -- --uninstall
 ```
 
-and at the end of `/etc/pacman.conf`:
+### Debian, Ubuntu and derivatives
 
-```ini
-Include = /etc/pacman.d/protunel.conf
+Download `protunel_<version>_amd64.deb` from Releases, then:
+
+```sh
+sudo apt install ./protunel_<version>_amd64.deb
 ```
 
-Then `sudo pacman -Sy protunel-bin`. Updates arrive with `sudo pacman -Syu`; the
-in-app updater is hidden for this install ("Updates come from your package
-manager"). The repo is rebuilt from the release `.deb` whenever a release is
-published (`.github/workflows/pacman-repo.yml`).
+No automatic updates: download the new `.deb` to upgrade (or use the AppImage,
+which updates itself).
+
+### Fedora, openSUSE and derivatives
+
+Download `protunel-<version>-1.x86_64.rpm` from Releases, then:
+
+```sh
+sudo dnf install ./protunel-<version>-1.x86_64.rpm     # Fedora
+sudo zypper install ./protunel-<version>-1.x86_64.rpm  # openSUSE
+```
+
+No automatic updates: download the new `.rpm` to upgrade (or use the AppImage).
+
+### Any Linux: AppImage
+
+Download `protunel_<version>_amd64.AppImage` (needs `fuse2`), then:
+
+```sh
+chmod +x protunel_<version>_amd64.AppImage
+./protunel_<version>_amd64.AppImage
+```
+
+It updates itself from inside the app. The AppImage bundles its own WebKit,
+which can misbehave on rolling distros; on Arch prefer the package above.
+
+### Linux notes
 
 - **Vault**: needs a running Secret Service (`gnome-keyring`, or KeePassXC with
   Secret Service on). The app checks at startup and shows the fix if it is missing.
@@ -180,74 +235,6 @@ Import previews, is section-scoped, and:
 - Router rules **replace** the list, not merge; tunnel targets rewritten to
   follow any re-id'd tunnel.
 - Known hosts merge, **yours win** (TOFU).
-
-## Development
-
-Needs [Bun](https://bun.sh) and the
-[Rust MSVC toolchain](https://www.rust-lang.org/tools/install).
-
-```sh
-bun install
-bun run tauri dev
-
-# checks (no linter; tests cover the router rule matcher + PAC)
-./node_modules/.bin/tsc --noEmit -p tsconfig.json
-cd src-tauri && cargo check && cargo test
-
-bun run tauri build   # installers under src-tauri/target/release/bundle/
-```
-
-## Releasing
-
-```sh
-bun run bump <x.y.z>   # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
-git commit -am "Bump version to <x.y.z>"
-git tag v<x.y.z>
-git push origin master v<x.y.z>
-```
-
-A `v*.*.*` tag triggers the `Release` workflow: signed installers, a draft
-GitHub release, and the `latest.json` the in-app updater polls. Requires the
-`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` repo secrets
-(`bunx tauri signer generate`).
-
-Publishing the draft release (it holds all assets by then) triggers the
-`Pacman repo` workflow, which adds the `.deb` to the `pacman-repo` release. It
-can also be run by hand for any tag (Actions, "Pacman repo", Run workflow).
-Optional repo secrets `PACMAN_GPG_KEY` (armored private key) and
-`PACMAN_GPG_KEY_ID` sign the package and database.
-
-## Architecture
-
-React frontend is a thin view; the Rust backend owns all tunnel and routing
-state.
-
-```
-src/                React UI — panels, event hooks, typed IPC wrappers
-  terminal/          terminal window: panes, tabs, drag-and-drop, broadcast
-  themes/            theme catalogue and token derivation
-src-tauri/src/
-  commands.rs        every #[tauri::command]; the IPC surface
-  tunnel.rs          AppState: running tunnels, statuses, router state
-  ssh/               per-tunnel supervisor, SOCKS5 + local forwards, TOFU,
-                     terminal PTY channels
-  router/            rule matcher, listener, Windows system proxy, PAC
-  capture/           process launch + hook-DLL injection
-  db.rs              SQLite: tunnels, forwards, router rules
-  secrets.rs         Windows Credential Manager
-  settings.rs        JSON-backed settings and router config
-```
-
-Each tunnel is a supervisor task that binds its listeners **once** and keeps an
-authenticated SSH session behind them, reconnecting with backoff — a reconnect
-never surrenders the local ports. The router reuses those sessions. State splits
-three ways: SQLite (tunnels/forwards/rules), OS credential vault (secrets), JSON
-files (settings, router config).
-
-## Stack
-
-Tauri v2 · React 19 · TypeScript · Tailwind CSS v4 · xterm.js · `russh` · `fast-socks5` ·
-`rusqlite` · `regex` + `ipnet` · `minhook`
 
 ## License
 
