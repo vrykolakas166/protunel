@@ -40,12 +40,29 @@ use the system WebKitGTK.
 
 ### Arch Linux (pacman repo)
 
-Add to `/etc/pacman.conf`:
+Packages and the repo database are signed with the repo key
+`017C5997B8FE5A79784BA2C29A38E414ECE95901` ([`packaging/arch/protunel-repo.asc`](packaging/arch/protunel-repo.asc)).
+Trust it once:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/vrykolakas166/protunel/master/packaging/arch/protunel-repo.asc \
+  | sudo pacman-key --add -
+sudo pacman-key --lsign-key 017C5997B8FE5A79784BA2C29A38E414ECE95901
+```
+
+Keep the repo in its own file, so it can be switched off with one line if it
+ever becomes unreachable. `/etc/pacman.d/protunel.conf`:
 
 ```ini
 [protunel]
-SigLevel = Optional TrustAll
+SigLevel = Required
 Server = https://github.com/vrykolakas166/protunel/releases/download/pacman-repo
+```
+
+and at the end of `/etc/pacman.conf`:
+
+```ini
+Include = /etc/pacman.d/protunel.conf
 ```
 
 Then `sudo pacman -Sy protunel-bin`. Updates arrive with `sudo pacman -Syu`; the
