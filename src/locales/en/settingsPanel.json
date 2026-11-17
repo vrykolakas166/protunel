@@ -13,8 +13,8 @@
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "launchOnStartup": "Launch ProdTunnel at login",
-  "showNotifications": "Show Windows notifications",
+  "launchOnStartup": "Launch protunel at login",
+  "showNotifications": "Show desktop notifications",
   "autoReconnect": "Reconnect automatically when a tunnel drops",
   "keepaliveLabel": "Keepalive (s)",
   "keepaliveTooltip": "Seconds between keepalive pings so a dead connection gets noticed. 0 disables keepalives.",
@@ -37,9 +37,9 @@
   "installFailed": "Install failed: {{error}}",
   "installAndRestart": "Install v{{version}} & restart",
   "themeFixed": "One theme",
-  "themeSystem": "Follow Windows",
-  "themeSlotLight": "Light Windows",
-  "themeSlotDark": "Dark Windows",
+  "themeSystem": "Follow system",
+  "themeSlotLight": "System light",
+  "themeSlotDark": "System dark",
   "themeSearch": "Search {{count}} themes…",
   "themeFilter": {
     "all": "All",

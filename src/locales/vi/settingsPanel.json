@@ -13,8 +13,8 @@
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "launchOnStartup": "Khởi chạy ProdTunnel khi đăng nhập",
-  "showNotifications": "Hiện thông báo Windows",
+  "launchOnStartup": "Khởi chạy protunel khi đăng nhập",
+  "showNotifications": "Hiện thông báo trên desktop",
   "autoReconnect": "Tự động kết nối lại khi tunnel bị rớt",
   "keepaliveLabel": "Keepalive (giây)",
   "keepaliveTooltip": "Số giây giữa các lần ping keepalive để phát hiện kết nối chết. 0 để tắt keepalive.",
@@ -37,9 +37,9 @@
   "installFailed": "Cài đặt thất bại: {{error}}",
   "installAndRestart": "Cài v{{version}} & khởi động lại",
   "themeFixed": "Một theme",
-  "themeSystem": "Theo Windows",
-  "themeSlotLight": "Windows sáng",
-  "themeSlotDark": "Windows tối",
+  "themeSystem": "Theo hệ thống",
+  "themeSlotLight": "Hệ thống sáng",
+  "themeSlotDark": "Hệ thống tối",
   "themeSearch": "Tìm trong {{count}} theme…",
   "themeFilter": {
     "all": "Tất cả",

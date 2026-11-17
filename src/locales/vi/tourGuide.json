@@ -1,7 +1,7 @@
 {
   "steps": {
     "welcome": {
-      "title": "Chào mừng đến với ProdTunnel",
+      "title": "Chào mừng đến với protunel",
       "body": "Giới thiệu nhanh qua các tính năng chính. Chỉ mất vài phút, bạn có thể bỏ qua hoặc xem lại bất cứ lúc nào từ nút ?."
     },
     "add": {
@@ -70,7 +70,7 @@
     },
     "settings-theme": {
       "title": "Theme",
-      "body": "Hơn 180 theme màu. Rê chuột lên thẻ để xem trước trên cả cửa sổ, bấm để chọn. \"Theo Windows\" tự đổi giữa một theme sáng và một theme tối do bạn chọn. Cửa sổ terminal đổi theo."
+      "body": "Hơn 180 theme màu. Rê chuột lên thẻ để xem trước trên cả cửa sổ, bấm để chọn. \"Theo hệ thống\" tự đổi giữa một theme sáng và một theme tối do bạn chọn. Cửa sổ terminal đổi theo."
     },
     "settings-reconnect": {
       "title": "Duy trì kết nối",

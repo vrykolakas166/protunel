@@ -1,7 +1,7 @@
 {
   "steps": {
     "welcome": {
-      "title": "Welcome to ProdTunnel",
+      "title": "Welcome to protunel",
       "body": "A quick pass over what everything does. Two minutes, and you can skip or replay it any time from the ? button."
     },
     "add": {
@@ -70,7 +70,7 @@
     },
     "settings-theme": {
       "title": "Themes",
-      "body": "Over a hundred and eighty colour themes. Hover a card to preview it on the whole window, click to keep it. \"Follow Windows\" switches between a light and a dark theme of your choice. The terminal window follows along."
+      "body": "Over a hundred and eighty colour themes. Hover a card to preview it on the whole window, click to keep it. \"Follow system\" switches between a light and a dark theme of your choice. The terminal window follows along."
     },
     "settings-reconnect": {
       "title": "Staying connected",

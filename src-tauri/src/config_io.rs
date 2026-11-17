@@ -228,7 +228,7 @@ fn read_bundle(path: &str) -> Result<ConfigBundle, String> {
     let bundle: ConfigBundle =
         serde_json::from_str(&data).map_err(|e| format!("not a valid config file: {e}"))?;
     if bundle.format != FORMAT {
-        return Err("this is not a ProdTunnel config file".to_string());
+        return Err("this is not a protunel config file".to_string());
     }
     if bundle.version > VERSION {
         return Err(format!(
@@ -255,7 +255,7 @@ pub async fn export_config(
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("ProdTunnel config", &["json"])
+        .add_filter("protunel config", &["json"])
         .set_file_name("protunel-config.json")
         .save_file(move |path| {
             let _ = tx.send(path);
@@ -276,7 +276,7 @@ pub async fn pick_import_file(app: AppHandle) -> Result<Option<String>, String> 
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("ProdTunnel config", &["json"])
+        .add_filter("protunel config", &["json"])
         .pick_file(move |path| {
             let _ = tx.send(path);
         });

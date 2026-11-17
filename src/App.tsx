@@ -264,7 +264,7 @@ function App() {
   return (
     <main className="flex h-screen flex-col bg-bg text-text">
       <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
-        <h1 className="sr-only">ProdTunnel</h1>
+        <h1 className="sr-only">protunel</h1>
         <Sample1 size={40} className="shrink-0" />
         <LocalIps className="flex-1" />
 
