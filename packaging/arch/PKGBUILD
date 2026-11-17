@@ -13,7 +13,7 @@
 # afterwards (the pacman-repo workflow does this itself).
 
 pkgname=protunel-bin
-pkgver=0.7.3
+pkgver=0.7.4
 pkgrel=1
 pkgdesc="SSH SOCKS5 tunnels, per-destination proxy router and SSH terminal"
 arch=('x86_64')
@@ -28,7 +28,7 @@ optdepends=(
 provides=('protunel')
 conflicts=('protunel')
 source=("${url}/releases/download/v${pkgver}/protunel_${pkgver}_amd64.deb")
-sha256sums=('c004d45f76898dd30edb929112f4956608dc0a20350408350610ba439dc5b134')
+sha256sums=('SKIP')
 options=(!debug)
 
 package() {
