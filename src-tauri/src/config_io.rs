@@ -436,7 +436,13 @@ pub async fn apply_import(
 
     // Decrypt before writing anything: a wrong passphrase should abort the whole
     // import, not leave tunnels imported with no credentials.
+    // Asking for secrets without a passphrase used to skip them silently, which
+    // left imported tunnels unable to connect with no hint why. Skipping has to
+    // be explicit (`sections.secrets = false`).
     let secret_map = if sections.secrets {
+        if bundle.secrets.is_some() && passphrase.as_deref().unwrap_or("").is_empty() {
+            return Err("passphrase required to restore secrets".to_string());
+        }
         decrypt_secrets(&bundle, passphrase.as_deref())?
     } else {
         None
