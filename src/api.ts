@@ -28,8 +28,13 @@ export const listTunnels = () => invoke<Tunnel[]>("list_tunnels");
 
 export const listTunnelStatuses = () => invoke<StatusEvent[]>("list_tunnel_statuses");
 
-export const addTunnel = (input: TunnelInput, secret?: string) =>
-  invoke<Tunnel>("add_tunnel", { input, secret });
+/** `copySecretFrom`: when no secret is typed, reuse that tunnel's (clone). */
+export const addTunnel = (input: TunnelInput, secret?: string, copySecretFrom?: string) =>
+  invoke<Tunnel>("add_tunnel", { input, secret, copySecretFrom });
+
+/** Several tunnels sharing one secret (an address range in the add form). */
+export const addTunnels = (inputs: TunnelInput[], secret?: string, copySecretFrom?: string) =>
+  invoke<Tunnel[]>("add_tunnels", { inputs, secret, copySecretFrom });
 
 export const updateTunnel = (id: string, input: TunnelInput, secret?: string) =>
   invoke<Tunnel>("update_tunnel", { id, input, secret });

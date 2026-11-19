@@ -70,7 +70,7 @@
     },
     "preferences": {
       "title": "Giao diện & ngôn ngữ",
-      "body": "Nút ở mép phải này mở Tùy chỉnh. Chấm màu là theme đang dùng, chữ là ngôn ngữ hiện tại — thay đổi áp dụng ngay, không cần bấm Lưu."
+      "body": "Nút bảng màu ở mép phải mở bảng chọn theme; nút quả địa cầu bên cạnh đổi ngôn ngữ. Cả hai áp dụng ngay, không cần bấm Lưu."
     },
     "settings-theme": {
       "title": "Theme",

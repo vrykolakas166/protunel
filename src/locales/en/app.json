@@ -29,6 +29,8 @@
     "agent": "A tunnel uses the SSH agent, but SSH_AUTH_SOCK is not set for this session:",
     "hyprlandNote": "Lines starting with exec-once / env go in ~/.config/hypr/hyprland.conf; log out and back in afterwards."
   },
-  "preferences": "Preferences",
-  "preferencesTooltip": "Theme & language"
+  "preferences": "Theme",
+  "preferencesTooltip": "Theme",
+  "languageTooltip": "Language",
+  "bulkAdded": "Added {{count}} tunnels."
 }

@@ -50,7 +50,16 @@
   "hyprlandAutostart": "Hyprland bỏ qua mục autostart mà tuỳ chọn này ghi ra. Hãy thêm dòng sau vào ~/.config/hypr/hyprland.conf:",
   "updatedByPackageManager": "Cập nhật qua trình quản lý gói của hệ thống.",
   "preferences": {
-    "title": "Tùy chỉnh",
+    "title": "Giao diện",
     "hint": "Thay đổi áp dụng ngay — rê chuột lên theme để xem trước trên cửa sổ."
-  }
+  },
+  "themeSlotLive": "đang dùng",
+  "themeSlotLiveHint": "Hệ thống đang ở chế độ này, nên đây là theme đang hiển thị.",
+  "themeScheme": {
+    "light": "sáng",
+    "dark": "tối"
+  },
+  "themeDormantHint": "Bạn đang chọn theme cho chế độ {{slot}}, nhưng hệ thống đang ở chế độ {{live}} — theme chọn ở đây chỉ hiện khi hệ thống chuyển.",
+  "themeDormantSaved": "Đã lưu {{name}} cho chế độ {{slot}}. Hệ thống đang ở chế độ {{live}} nên cửa sổ giữ theme hiện tại.",
+  "themeUseAlways": "Dùng ngay"
 }

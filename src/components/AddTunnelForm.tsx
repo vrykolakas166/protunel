@@ -1,5 +1,6 @@
-import { useState, type SubmitEvent } from "react";
+import { useMemo, useState, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { allocatePorts, parseHostRange, rangeName, usedLocalPorts } from "../hostRange";
 import type { AuthMethod, Tunnel, TunnelInput } from "../types";
 import { Modal } from "./Modal";
 
@@ -14,6 +15,12 @@ interface Props {
   /** SOCKS toggle for a brand-new tunnel; hosts added for the terminal start without one. */
   defaultSocksEnabled?: boolean;
   onSubmit: (input: TunnelInput, secret?: string) => Promise<void>;
+  /**
+   * Enables address ranges in the host field (10.1.1.1-10.1.1.10): one tunnel
+   * per address, all sharing the typed secret. Left out where a range makes no
+   * sense (editing one tunnel).
+   */
+  onSubmitMany?: (inputs: TunnelInput[], secret?: string) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -29,6 +36,7 @@ export function AddTunnelForm({
   tunnels,
   defaultSocksEnabled = true,
   onSubmit,
+  onSubmitMany,
   onCancel,
 }: Props) {
   const { t } = useTranslation("addTunnelForm");
@@ -45,8 +53,9 @@ export function AddTunnelForm({
   );
   const [secret, setSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
+  // A clone gets a free port: the original's is, by definition, taken.
   const [localSocksPort, setLocalSocksPort] = useState(
-    initial?.localSocksPort ?? suggestedPort ?? 1080,
+    (mode === "clone" ? suggestedPort : initial?.localSocksPort) ?? suggestedPort ?? 1080,
   );
   const [autoConnect, setAutoConnect] = useState(mode === "edit" ? (initial?.autoConnect ?? false) : false);
   const [socksEnabled, setSocksEnabled] = useState(initial?.socksEnabled ?? defaultSocksEnabled);
@@ -55,6 +64,19 @@ export function AddTunnelForm({
   const [error, setError] = useState<string | null>(null);
 
   const jumpOptions = tunnels.filter((tun) => tun.id !== initial?.id);
+
+  const range = useMemo(
+    () => (onSubmitMany ? parseHostRange(host) : ({ kind: "single" } as const)),
+    [host, onSubmitMany],
+  );
+  const rangePorts = useMemo(
+    () =>
+      range.kind === "range" && socksEnabled
+        ? allocatePorts(localSocksPort, range.hosts.length, usedLocalPorts(tunnels))
+        : [],
+    [range, socksEnabled, localSocksPort, tunnels],
+  );
+  const rangeShortOfPorts = range.kind === "range" && socksEnabled && rangePorts.length < range.hosts.length;
 
   const submit = async (e: SubmitEvent) => {
     e.preventDefault();
@@ -68,20 +90,30 @@ export function AddTunnelForm({
             ? { kind: "agent" }
             : { kind: "password" };
 
-      await onSubmit(
-        {
-          name,
-          host,
-          port,
-          username,
-          auth,
-          localSocksPort,
-          autoConnect,
-          socksEnabled,
-          jumpTunnelId: jumpTunnelId || null,
-        },
-        secret || undefined,
-      );
+      const base: TunnelInput = {
+        name,
+        host,
+        port,
+        username,
+        auth,
+        localSocksPort,
+        autoConnect,
+        socksEnabled,
+        jumpTunnelId: jumpTunnelId || null,
+      };
+      if (range.kind === "range" && onSubmitMany) {
+        await onSubmitMany(
+          range.hosts.map((rangeHost, i) => ({
+            ...base,
+            name: rangeName(name, rangeHost),
+            host: rangeHost,
+            localSocksPort: socksEnabled ? rangePorts[i] : localSocksPort,
+          })),
+          secret || undefined,
+        );
+      } else {
+        await onSubmit(base, secret || undefined);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -114,6 +146,7 @@ export function AddTunnelForm({
               className={monoInputClass}
               value={host}
               onChange={(e) => setHost(e.target.value)}
+              placeholder={onSubmitMany ? t("hostPlaceholderRange") : undefined}
               required
             />
           </div>
@@ -128,6 +161,29 @@ export function AddTunnelForm({
             />
           </div>
         </div>
+
+        {range.kind === "range" && (
+          <p className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-2 text-[11px] text-text">
+            {t("rangeSummary", {
+              count: range.hosts.length,
+              first: rangeName(name, range.hosts[0]),
+              last: rangeName(name, range.hosts[range.hosts.length - 1]),
+            })}
+            {socksEnabled && rangePorts.length > 0 && (
+              <>
+                {" "}
+                {t("rangePorts", { first: rangePorts[0], last: rangePorts[rangePorts.length - 1] })}
+              </>
+            )}{" "}
+            <span className="text-muted">{t("rangeNameHint")}</span>
+          </p>
+        )}
+        {range.kind === "error" && (
+          <p className="text-[11px] text-coral">
+            {range.reason === "order" ? t("rangeOrder") : t("rangeTooMany", { count: range.count })}
+          </p>
+        )}
+        {rangeShortOfPorts && <p className="text-[11px] text-coral">{t("rangeNoPorts")}</p>}
 
         <div>
           <label className={labelClass}>{t("username")}</label>
@@ -259,10 +315,14 @@ export function AddTunnelForm({
           </button>
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || range.kind === "error" || rangeShortOfPorts}
             className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
-            {mode === "edit" ? tc("save") : t("add")}
+            {mode === "edit"
+              ? tc("save")
+              : range.kind === "range"
+                ? t("addMany", { count: range.hosts.length })
+                : t("add")}
           </button>
         </div>
       </form>

@@ -55,5 +55,8 @@
   "dragPaneHint": "Kéo để di chuyển pane: vào mép pane khác, sang tab khác, hoặc lên thanh tab",
   "dropNewTab": "Tab mới",
   "expand": "Mở rộng",
-  "collapse": "Thu gọn"
+  "collapse": "Thu gọn",
+  "kbSidebar": "thanh host",
+  "showSidebar": "Hiện danh sách host",
+  "hideSidebar": "Ẩn danh sách host"
 }

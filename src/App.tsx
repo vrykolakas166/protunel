@@ -14,6 +14,7 @@ import { LocalIps } from "./components/LocalIps";
 import { MessageBar } from "./components/MessageBar";
 import { RouterPanel } from "./components/RouterPanel";
 import { Sample1 } from "./components/Sample1";
+import { LanguageMenu } from "./components/LanguageMenu";
 import { PreferencesPanel } from "./components/PreferencesPanel";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { SetupNotice } from "./components/SetupNotice";
@@ -21,10 +22,12 @@ import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
 import { useRouterEvents } from "./hooks/useRouterEvents";
 import { useLanguage } from "./hooks/useLanguage";
+import { usedLocalPorts } from "./hostRange";
 import { useTheme } from "./themes";
 import { useTunnelEvents } from "./hooks/useTunnelEvents";
 import {
   addTunnel,
+  addTunnels,
   connectAll,
   connectTunnel,
   deleteTunnel,
@@ -48,15 +51,6 @@ type FormState =
   | { mode: "add" }
   | { mode: "edit"; tunnel: Tunnel }
   | { mode: "clone"; tunnel: Tunnel };
-
-function usedLocalPorts(tunnels: Tunnel[]): Set<number> {
-  const used = new Set<number>();
-  for (const tunnel of tunnels) {
-    if (tunnel.socksEnabled) used.add(tunnel.localSocksPort);
-    for (const forward of tunnel.forwards) used.add(forward.localPort);
-  }
-  return used;
-}
 
 function suggestPort(tunnels: Tunnel[], settings: Settings | null): number {
   if (!settings) return 1080;
@@ -254,14 +248,28 @@ function App() {
     }
   };
 
+  // A clone with the secret field left blank reuses the original's secret;
+  // the backend copies it vault-to-vault so it never reaches the webview.
+  const copySecretFrom = formState?.mode === "clone" ? formState.tunnel.id : undefined;
+
   const handleSubmit = async (input: TunnelInput, secret?: string) => {
     if (formState?.mode === "edit") {
       await updateTunnel(formState.tunnel.id, input, secret);
     } else {
-      await addTunnel(input, secret);
+      await addTunnel(input, secret, copySecretFrom);
     }
     await refresh();
     setFormState(null);
+  };
+
+  const handleSubmitMany = async (inputs: TunnelInput[], secret?: string) => {
+    try {
+      const created = await addTunnels(inputs, secret, copySecretFrom);
+      setMessage({ text: t("bulkAdded", { count: created.length }), isError: false });
+      setFormState(null);
+    } finally {
+      await refresh();
+    }
   };
 
   return (
@@ -331,17 +339,27 @@ function App() {
             {t("settings")}
           </button>
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+          {settings && <LanguageMenu settings={settings} onSettingsChange={setSettings} />}
           {/* At the right edge because the drawer slides out of that edge. The
-              dot is the live accent colour, so it follows a hover preview too. */}
+              swatch is the live accent colour, so it follows a hover preview too. */}
           <button
             onClick={() => setShowPreferences(true)}
             data-tour="preferences"
             title={t("preferencesTooltip")}
             aria-label={t("preferences")}
-            className="flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[11px] font-semibold uppercase text-muted transition-colors hover:border-accent hover:bg-surface-hover hover:text-text"
+            className="flex items-center gap-1 rounded px-1.5 py-1 text-muted hover:bg-surface-hover hover:text-text"
           >
-            <span className="h-2.5 w-2.5 rounded-full bg-accent ring-1 ring-black/10" aria-hidden="true" />
-            {settings?.language ?? "en"}
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path
+                d="M8 1.6C4.4 1.6 1.6 4.3 1.6 7.8C1.6 11.3 4.4 14.4 7.6 14.4C8.6 14.4 9 13.8 9 13.1C9 12.3 8.3 12 8.3 11.2C8.3 10.4 8.9 9.9 9.7 9.9H11.2C13 9.9 14.4 8.6 14.4 6.8C14.4 3.9 11.5 1.6 8 1.6Z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+              />
+              <circle cx="5" cy="7.4" r="1" fill="currentColor" />
+              <circle cx="7.6" cy="4.8" r="1" fill="currentColor" />
+              <circle cx="10.9" cy="5.6" r="1" className="fill-accent" />
+            </svg>
           </button>
         </div>
       </header>
@@ -444,6 +462,7 @@ function App() {
           suggestedPort={suggestPort(tunnels, settings)}
           tunnels={tunnels}
           onSubmit={handleSubmit}
+          onSubmitMany={formState.mode === "edit" ? undefined : handleSubmitMany}
           onCancel={() => setFormState(null)}
         />
       )}

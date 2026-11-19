@@ -20,7 +20,7 @@
   "keyPassphrase": "Passphrase của key (tùy chọn)",
   "secretPlaceholder": {
     "edit": "Để trống nếu muốn giữ nguyên",
-    "clone": "Không được sao chép — nhập lại"
+    "clone": "Để trống để dùng lại mật khẩu của bản gốc"
   },
   "showSecret": {
     "show": "Hiện",
@@ -35,5 +35,13 @@
   "connectVia": "Kết nối qua",
   "directConnection": "Kết nối trực tiếp",
   "connectOnStartup": "Tự động kết nối khi khởi động",
-  "add": "Thêm"
+  "add": "Thêm",
+  "hostPlaceholderRange": "10.1.1.5, hoặc một dải: 10.1.1.1-10",
+  "rangeSummary": "Tạo {{count}} tunnel, {{first}} … {{last}}.",
+  "rangePorts": "Cổng SOCKS {{first}}–{{last}}.",
+  "rangeNameHint": "Thêm {ip} vào tên để tự đặt vị trí địa chỉ.",
+  "rangeOrder": "Địa chỉ kết thúc nhỏ hơn địa chỉ bắt đầu.",
+  "rangeTooMany": "{{count}} địa chỉ — tối đa 256 mỗi lần.",
+  "rangeNoPorts": "Không đủ cổng cục bộ trống tính từ cổng SOCKS này.",
+  "addMany": "Thêm {{count}}"
 }

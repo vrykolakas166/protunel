@@ -50,13 +50,7 @@ pub fn list_tunnel_statuses(state: State<AppState>) -> Vec<StatusEvent> {
     state.statuses()
 }
 
-#[tauri::command]
-pub fn add_tunnel(
-    app: AppHandle,
-    state: State<AppState>,
-    input: TunnelInput,
-    secret: Option<String>,
-) -> Result<Tunnel, String> {
+fn insert_tunnel(state: &AppState, input: TunnelInput, secret: Option<&str>) -> Result<Tunnel, String> {
     let tunnel = Tunnel {
         id: Uuid::new_v4(),
         name: input.name,
@@ -72,10 +66,74 @@ pub fn add_tunnel(
     };
     state.db.insert(&tunnel).map_err(|e| e.to_string())?;
     if let Some(secret) = secret {
-        secrets::set_secret(tunnel.id, &secret).map_err(|e| e.to_string())?;
+        secrets::set_secret(tunnel.id, secret).map_err(|e| e.to_string())?;
     }
+    Ok(tunnel)
+}
+
+/// The secret a new tunnel should get: the one typed in the form, otherwise a
+/// copy of `copy_secret_from`'s (clone / bulk add). Copying happens here so
+/// the stored password never has to cross the IPC boundary to the webview.
+fn resolve_secret(secret: Option<String>, copy_secret_from: Option<Uuid>) -> Result<Option<String>, String> {
+    match (secret, copy_secret_from) {
+        (Some(secret), _) => Ok(Some(secret)),
+        (None, Some(source)) => secrets::get_secret(source).map_err(|e| e.to_string()),
+        (None, None) => Ok(None),
+    }
+}
+
+#[tauri::command]
+pub fn add_tunnel(
+    app: AppHandle,
+    state: State<AppState>,
+    input: TunnelInput,
+    secret: Option<String>,
+    copy_secret_from: Option<Uuid>,
+) -> Result<Tunnel, String> {
+    let secret = resolve_secret(secret, copy_secret_from)?;
+    let tunnel = insert_tunnel(&state, input, secret.as_deref())?;
     tunnels_changed(&app);
     Ok(tunnel)
+}
+
+/// Upper bound for one bulk add; a typo like 10.0.0.1-10.0.255.255 should be
+/// refused, not turned into 65k tunnels and vault entries.
+const MAX_BULK_TUNNELS: usize = 256;
+
+/// Adds several tunnels that share one secret (an address range from the add
+/// form). One `tunnels-changed` at the end instead of one per tunnel.
+#[tauri::command]
+pub fn add_tunnels(
+    app: AppHandle,
+    state: State<AppState>,
+    inputs: Vec<TunnelInput>,
+    secret: Option<String>,
+    copy_secret_from: Option<Uuid>,
+) -> Result<Vec<Tunnel>, String> {
+    if inputs.is_empty() {
+        return Ok(Vec::new());
+    }
+    if inputs.len() > MAX_BULK_TUNNELS {
+        return Err(format!("At most {MAX_BULK_TUNNELS} tunnels can be added at once"));
+    }
+    let secret = resolve_secret(secret, copy_secret_from)?;
+    let mut created = Vec::with_capacity(inputs.len());
+    let mut failure = None;
+    for input in inputs {
+        match insert_tunnel(&state, input, secret.as_deref()) {
+            Ok(tunnel) => created.push(tunnel),
+            Err(e) => {
+                failure = Some(e);
+                break;
+            }
+        }
+    }
+    // Whatever made it in must show up, even if a later insert failed.
+    tunnels_changed(&app);
+    match failure {
+        Some(e) => Err(format!("Added {} tunnels, then failed: {e}", created.len())),
+        None => Ok(created),
+    }
 }
 
 #[tauri::command]

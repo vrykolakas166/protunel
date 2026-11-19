@@ -104,6 +104,7 @@ pub fn run() {
             commands::list_tunnels,
             commands::list_tunnel_statuses,
             commands::add_tunnel,
+            commands::add_tunnels,
             commands::update_tunnel,
             commands::delete_tunnel,
             commands::reorder_tunnels,

@@ -55,5 +55,8 @@
   "dragPaneHint": "Drag to move this pane: onto another pane's edge, another tab, or the tab bar",
   "dropNewTab": "New tab",
   "expand": "Expand",
-  "collapse": "Collapse"
+  "collapse": "Collapse",
+  "kbSidebar": "hosts sidebar",
+  "showSidebar": "Show hosts",
+  "hideSidebar": "Hide hosts"
 }

@@ -2,6 +2,7 @@ import type { Direction } from "./layout";
 
 export type AppShortcut =
   | { kind: "searchHosts" }
+  | { kind: "toggleSidebar" }
   | { kind: "closePane" }
   | { kind: "cycleTab"; delta: 1 | -1 }
   | { kind: "gotoTab"; index: number }
@@ -36,6 +37,8 @@ export function matchShortcut(e: KeyboardEvent): AppShortcut | null {
       case "k":
       case "t":
         return { kind: "searchHosts" };
+      case "s":
+        return { kind: "toggleSidebar" };
       case "w":
         return { kind: "closePane" };
       case "d":

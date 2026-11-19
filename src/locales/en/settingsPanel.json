@@ -50,7 +50,16 @@
   "hyprlandAutostart": "Hyprland ignores the autostart entry this writes. Add this to ~/.config/hypr/hyprland.conf instead:",
   "updatedByPackageManager": "Updates come from your package manager.",
   "preferences": {
-    "title": "Preferences",
+    "title": "Theme",
     "hint": "Changes apply instantly — hover a theme to preview it on the window."
-  }
+  },
+  "themeSlotLive": "in use",
+  "themeSlotLiveHint": "Your system is in this mode right now, so this is the theme on screen.",
+  "themeScheme": {
+    "light": "light",
+    "dark": "dark"
+  },
+  "themeDormantHint": "You are editing the {{slot}} theme, but your system is {{live}} right now — picks here show up once it switches.",
+  "themeDormantSaved": "Saved {{name}} for {{slot}} mode. Your system is {{live}} right now, so the window keeps its current theme.",
+  "themeUseAlways": "Use it now"
 }

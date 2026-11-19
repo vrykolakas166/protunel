@@ -15,7 +15,8 @@ interface Props {
 // A sheet that slides in from the right edge. Unlike Modal it does not dim the
 // window or grow it to fit: it exists for settings whose effect you want to
 // watch on the rest of the window (theme preview), so the backdrop stays
-// clear and only catches the click that dismisses it.
+// clear and only catches the click that dismisses it. It floats a few pixels
+// off the edges with overlay-sized corners, like a Windows 11 flyout.
 export function Drawer({ title, onClose, width = 380, children }: Props) {
   const { t } = useTranslation("common");
   const [closing, setClosing] = useState(false);
@@ -45,8 +46,8 @@ export function Drawer({ title, onClose, width = 380, children }: Props) {
       <aside
         role="dialog"
         aria-modal="true"
-        className={`${closing ? "drawer-panel-out" : "drawer-panel"} absolute inset-y-0 right-0 flex flex-col border-l border-border bg-surface shadow-2xl`}
-        style={{ width: `min(92vw, ${width}px)` }}
+        className={`${closing ? "drawer-panel-out" : "drawer-panel"} absolute inset-y-2 right-2 flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl`}
+        style={{ width: `min(calc(92vw - 0.5rem), ${width}px)` }}
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-border pl-5 pr-3 py-3">
           <div className="min-w-0 flex-1 pt-1">{title}</div>

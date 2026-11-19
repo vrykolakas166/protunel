@@ -20,7 +20,7 @@
   "keyPassphrase": "Key passphrase (optional)",
   "secretPlaceholder": {
     "edit": "Leave blank to keep existing",
-    "clone": "Not carried over — re-enter"
+    "clone": "Leave blank to reuse the original's"
   },
   "showSecret": {
     "show": "Show",
@@ -35,5 +35,13 @@
   "connectVia": "Connect via",
   "directConnection": "Direct connection",
   "connectOnStartup": "Connect automatically on startup",
-  "add": "Add"
+  "add": "Add",
+  "hostPlaceholderRange": "10.1.1.5, or a range: 10.1.1.1-10",
+  "rangeSummary": "Creates {{count}} tunnels, {{first}} … {{last}}.",
+  "rangePorts": "SOCKS ports {{first}}–{{last}}.",
+  "rangeNameHint": "Put {ip} in the name to place the address yourself.",
+  "rangeOrder": "The range ends before it starts.",
+  "rangeTooMany": "{{count}} addresses — at most 256 at once.",
+  "rangeNoPorts": "Not enough free local ports from this SOCKS port up.",
+  "addMany": "Add {{count}}"
 }

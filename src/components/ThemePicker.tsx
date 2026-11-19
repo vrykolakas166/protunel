@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Settings } from "../types";
-import { DARK_DEFAULT, LIGHT_DEFAULT, THEMES, setThemePreview, themeById, type ThemeDef } from "../themes";
+import {
+  DARK_DEFAULT,
+  LIGHT_DEFAULT,
+  THEMES,
+  setThemePreview,
+  themeById,
+  useSystemDark,
+  type ThemeDef,
+} from "../themes";
 
 type Filter = "all" | "dark" | "light";
 type Slot = "light" | "dark";
@@ -52,13 +60,31 @@ function ThemeCard({
  * own colours, a search box, and hovering a card previews it on the whole
  * window. "Follow system" keeps one theme for a light Windows and one for a
  * dark one; the slot buttons choose which of the two a click sets.
+ *
+ * The slot starts on (and follows) the scheme the OS uses *right now*. It used
+ * to start on "dark" whatever the OS said, so someone on a light desktop picked
+ * themes into the dark slot and saw nothing happen. Picking into the slot the
+ * OS is not using still works but says why the window did not change, with a
+ * one-click way to use that theme regardless.
  */
 export function ThemePicker({ settings, disabled, onChange, fill = false }: Props) {
   const { t } = useTranslation("settingsPanel");
   const followSystem = settings.theme === "system";
-  const [slot, setSlot] = useState<Slot>("dark");
+  const systemDark = useSystemDark();
+  const liveSlot: Slot = systemDark ? "dark" : "light";
+  const [slot, setSlot] = useState<Slot>(liveSlot);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>(followSystem ? liveSlot : "all");
+  /** Theme just saved into the slot the OS is not using: it is not on screen. */
+  const [dormant, setDormant] = useState<ThemeDef | null>(null);
+
+  // The OS flipped while the picker is open: edit the pair member now showing.
+  useEffect(() => {
+    setSlot(liveSlot);
+    if (followSystem) setFilter(liveSlot);
+    setDormant(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveSlot]);
 
   // Leaving the picker (or closing Settings) always ends a preview.
   useEffect(() => () => setThemePreview(null), []);
@@ -82,20 +108,29 @@ export function ThemePicker({ settings, disabled, onChange, fill = false }: Prop
   // The hover preview already shows this theme; it stays until the pointer
   // leaves the grid, by which time the saved setting shows the same thing.
   const pick = (theme: ThemeDef) => {
+    setDormant(followSystem && slot !== liveSlot ? theme : null);
     if (!followSystem) onChange({ ...settings, theme: theme.id });
     else if (slot === "dark") onChange({ ...settings, themeDark: theme.id });
     else onChange({ ...settings, themeLight: theme.id });
   };
 
+  /** Leave "follow system" and show this theme everywhere, light or dark OS. */
+  const applyEverywhere = (theme: ThemeDef) => {
+    setDormant(null);
+    setFilter("all");
+    onChange({ ...settings, theme: theme.id });
+  };
+
   const setMode = (system: boolean) => {
     if (system === followSystem) return;
+    setDormant(null);
     if (system) {
       onChange({ ...settings, theme: "system" });
-      setFilter(slot);
+      setSlot(liveSlot);
+      setFilter(liveSlot);
     } else {
       // Keep looking at whatever the system pair is showing right now.
-      const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      onChange({ ...settings, theme: dark ? settings.themeDark : settings.themeLight });
+      onChange({ ...settings, theme: systemDark ? settings.themeDark : settings.themeLight });
       setFilter("all");
     }
   };
@@ -103,6 +138,7 @@ export function ThemePicker({ settings, disabled, onChange, fill = false }: Prop
   const chooseSlot = (next: Slot) => {
     setSlot(next);
     setFilter(next);
+    setDormant(null);
   };
 
   const segment = (active: boolean) =>
@@ -114,6 +150,7 @@ export function ThemePicker({ settings, disabled, onChange, fill = false }: Prop
     const id = which === "dark" ? settings.themeDark : settings.themeLight;
     const theme = themeById(id) ?? themeById(which === "dark" ? DARK_DEFAULT : LIGHT_DEFAULT)!;
     const active = slot === which;
+    const live = liveSlot === which;
     return (
       <button
         type="button"
@@ -127,8 +164,16 @@ export function ThemePicker({ settings, disabled, onChange, fill = false }: Prop
           style={{ background: theme.swatch.bg, boxShadow: `inset -8px 0 0 ${theme.swatch.main}` }}
         />
         <span className="min-w-0">
-          <span className="block text-[10px] uppercase tracking-wide text-muted">
+          <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-muted">
             {which === "dark" ? t("themeSlotDark") : t("themeSlotLight")}
+            {live && (
+              <span
+                title={t("themeSlotLiveHint")}
+                className="rounded-full bg-accent px-1.5 text-[9px] font-semibold normal-case tracking-normal text-on-accent"
+              >
+                {t("themeSlotLive")}
+              </span>
+            )}
           </span>
           <span className="block truncate text-xs text-text">{theme.name}</span>
         </span>
@@ -154,6 +199,26 @@ export function ThemePicker({ settings, disabled, onChange, fill = false }: Prop
         <div className="flex gap-2">
           {slotButton("light")}
           {slotButton("dark")}
+        </div>
+      )}
+
+      {followSystem && slot !== liveSlot && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber/40 bg-amber/10 px-2.5 py-2 text-[11px] text-text">
+          <span className="min-w-0 flex-1">
+            {dormant
+              ? t("themeDormantSaved", { name: dormant.name, slot: t(`themeScheme.${slot}`), live: t(`themeScheme.${liveSlot}`) })
+              : t("themeDormantHint", { slot: t(`themeScheme.${slot}`), live: t(`themeScheme.${liveSlot}`) })}
+          </span>
+          {dormant && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => applyEverywhere(dormant)}
+              className="shrink-0 rounded bg-amber px-2 py-0.5 text-[11px] font-medium text-on-amber hover:opacity-90 disabled:opacity-50"
+            >
+              {t("themeUseAlways")}
+            </button>
+          )}
         </div>
       )}
 

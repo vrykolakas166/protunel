@@ -20,6 +20,7 @@ import { useDragDrop } from "./useDragDrop";
 
 const SHORTCUTS = [
   ["Ctrl+Shift+K", "kbSearch"],
+  ["Ctrl+Shift+S", "kbSidebar"],
   ["Ctrl+Tab", "kbNextTab"],
   ["Ctrl+1…9", "kbGotoTab"],
   ["Ctrl+Shift+D", "kbSplitRight"],
@@ -44,6 +45,17 @@ interface PendingPaste {
   targets: number;
   lines: number;
   resolve: (ok: boolean) => void;
+}
+
+const SIDEBAR_KEY = "protunel.terminal.sidebarHidden";
+
+/** Per-window convenience only, so browser storage (and failing quietly) is fine. */
+function loadSidebarHidden(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 /** Removes panes whose host no longer exists; drops tabs left empty. */
@@ -78,6 +90,7 @@ export function TerminalApp() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
+  const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden);
   const searchRef = useRef<HTMLInputElement>(null);
   /** Pane id → backend terminal id, for the panes whose shell is open. */
   const terminalIds = useRef(new Map<string, string>());
@@ -262,9 +275,31 @@ export function TerminalApp() {
     onHoverTab: (tabKey) => setActiveKey(tabKey),
   });
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_KEY, sidebarHidden ? "1" : "0");
+    } catch {
+      // Private mode or blocked storage: the choice just won't persist.
+    }
+  }, [sidebarHidden]);
+
+  // The search box lives in the sidebar; asking for it brings the sidebar back.
   const focusSearch = () => {
+    if (sidebarHidden) {
+      setSidebarHidden(false);
+      requestAnimationFrame(() => {
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      });
+      return;
+    }
     searchRef.current?.focus();
     searchRef.current?.select();
+  };
+
+  const toggleSidebar = () => {
+    setSidebarHidden((hidden) => !hidden);
+    refocus();
   };
 
   // Registered once; reads the latest render's state through the ref.
@@ -280,6 +315,9 @@ export function TerminalApp() {
     switch (shortcut.kind) {
       case "searchHosts":
         focusSearch();
+        break;
+      case "toggleSidebar":
+        toggleSidebar();
         break;
       case "closePane":
         if (activeTab) closePane(activeTab.key, activeTab.focused);
@@ -372,52 +410,77 @@ export function TerminalApp() {
 
   return (
     <main className="flex h-screen bg-bg text-text">
-      <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-surface">
-        <div className="flex items-center justify-between px-3 pb-2 pt-3">
-          <span className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
-            {t("hosts")}
-            <span className="ml-1.5 font-sans font-normal normal-case tracking-normal">
-              {tunnels.length}
+      <aside
+        aria-hidden={sidebarHidden}
+        className={`flex shrink-0 flex-col overflow-hidden bg-surface transition-[width] duration-150 ease-out ${
+          sidebarHidden ? "w-0" : "w-60 border-r border-border"
+        }`}
+      >
+        {/* Fixed inner width so the content slides out instead of reflowing. */}
+        <div className={`flex min-h-0 w-60 flex-1 flex-col ${sidebarHidden ? "invisible" : ""}`}>
+          <div className="flex items-center justify-between px-3 pb-2 pt-3">
+            <span className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
+              {t("hosts")}
+              <span className="ml-1.5 font-sans font-normal normal-case tracking-normal">
+                {tunnels.length}
+              </span>
             </span>
-          </span>
-          <button
-            onClick={() => setAdding(true)}
-            title={t("newHost")}
-            aria-label={t("newHost")}
-            className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 2V14M2 8H14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
-        <div className="px-3 pb-2">
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onSearchKey}
-            placeholder={t("searchHosts")}
-            className="w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+            <button
+              onClick={() => setAdding(true)}
+              title={t("newHost")}
+              aria-label={t("newHost")}
+              className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M8 2V14M2 8H14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="px-3 pb-2">
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onSearchKey}
+              placeholder={t("searchHosts")}
+              className="w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+          </div>
+          <HostTree
+            rows={rows}
+            emptyText={tunnels.length === 0 ? t("noHosts") : t("noMatches")}
+            statuses={statuses}
+            panesPerHost={panesPerHost}
+            collapsed={collapsed}
+            highlightId={highlightId}
+            onHighlight={setHighlightId}
+            onToggle={toggleCollapsed}
+            onOpen={openHost}
+            beginDrag={beginDrag}
           />
         </div>
-        <HostTree
-          rows={rows}
-          emptyText={tunnels.length === 0 ? t("noHosts") : t("noMatches")}
-          statuses={statuses}
-          panesPerHost={panesPerHost}
-          collapsed={collapsed}
-          highlightId={highlightId}
-          onHighlight={setHighlightId}
-          onToggle={toggleCollapsed}
-          onOpen={openHost}
-          beginDrag={beginDrag}
-        />
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="flex h-9 shrink-0 items-stretch border-b border-border bg-surface">
-          <div data-drop-tabbar className="relative flex min-w-0 flex-1 items-stretch overflow-x-auto">
+          <button
+            onClick={toggleSidebar}
+            title={`${sidebarHidden ? t("showSidebar") : t("hideSidebar")} (Ctrl+Shift+S)`}
+            aria-label={sidebarHidden ? t("showSidebar") : t("hideSidebar")}
+            aria-pressed={!sidebarHidden}
+            className="flex shrink-0 items-center border-r border-border px-2.5 text-muted hover:bg-surface-hover hover:text-text"
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M6 2.5V13.5" stroke="currentColor" strokeWidth="1.3" />
+              {sidebarHidden ? (
+                <path d="M9 6L11 8L9 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              ) : (
+                <path d="M11 6L9 8L11 10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              )}
+            </svg>
+          </button>
+          <div data-drop-tabbar className="relative flex min-w-0 flex-1 items-stretch gap-0.5 overflow-x-auto px-1">
             {tabs.map((tab) => {
               const isActive = tab.key === activeKey;
               const phase = infos[tab.focused]?.phase ?? "connecting";
@@ -436,9 +499,9 @@ export function TerminalApp() {
                     refocus();
                   }}
                   onAuxClick={(e) => e.button === 1 && closeTab(tab.key)}
-                  className={`group relative flex max-w-52 shrink-0 cursor-pointer items-center gap-2 border-r border-border pl-3 pr-1.5 text-xs ${
+                  className={`group relative mt-1 flex max-w-52 shrink-0 cursor-pointer items-center gap-2 rounded-t-lg pl-3 pr-1.5 text-xs ${
                     isActive
-                      ? "bg-bg text-text shadow-[inset_0_2px_0_var(--color-accent)]"
+                      ? "border-x border-t border-border bg-bg text-text"
                       : "text-muted hover:bg-surface-hover hover:text-text"
                   } ${joinTarget ? "bg-accent/15 text-text" : ""}`}
                 >

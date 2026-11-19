@@ -70,7 +70,7 @@
     },
     "preferences": {
       "title": "Theme & language",
-      "body": "This pill at the right edge opens Preferences. The dot is your current theme colour, the letters your language — changes apply instantly, no Save button."
+      "body": "The palette button at the right edge opens the theme panel; the globe next to it switches the language. Both apply instantly, no Save button."
     },
     "settings-theme": {
       "title": "Themes",

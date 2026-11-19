@@ -250,7 +250,8 @@ not TS — that keeps file contents off the IPC boundary and out of
   order): it lives only in SQL — `insert` appends, `update` never touches it,
   `reorder_tunnels` rewrites it — so editing a tunnel can't move it.
 - **OS credential vault** (`secrets.rs`, `keyring`) — passwords and key passphrases,
-  keyed by tunnel UUID. Never in SQLite.
+  keyed by tunnel UUID. Never in SQLite. Clone and range add (`add_tunnels`)
+  copy a secret vault-to-vault via `copy_secret_from`; it never goes to the webview.
 - **JSON files** in `app_data_dir` — `settings.json`, `router.json` (both
   `settings.rs`, via the shared `JsonStore<T>`), and `known_hosts.json`
   (`ssh/known_hosts.rs`). New `Settings` fields need `#[serde(default …)]` or

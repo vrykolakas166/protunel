@@ -293,7 +293,8 @@ const subscribePreview = (notify: () => void) => {
   return () => listeners.delete(notify);
 };
 
-function useSystemDark(): boolean {
+/** Whether the OS currently asks for a dark scheme; follows live changes. */
+export function useSystemDark(): boolean {
   const query = "(prefers-color-scheme: dark)";
   const [dark, setDark] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
