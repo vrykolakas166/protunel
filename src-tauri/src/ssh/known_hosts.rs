@@ -13,12 +13,26 @@ pub struct TrustedKey {
     pub trusted_at: u64,
 }
 
+/// A server that offered a different key than the trusted one. In memory
+/// only: it describes a refused connection, not something to persist.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostKeyMismatch {
+    pub key_id: String,
+    pub known_fingerprint: String,
+    pub known_algorithm: String,
+    pub trusted_at: u64,
+    pub offered_fingerprint: String,
+    pub offered_algorithm: String,
+}
+
 /// Persisted trust store: `host:port` -> trusted public key + fingerprint.
 /// Real TOFU (trust-on-first-use with explicit user confirmation), unlike the old
 /// app's silent blind-trust-on-every-connect behavior.
 pub struct KnownHosts {
     path: PathBuf,
     entries: Mutex<HashMap<String, TrustedKey>>,
+    mismatches: Mutex<HashMap<String, HostKeyMismatch>>,
 }
 
 impl KnownHosts {
@@ -30,6 +44,7 @@ impl KnownHosts {
         Self {
             path,
             entries: Mutex::new(entries),
+            mismatches: Mutex::new(HashMap::new()),
         }
     }
 
@@ -87,6 +102,47 @@ impl KnownHosts {
         let mut entries = self.entries.lock().unwrap();
         entries.remove(key_id);
         self.persist(&entries);
+        self.mismatches.lock().unwrap().remove(key_id);
+    }
+
+    /// Notes a refused key so the UI can show both fingerprints. Returns the
+    /// record, or `None` when the host is not (or no longer) trusted.
+    pub fn record_mismatch(&self, key_id: &str, offered_fingerprint: &str, offered_algorithm: &str) -> Option<HostKeyMismatch> {
+        let entries = self.entries.lock().unwrap();
+        let known = entries.get(key_id)?;
+        let mismatch = HostKeyMismatch {
+            key_id: key_id.to_string(),
+            known_fingerprint: known.fingerprint.clone(),
+            known_algorithm: known.algorithm.clone(),
+            trusted_at: known.trusted_at,
+            offered_fingerprint: offered_fingerprint.to_string(),
+            offered_algorithm: offered_algorithm.to_string(),
+        };
+        self.mismatches.lock().unwrap().insert(key_id.to_string(), mismatch.clone());
+        Some(mismatch)
+    }
+
+    /// Developer tools: records a mismatch whether or not the host is trusted.
+    pub fn record_fake_mismatch(&self, key_id: &str) -> HostKeyMismatch {
+        let mismatch = HostKeyMismatch {
+            key_id: key_id.to_string(),
+            known_fingerprint: "SHA256:SIMULATEDknownKEYxxxxxxxxxxxxxxxxxxxxxxxxxx".into(),
+            known_algorithm: "ssh-ed25519".into(),
+            trusted_at: 0,
+            offered_fingerprint: "SHA256:SIMULATEDofferedKEYyyyyyyyyyyyyyyyyyyyyyyyy".into(),
+            offered_algorithm: "ssh-ed25519".into(),
+        };
+        self.mismatches.lock().unwrap().insert(key_id.to_string(), mismatch.clone());
+        mismatch
+    }
+
+    /// The trusted key matched again (e.g. a DNS blip pointed elsewhere).
+    pub fn clear_mismatch(&self, key_id: &str) {
+        self.mismatches.lock().unwrap().remove(key_id);
+    }
+
+    pub fn mismatches(&self) -> Vec<HostKeyMismatch> {
+        self.mismatches.lock().unwrap().values().cloned().collect()
     }
 
     fn persist(&self, entries: &HashMap<String, TrustedKey>) {

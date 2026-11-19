@@ -1,3 +1,4 @@
+mod access;
 mod capture;
 mod commands;
 mod config_io;
@@ -11,9 +12,10 @@ mod settings;
 mod ssh;
 mod tray;
 mod tunnel;
+mod updates;
 mod window_anim;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 pub use tunnel::AppState;
 
 /// WebKitGTK's DMA-BUF renderer draws a blank white window on the NVIDIA
@@ -53,7 +55,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
+            Some(vec![commands::AUTOSTART_ARG]),
         ))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -62,36 +64,72 @@ pub fn run() {
             std::fs::create_dir_all(&data_dir)?;
             let db = db::Db::open(&data_dir.join("protunel.db"))?;
             app.manage(AppState::new(&data_dir, db));
+            app.manage(updates::Updates::default());
             tray::setup(app.handle())?;
+            if let Some(main) = app.get_webview_window("main") {
+                commands::harden_webview(&main);
+                // The window starts hidden (tauri.conf.json) so a sign-in
+                // launch set to "start minimized" never flashes it.
+                let from_autostart = std::env::args().any(|arg| arg == commands::AUTOSTART_ARG);
+                let settings = app.state::<AppState>().settings.get();
+                if !(from_autostart && settings.start_minimized) {
+                    let _ = main.show();
+                }
+                // Entries written by older versions start the app without
+                // AUTOSTART_ARG; rewrite them so the flag above can be seen.
+                if settings.autostart_enabled {
+                    commands::refresh_autostart(app.handle());
+                }
+            }
 
             // Undo a system proxy left behind by a previous run that was killed
             // before it could clean up. Must happen before the router starts, or
             // recovery would restore over our own fresh settings.
             router::system_proxy::recover(app.handle());
 
+            updates::start(app.handle());
+            updates::connect_on_launch(app.handle());
+
             let state = app.state::<AppState>();
             let _ = state.router.reload_rules(&state.db);
             if state.router.config().enabled {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(e) = router::start(&handle).await {
-                        router::emit_status(
+                    match router::start(&handle).await {
+                        // Simple mode's switch was left on: bring its tunnels
+                        // up too, as the switch itself does.
+                        Ok(()) if access::is_simple(&handle) => {
+                            access::connect_routed(&handle);
+                            tray::rebuild_menu(&handle);
+                        }
+                        Ok(()) => {}
+                        Err(e) => router::emit_status(
                             &handle,
                             events::RouterStatus::Error,
                             None,
                             Some(e),
-                        );
+                        ),
                     }
                 });
             }
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            // Closing the main window only hides it; exit is tray-only. The
-            // terminal window really closes.
+            // Closing the main window only hides it; exit is tray-only.
             tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 api.prevent_close();
                 let _ = window.hide();
+            }
+            // The terminal window is hidden too, but its shells close as if it
+            // had been destroyed. Tearing the webview down and building a new
+            // one on every close/open is what made quick reopening lag (and a
+            // reopen racing the teardown could show nothing at all).
+            tauri::WindowEvent::CloseRequested { api, .. } if window.label() == commands::TERMINAL_WINDOW => {
+                api.prevent_close();
+                let _ = window.hide();
+                let _ = window.emit_to(window.label(), events::TERMINAL_HIDDEN_EVENT, ());
+                window.state::<AppState>().terminals.close_all();
+                commands::schedule_terminal_teardown(window.app_handle());
             }
             // Its terminals would otherwise keep shells open on the server with
             // nobody left to read them.
@@ -119,6 +157,17 @@ pub fn run() {
             commands::reject_host_key,
             commands::list_known_hosts,
             commands::forget_known_host,
+            commands::list_host_key_mismatches,
+            commands::update_status,
+            commands::check_for_updates,
+            commands::download_update,
+            commands::install_update,
+            commands::take_whats_new,
+            commands::set_network_access,
+            commands::dev_tools_enabled,
+            commands::debug_simulate_update,
+            commands::debug_whats_new,
+            commands::debug_fail_tunnel,
             commands::get_settings,
             commands::update_settings,
             commands::get_router_config,
@@ -158,6 +207,7 @@ pub fn run() {
         // clean-shutdown hook, and the system proxy must not outlive the app.
         if let RunEvent::Exit = event {
             router::system_proxy::cleanup_on_exit(app_handle);
+            updates::install_on_exit(app_handle);
         }
     });
 }

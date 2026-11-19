@@ -1,0 +1,51 @@
+{
+  "title": "Mạng nội bộ",
+  "off": "Đang tắt. Trình duyệt dùng mạng bình thường.",
+  "turningOn": "Đang bật…",
+  "turningOff": "Đang tắt…",
+  "on": "Đang bật. Trang nội bộ mở thẳng trên trình duyệt, qua tunnel.",
+  "onManual": "Đang bật. Trỏ trình duyệt tới địa chỉ bên dưới (làm một lần).",
+  "pacHint": "URL cấu hình proxy tự động:",
+  "onNoProxy": "Đang bật nhưng chưa đặt được proxy hệ thống: {{error}}. Báo quản trị viên.",
+  "error": "Không bật được: {{error}}",
+  "switchFailed": "Không chuyển được mạng nội bộ: {{error}}",
+  "servers": "Máy chủ",
+  "status": {
+    "connected": "Đã kết nối",
+    "connecting": "Đang kết nối…",
+    "standby": "Tự kết nối khi cần",
+    "off": "Tắt"
+  },
+  "problem": {
+    "auth": "Đăng nhập bị từ chối — nhờ quản trị viên cập nhật mật khẩu",
+    "unreachable": "Không tới được máy chủ — kiểm tra VPN hoặc mạng",
+    "hostKey": "Khoá bảo mật của máy chủ đã đổi — liên hệ quản trị viên trước khi dùng",
+    "other": "Không kết nối được — liên hệ quản trị viên"
+  },
+  "needChanges": "Cần đổi máy chủ hay mật khẩu? Quản trị viên có thể chuyển protunel sang chế độ Đầy đủ trong Cài đặt › Chung.",
+  "empty": {
+    "title": "Chưa có cấu hình",
+    "body": "Lấy file cấu hình protunel từ quản trị viên rồi import vào đây.",
+    "import": "Import file cấu hình…"
+  },
+  "chooser": {
+    "welcome": "Chào mừng đến với protunel",
+    "afterUpdate": "protunel có thêm chế độ Đơn giản",
+    "subtitle": "Bạn sẽ dùng protunel thế nào?",
+    "simpleTitle": "Đơn giản",
+    "simpleTagline": "Vào trang nội bộ chỉ với một công tắc",
+    "simpleDetail": "Quản trị viên thiết lập sẵn máy chủ và gửi bạn file cấu hình. Bạn chỉ cần bật mạng nội bộ rồi mở trình duyệt, không phải cấu hình gì thêm.",
+    "fullTitle": "Đầy đủ",
+    "fullTagline": "Tunnel, rule định tuyến, terminal SSH",
+    "fullDetail": "Tạo và sửa tunnel, port forward, rule router; mở terminal SSH; định tuyến riêng từng ứng dụng.",
+    "roles": {
+      "qa": "QA",
+      "tester": "Tester",
+      "po": "PO",
+      "dev": "Developer"
+    },
+    "footer": "Đổi lại bất cứ lúc nào trong Cài đặt › Chung",
+    "details": "Thêm về chế độ này"
+  },
+  "copyError": "Sao chép chi tiết lỗi"
+}

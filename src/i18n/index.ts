@@ -14,6 +14,8 @@ import enHostKeyPrompt from "../locales/en/hostKeyPrompt.json";
 import enApp from "../locales/en/app.json";
 import enLocalIps from "../locales/en/localIps.json";
 import enTerminal from "../locales/en/terminal.json";
+import enSimple from "../locales/en/simple.json";
+import enDevTools from "../locales/en/devTools.json";
 
 import viCommon from "../locales/vi/common.json";
 import viTunnelList from "../locales/vi/tunnelList.json";
@@ -28,6 +30,8 @@ import viHostKeyPrompt from "../locales/vi/hostKeyPrompt.json";
 import viApp from "../locales/vi/app.json";
 import viLocalIps from "../locales/vi/localIps.json";
 import viTerminal from "../locales/vi/terminal.json";
+import viSimple from "../locales/vi/simple.json";
+import viDevTools from "../locales/vi/devTools.json";
 
 export const SUPPORTED_LANGUAGES = ["en", "vi"] as const;
 export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
@@ -50,6 +54,8 @@ void i18next.use(initReactI18next).init({
     "app",
     "localIps",
     "terminal",
+    "simple",
+    "devTools",
   ],
   resources: {
     en: {
@@ -66,6 +72,8 @@ void i18next.use(initReactI18next).init({
       app: enApp,
       localIps: enLocalIps,
       terminal: enTerminal,
+      simple: enSimple,
+      devTools: enDevTools,
     },
     vi: {
       common: viCommon,
@@ -81,6 +89,8 @@ void i18next.use(initReactI18next).init({
       app: viApp,
       localIps: viLocalIps,
       terminal: viTerminal,
+      simple: viSimple,
+      devTools: viDevTools,
     },
   },
   interpolation: { escapeValue: false },

@@ -59,6 +59,11 @@ pub struct ConfigBundle {
     /// Absent entirely when the export was made without a passphrase.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub secrets: Option<SealedSecrets>,
+    /// "simple" when the exporter asked the file to open protunel in Simple
+    /// mode (an administrator setting up a tester's machine). Independent of the
+    /// settings section, so it doesn't drag the exporter's theme along.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_mode: Option<String>,
 }
 
 fn now_secs() -> u64 {
@@ -154,6 +159,9 @@ pub struct ExportSections {
     pub router: bool,
     pub settings: bool,
     pub known_hosts: bool,
+    /// Ask the importing machine to switch to Simple mode.
+    #[serde(default)]
+    pub simple_mode: bool,
 }
 
 fn build_bundle(
@@ -220,6 +228,7 @@ fn build_bundle(
             Vec::new()
         },
         secrets,
+        ui_mode: sections.simple_mode.then(|| "simple".to_string()),
     })
 }
 
@@ -328,6 +337,8 @@ pub struct ImportPreview {
     /// True once a passphrase has actually decrypted the block.
     pub secrets_unlocked: bool,
     pub secret_count: usize,
+    /// The UI mode the file asks for, if any (see `ConfigBundle::ui_mode`).
+    pub ui_mode: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -338,6 +349,9 @@ pub struct ImportSections {
     pub settings: bool,
     pub known_hosts: bool,
     pub secrets: bool,
+    /// Apply the file's `ui_mode`.
+    #[serde(default)]
+    pub ui_mode: bool,
     /// On a same-name/different-id collision: replace the existing tunnel, or
     /// bring the imported one in alongside it under a new id.
     pub overwrite_name_conflicts: bool,
@@ -420,6 +434,7 @@ pub async fn preview_import(
         has_secrets: bundle.secrets.is_some(),
         secrets_unlocked: secrets.is_some(),
         secret_count: secrets.map(|s| s.len()).unwrap_or(0),
+        ui_mode: bundle.ui_mode,
     })
 }
 
@@ -537,13 +552,28 @@ pub async fn apply_import(
     }
 
     if sections.settings {
-        state.settings.update(bundle.settings.clone());
-        crate::commands::sync_autostart(&app, bundle.settings.autostart_enabled)?;
-        let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &bundle.settings);
+        // The mode belongs to the person, not the file: only `ui_mode` below
+        // (an explicit choice by the exporter) changes it.
+        let settings = Settings {
+            ui_mode: state.settings.get().ui_mode,
+            ..bundle.settings.clone()
+        };
+        state.settings.update(settings.clone());
+        crate::commands::sync_autostart(&app, settings.autostart_enabled)?;
+        let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &settings);
     }
 
     if sections.known_hosts {
         result.known_hosts_added = state.known_hosts.merge(bundle.known_hosts.clone());
+    }
+
+    // After the settings section, which would otherwise put the exporter's mode back.
+    if let (true, Some(mode)) = (sections.ui_mode, &bundle.ui_mode) {
+        let mut settings = state.settings.get();
+        settings.ui_mode = Some(mode.clone());
+        state.settings.update(settings.clone());
+        let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &settings);
+        crate::tray::rebuild_menu(&app);
     }
 
     crate::commands::tunnels_changed(&app);
@@ -600,6 +630,7 @@ mod tests {
             settings: Settings::default(),
             known_hosts: Vec::new(),
             secrets: None,
+            ui_mode: None,
         };
         let json = serde_json::to_string(&bundle).unwrap();
         assert!(!json.contains("secrets"), "{json}");

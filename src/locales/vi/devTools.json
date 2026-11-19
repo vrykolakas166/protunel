@@ -1,0 +1,29 @@
+{
+  "intro": "Chỉ có trong bản dev, hoặc bản release chạy với PROTUNEL_DEVTOOLS=1. Giả lập trạng thái để kiểm tra giao diện mà không cần bản phát hành hay máy chủ lỗi thật.",
+  "groups": {
+    "updates": "Cập nhật",
+    "mode": "Chế độ",
+    "failures": "Lỗi tunnel"
+  },
+  "updateAvailable": "Có bản cập nhật",
+  "updateAvailableHint": "Như khi kiểm tra nền thấy v{{next}}. Nếu bật tự động cập nhật thì tự tải (khoảng 3 giây); nếu không, bấm Tải về trên banner.",
+  "updateError": "Kiểm tra lỗi",
+  "updateErrorHint": "Như khi “Kiểm tra cập nhật” không kết nối được GitHub.",
+  "updateReset": "Đặt lại",
+  "updateResetHint": "Về trạng thái không có cập nhật. “Khởi động lại để cập nhật” khi giả lập sẽ khởi động lại thật: tunnel đang chạy tự bật lại và hiện “Có gì mới”, nhưng không cài gì.",
+  "simulate": "Giả lập",
+  "whatsNew": "“Có gì mới”",
+  "whatsNewHint": "Cửa sổ mà bản vừa cập nhật hiện một lần.",
+  "show": "Hiện",
+  "askMode": "Câu hỏi chọn chế độ",
+  "askModeHint": "Xoá lựa chọn, như lần chạy đầu sau khi cập nhật từ bản chưa có chế độ.",
+  "askAgain": "Hỏi lại",
+  "tunnel": "Tunnel",
+  "failuresHint": "Dừng tunnel và hiện lỗi mà nó sẽ gặp. Lỗi đổi khoá giả lập tự hết khi tunnel kết nối lại.",
+  "fail": {
+    "auth": "Sai mật khẩu",
+    "unreachable": "Không tới được",
+    "hostKey": "Đổi host key"
+  },
+  "noTunnels": "Thêm hoặc import một tunnel trước."
+}

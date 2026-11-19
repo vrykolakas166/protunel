@@ -2,5 +2,13 @@
   "title": "Khóa máy chủ chưa xác định",
   "body": "Máy chủ <host>{{host}}:{{port}}</host> đưa ra khóa {{algorithm}} chưa từng thấy trước đây. Hãy xác minh fingerprint qua kênh khác trước khi tin tưởng.",
   "reject": "Từ chối",
-  "trustAndConnect": "Tin tưởng & Kết nối"
+  "trustAndConnect": "Tin tưởng & Kết nối",
+  "changed": {
+    "title": "Host key đã thay đổi",
+    "body": "{{name}} ({{host}}) đưa ra key khác với key bạn đã tin cậy ngày {{date}}, nên protunel đã từ chối kết nối.",
+    "trusted": "Key đã tin cậy",
+    "offered": "Key server đang đưa ra",
+    "warning": "Chuyện này bình thường nếu server vừa cài lại hoặc tạo lại SSH key. Nó cũng có thể là dấu hiệu có kẻ đang chặn kết nối. Nếu không rõ vì sao key đổi, hãy đối chiếu fingerprint mới với người quản trị server trước.",
+    "forget": "Quên key cũ & kết nối lại"
+  }
 }

@@ -1,12 +1,14 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import type { PortForward, Tunnel } from "../types";
+import { hostKeyId } from "../hooks/useHostKeyMismatches";
+import type { HostKeyMismatch, PortForward, Tunnel } from "../types";
 import type { Throughput, TunnelRuntimeState } from "../hooks/useTunnelEvents";
 import type { TunnelStats } from "../types";
 import { formatBytes, formatDuration } from "../format";
 import { addPortForward, deletePortForward } from "../api";
 import { TunnelWaveform } from "./TunnelWaveform";
+import { openMenu } from "../contextMenu";
 
 const DOT_COLOR: Record<string, string> = {
   disconnected: "bg-slate",
@@ -30,6 +32,9 @@ interface Props {
   onError: (text: string) => void;
   /** New order of `tunnels` (ids, top to bottom) after a drag-and-drop. */
   onReorder: (ids: string[]) => void;
+  /** Refused host keys by `host:port` (see `useHostKeyMismatches`). */
+  hostKeyMismatches: Record<string, HostKeyMismatch>;
+  onReviewHostKey: (tunnel: Tunnel) => void;
 }
 
 /** The tunnel a row hangs under in the tree, or null for a top-level row. */
@@ -49,6 +54,8 @@ export function TunnelList({
   onRefresh,
   onError,
   onReorder,
+  hostKeyMismatches,
+  onReviewHostKey,
 }: Props) {
   const { t } = useTranslation("tunnelList");
   const { t: tc } = useTranslation("common");
@@ -61,22 +68,70 @@ export function TunnelList({
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const lastTops = useRef(new Map<string, number>());
 
-  // FLIP: while a drag reshuffles rows, each row glides from where it was to
-  // where it now is instead of jumping.
+  const listRef = useRef<HTMLUListElement>(null);
+  /** The live drag, read by pointer handlers and the layout effect alike. */
+  const drag = useRef<{
+    id: string;
+    /** It and its dependents: they travel as one block. */
+    block: Set<string>;
+    /** Pointer y (list content coordinates) minus the row's top at grab. */
+    grab: number;
+    /** Last pointer y, list content coordinates. */
+    y: number;
+  } | null>(null);
+  /**
+   * Set by a drop or cancel: the block just released. The next render clears
+   * its transform and glides every row into place (in the same frame, so the
+   * block never flashes at its slot first).
+   */
+  const settling = useRef<Set<string> | null>(null);
+
+  /** List content y of a viewport y (scroll included). */
+  const contentY = (clientY: number) => {
+    const list = listRef.current!;
+    return clientY - list.getBoundingClientRect().top + list.scrollTop;
+  };
+
+  /** Keeps the dragged block under the pointer, wherever its slot now is. */
+  const placeDragged = () => {
+    const current = drag.current;
+    if (!current) return;
+    const anchor = rowRefs.current.get(current.id);
+    if (!anchor) return;
+    const offset = current.y - current.grab - anchor.offsetTop;
+    for (const id of current.block) {
+      const el = rowRefs.current.get(id);
+      if (el) el.style.transform = `translateY(${offset}px)`;
+    }
+  };
+
+  // FLIP: when a drag reshuffles rows, every other row glides from where it
+  // was to where it now is. The dragged block is skipped: it follows the
+  // pointer instead (`placeDragged`). Positions are `offsetTop`, which
+  // ignores transforms, so a glide in progress doesn't skew the next one.
   useLayoutEffect(() => {
     const tops = new Map<string, number>();
+    const moving = drag.current?.block;
+    const released = settling.current;
+    settling.current = null;
+    released?.forEach((id) => {
+      const el = rowRefs.current.get(id);
+      if (el) el.style.transform = "";
+    });
+    const animate = !!moving || !!released;
     rowRefs.current.forEach((el, id) => {
-      const top = el.getBoundingClientRect().top;
+      const top = el.offsetTop;
       tops.set(id, top);
       const previous = lastTops.current.get(id);
-      if (dragId && previous !== undefined && Math.abs(previous - top) > 1) {
+      if (animate && !moving?.has(id) && previous !== undefined && Math.abs(previous - top) > 1) {
         el.animate([{ transform: `translateY(${previous - top}px)` }, { transform: "none" }], {
-          duration: 160,
+          duration: 180,
           easing: "cubic-bezier(0.22, 1, 0.36, 1)",
         });
       }
     });
     lastTops.current = tops;
+    placeDragged();
   });
 
   /**
@@ -87,56 +142,102 @@ export function TunnelList({
   const startReorder = (tunnel: Tunnel) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
-    const handle = e.currentTarget;
-    handle.setPointerCapture(e.pointerId);
+    const pointerId = e.pointerId;
+    const row = rowRefs.current.get(tunnel.id);
+    const list = listRef.current;
+    if (!row || !list) return;
+    // Listen on the window, not the grip with pointer capture: reordering
+    // makes React move the row's DOM node, which drops the capture and left
+    // the drag stalling until the pointer happened to cross the grip again.
     const ids = new Set(tunnels.map((tun) => tun.id));
-    const byId = new Map(tunnels.map((tun) => [tun.id, tun]));
     const parent = parentOf(tunnel, ids);
     const initial = tunnels.map((tun) => tun.id);
     let current = initial;
+
+    // The row plus everything that jumps through it, at any depth.
+    const block = new Set([tunnel.id]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const tun of tunnels) {
+        if (!block.has(tun.id) && tun.jumpTunnelId && block.has(tun.jumpTunnelId)) {
+          block.add(tun.id);
+          grew = true;
+        }
+      }
+    }
+    const y = contentY(e.clientY);
+    drag.current = { id: tunnel.id, block, grab: y - row.offsetTop, y };
     setDragId(tunnel.id);
     setOrder(current);
 
     const move = (ev: PointerEvent) => {
-      const row = document
-        .elementFromPoint(ev.clientX, ev.clientY)
-        ?.closest<HTMLElement>("[data-tunnel-row]");
-      const targetId = row?.dataset.tunnelRow;
-      const target = targetId ? byId.get(targetId) : undefined;
-      if (!row || !target || target.id === tunnel.id || parentOf(target, ids) !== parent) return;
-      // Cross the target's middle before swapping, so a row doesn't flicker
-      // back and forth while the pointer sits on the boundary.
-      const rect = row.getBoundingClientRect();
-      const movingDown = current.indexOf(target.id) > current.indexOf(tunnel.id);
-      const past = movingDown
-        ? ev.clientY > rect.top + rect.height / 2
-        : ev.clientY < rect.top + rect.height / 2;
-      if (!past) return;
+      const state = drag.current;
+      if (!state || ev.pointerId !== pointerId) return;
+      // Nudge the list along when the pointer nears its edges.
+      const rect = list.getBoundingClientRect();
+      if (ev.clientY < rect.top + 32) list.scrollTop -= 12;
+      else if (ev.clientY > rect.bottom - 32) list.scrollTop += 12;
+      state.y = contentY(ev.clientY);
+
+      // The block's middle decides its slot among its siblings.
+      const anchor = rowRefs.current.get(tunnel.id)!;
+      const middle = state.y - state.grab + anchor.offsetHeight / 2;
+      const siblings = current.filter(
+        (id) => id !== tunnel.id && parentOf(tunnels.find((tun) => tun.id === id)!, ids) === parent,
+      );
+      if (siblings.length === 0) {
+        placeDragged();
+        return;
+      }
+      const before = siblings.find((id) => {
+        const el = rowRefs.current.get(id);
+        return el && middle < el.offsetTop + el.offsetHeight / 2;
+      });
       const next = current.filter((id) => id !== tunnel.id);
-      next.splice(next.indexOf(target.id) + (movingDown ? 1 : 0), 0, tunnel.id);
-      current = next;
-      setOrder(next);
+      const at = before !== undefined ? next.indexOf(before) : next.indexOf(siblings[siblings.length - 1]) + 1;
+      next.splice(at, 0, tunnel.id);
+      if (next.join() !== current.join()) {
+        current = next;
+        setOrder(next);
+      } else {
+        placeDragged();
+      }
     };
     const finish = (commit: boolean) => {
-      handle.removeEventListener("pointermove", move);
-      handle.removeEventListener("pointerup", onUp);
-      handle.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      document.body.style.removeProperty("cursor");
       window.removeEventListener("keydown", onKey, true);
-      if (commit && current.join() !== initial.join()) onReorder(current);
+      const order = commit ? current : initial;
+      // The block is drawn where the pointer left it: record that as its
+      // last position, so the next render's FLIP glides it (and, on a
+      // cancel, every row) into the final slots.
+      const anchor = rowRefs.current.get(tunnel.id);
+      const offset = anchor ? drag.current!.y - drag.current!.grab - anchor.offsetTop : 0;
+      for (const id of block) {
+        const el = rowRefs.current.get(id);
+        if (el) lastTops.current.set(id, el.offsetTop + offset);
+      }
+      drag.current = null;
+      settling.current = block;
+      if (commit && order.join() !== initial.join()) onReorder(order);
       setDragId(null);
       setOrder(null);
     };
-    const onUp = () => finish(true);
-    const onCancel = () => finish(false);
+    const onUp = (ev: PointerEvent) => ev.pointerId === pointerId && finish(true);
+    const onCancel = (ev: PointerEvent) => ev.pointerId === pointerId && finish(false);
     const onKey = (ev: KeyboardEvent) => {
       if (ev.key !== "Escape") return;
       ev.preventDefault();
       ev.stopPropagation();
       finish(false);
     };
-    handle.addEventListener("pointermove", move);
-    handle.addEventListener("pointerup", onUp);
-    handle.addEventListener("pointercancel", onCancel);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    // The grip's cursor, wherever the pointer wanders while dragging.
+    document.body.style.cursor = "grabbing";
     window.addEventListener("keydown", onKey, true);
   };
 
@@ -205,7 +306,8 @@ export function TunnelList({
   }
 
   return (
-    <ul className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
+    // `relative`: rows measure `offsetTop` against the list itself.
+    <ul ref={listRef} className="relative flex flex-1 flex-col gap-2 overflow-y-auto p-4">
       {rows.map(({ tunnel, depth }) => {
         const children = childrenByParent.get(tunnel.id) ?? [];
         const hasChildren = children.length > 0;
@@ -226,6 +328,28 @@ export function TunnelList({
           <li
             key={tunnel.id}
             data-tunnel-row={tunnel.id}
+            onContextMenu={(e) =>
+              openMenu(e, [
+                { label: isOn ? t("disconnect") : t("connect"), enabled: !isBusy, action: () => onToggle(tunnel) },
+                "separator",
+                { label: tc("edit"), action: () => onEdit(tunnel) },
+                { label: tc("clone"), action: () => onClone(tunnel) },
+                {
+                  label: expanded.has(tunnel.id) ? t("menu.hideForwards") : t("menu.showForwards"),
+                  action: () => toggleExpanded(tunnel.id),
+                },
+                "separator",
+                ...(tunnel.socksEnabled
+                  ? [{ label: t("menu.copySocks"), action: () => void writeText(`127.0.0.1:${tunnel.localSocksPort}`) }]
+                  : []),
+                {
+                  label: t("menu.copyTarget"),
+                  action: () => void writeText(`${tunnel.username}@${tunnel.host}:${tunnel.port}`),
+                },
+                "separator",
+                { label: tc("delete"), action: () => onDelete(tunnel) },
+              ])
+            }
             ref={(el) => {
               if (el) rowRefs.current.set(tunnel.id, el);
               else rowRefs.current.delete(tunnel.id);
@@ -235,7 +359,11 @@ export function TunnelList({
               borderLeftColor: `color-mix(in srgb, var(--color-accent) ${treeTint}%, transparent)`,
             }}
             className={`rounded-lg border border-l-2 border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${
-              dragId === tunnel.id ? "relative z-10 shadow-lg ring-2 ring-accent" : ""
+              dragId === tunnel.id
+                ? "relative z-10 shadow-lg ring-2 ring-accent"
+                : dragId && drag.current?.block.has(tunnel.id)
+                  ? "relative z-10 shadow-lg"
+                  : ""
             }`}
           >
             <div className="flex items-center gap-3">
@@ -398,8 +526,21 @@ export function TunnelList({
                 {t("reconnecting", { message: runtime?.message ?? "" })}
               </p>
             )}
-            {status === "error" && runtime?.message && (
-              <p className="mt-1.5 truncate text-[11px] text-coral">{runtime.message}</p>
+            {hostKeyMismatches[hostKeyId(tunnel)] && status !== "connected" ? (
+              // The generic "Unknown server key" error says nothing useful;
+              // a changed key gets its own line and a way to act on it.
+              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-coral">
+                <span className="min-w-0 flex-1 truncate">{t("hostKeyChanged")}</span>
+                <button
+                  onClick={() => onReviewHostKey(tunnel)}
+                  className="shrink-0 rounded border border-coral/40 px-1.5 py-0.5 font-medium hover:bg-coral/10"
+                >
+                  {t("reviewHostKey")}
+                </button>
+              </div>
+            ) : (
+              status === "error" &&
+              runtime?.message && <p className="mt-1.5 truncate text-[11px] text-coral">{runtime.message}</p>
             )}
 
             {expanded.has(tunnel.id) && (

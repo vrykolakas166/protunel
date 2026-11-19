@@ -24,8 +24,8 @@ use uuid::Uuid;
 
 use crate::db::{AuthMethod, PortForward, Tunnel};
 use crate::events::{
-    HostKeyPending, StatsEvent, StatusEvent, TunnelStatus, HOST_KEY_PENDING_EVENT, STATS_EVENT,
-    STATUS_EVENT,
+    HostKeyPending, StatsEvent, StatusEvent, TunnelStatus, HOST_KEY_MISMATCH_EVENT, HOST_KEY_PENDING_EVENT,
+    STATS_EVENT, STATUS_EVENT,
 };
 use crate::settings::Settings;
 use crate::tunnel::ForwardCommand;
@@ -71,6 +71,17 @@ impl client::Handler for SshHandler {
         let openssh_key = server_public_key.to_openssh().unwrap_or_default();
 
         if let Some(matches) = self.known_hosts.check(&key_id, &openssh_key) {
+            if matches {
+                self.known_hosts.clear_mismatch(&key_id);
+            } else {
+                // Refused outright (TOFU); the record lets the UI show the user
+                // both fingerprints and offer to forget the old key on purpose.
+                let fingerprint = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+                let algorithm = server_public_key.algorithm().to_string();
+                if let Some(mismatch) = self.known_hosts.record_mismatch(&key_id, &fingerprint, &algorithm) {
+                    let _ = self.app.emit(HOST_KEY_MISMATCH_EVENT, mismatch);
+                }
+            }
             return Ok(matches);
         }
 
@@ -108,7 +119,7 @@ impl client::Handler for SshHandler {
     }
 }
 
-fn emit_status(
+pub(crate) fn emit_status(
     app: &AppHandle,
     tunnel_id: Uuid,
     tunnel_name: &str,
@@ -212,8 +223,8 @@ fn should_retry(app: &AppHandle, error: &str, attempt: u32) -> bool {
 /// error. Runs to completion inside its own task.
 pub async fn run_tunnel(
     app: AppHandle,
-    tunnel: Tunnel,
-    secret: Option<String>,
+    mut tunnel: Tunnel,
+    mut secret: Option<String>,
     known_hosts: Arc<known_hosts::KnownHosts>,
     pending: PendingHostKeyRequests,
     cancel: CancellationToken,
@@ -237,6 +248,16 @@ pub async fn run_tunnel(
 
     loop {
         if attempt > 0 {
+            // Reconnect with what is saved now, not what this run started
+            // with: a password changed since then must be the one retried.
+            // (Listener changes restart the tunnel instead; see update_tunnel.)
+            let state = app.state::<AppState>();
+            if let Ok(Some(fresh)) = state.db.get(tunnel.id) {
+                tunnel = fresh;
+            }
+            if let Ok(fresh) = crate::secrets::get_secret(tunnel.id) {
+                secret = fresh;
+            }
             emit_status(
                 &app,
                 tunnel.id,

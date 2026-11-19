@@ -2,5 +2,13 @@
   "title": "Unknown host key",
   "body": "The host <host>{{host}}:{{port}}</host> presented a {{algorithm}} key that hasn't been seen before. Verify the fingerprint out-of-band before trusting it.",
   "reject": "Reject",
-  "trustAndConnect": "Trust & Connect"
+  "trustAndConnect": "Trust & Connect",
+  "changed": {
+    "title": "Host key changed",
+    "body": "{{name}} ({{host}}) presented a different key than the one you trusted on {{date}}, so protunel refused to connect.",
+    "trusted": "Trusted key",
+    "offered": "Key the server offers now",
+    "warning": "Expected if the server was reinstalled or its SSH keys were regenerated. It can also mean someone is intercepting the connection. If you are not sure why it changed, check the new fingerprint with the server's admin first.",
+    "forget": "Forget old key & reconnect"
+  }
 }

@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::router::rules::{RouterRule, RuleAction, RuleKind};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AuthMethod {
     Password,

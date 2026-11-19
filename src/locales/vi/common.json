@@ -8,5 +8,11 @@
   "confirm": "Xác nhận",
   "loading": "Đang tải…",
   "copy": "sao chép",
-  "copied": "đã chép"
+  "copied": "đã chép",
+  "contextMenu": {
+    "cut": "Cắt",
+    "copy": "Sao chép",
+    "paste": "Dán",
+    "selectAll": "Chọn tất cả"
+  }
 }

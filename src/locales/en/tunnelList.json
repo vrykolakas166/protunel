@@ -17,5 +17,13 @@
   "remotePortPlaceholder": "remote port",
   "localPortPlaceholder": "local port",
   "add": "Add",
-  "dragToReorder": "Drag to reorder"
+  "dragToReorder": "Drag to reorder",
+  "hostKeyChanged": "Host key changed — connection refused",
+  "reviewHostKey": "Review…",
+  "menu": {
+    "copySocks": "Copy SOCKS address",
+    "copyTarget": "Copy SSH address",
+    "showForwards": "Show port forwards",
+    "hideForwards": "Hide port forwards"
+  }
 }

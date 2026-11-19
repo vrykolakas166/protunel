@@ -11,6 +11,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { terminalClose, terminalOpen, terminalResize } from "../api";
 import type { TerminalExit, Tunnel } from "../types";
+import { MouseGate } from "./mouseGate";
 import { matchShortcut } from "./shortcuts";
 import type { ITheme } from "@xterm/xterm";
 
@@ -25,10 +26,35 @@ export interface SessionInfo {
   /** Output bytes over the last second. */
   bytesPerSec: number;
   renderer: "webgl" | "dom";
+  /**
+   * The remote program (tmux with mouse on, vim, htop, mc…) has the mouse, so
+   * a plain drag goes to it; Shift+drag still selects.
+   */
+  mouseMode: boolean;
+  /** The program asked for the mouse but the setting withholds it. */
+  mouseWanted: boolean;
+  /**
+   * `user@host:port` this shell was opened with. The host can be edited while
+   * the shell is open; the header must show where the shell really is.
+   */
+  target: string | null;
 }
 
 const FONT_FAMILY = '"IBM Plex Mono", "Cascadia Mono", Consolas, monospace';
 const FONT_SIZE = 13;
+
+/**
+ * Light backgrounds read thinner than dark ones at the same weight: grayscale
+ * antialiasing (all a WebGL canvas gets) bleeds dark-on-light strokes into
+ * the background, so 13px regular looks washed out. The 500 weight is
+ * bundled, so it is a real face, not a synthesized bold.
+ */
+function weightsFor(theme: ITheme): { fontWeight: "normal" | 500; fontWeightBold: "bold" | 700 } {
+  const hex = (theme.background ?? "#000000").replace("#", "");
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const light = 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.5;
+  return light ? { fontWeight: 500, fontWeightBold: 700 } : { fontWeight: "normal", fontWeightBold: "bold" };
+}
 
 const dim = (text: string) => `\x1b[2m${text}\x1b[0m`;
 const red = (text: string) => `\x1b[31m${text}\x1b[0m`;
@@ -41,6 +67,10 @@ interface Props {
   focused: boolean;
   /** xterm colours of the active app theme. */
   theme: ITheme;
+  /** Programs on the server may take over the mouse (see `MouseGate`). */
+  appMouse: boolean;
+  /** GPU (WebGL) rendering; off uses xterm's DOM renderer and native text. */
+  webgl: boolean;
   /** Bumped by the window to hand keyboard focus back to the focused pane. */
   focusSignal: number;
   onInfo: (info: SessionInfo) => void;
@@ -63,6 +93,8 @@ export function TerminalView({
   visible,
   focused,
   theme,
+  appMouse,
+  webgl,
   focusSignal,
   onInfo,
   onFocus,
@@ -74,6 +106,13 @@ export function TerminalView({
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const gateRef = useRef<MouseGate | null>(null);
+  const appMouseRef = useRef(appMouse);
+  appMouseRef.current = appMouse;
+  const webglRef = useRef(webgl);
+  webglRef.current = webgl;
+  /** Switches renderer on a live terminal; set once the terminal is open. */
+  const setRendererRef = useRef<((webgl: boolean) => void) | null>(null);
   // Everything the xterm callbacks read lives in refs: those callbacks are
   // registered once, at mount, and must not see stale props.
   const tunnelRef = useRef(tunnel);
@@ -104,6 +143,7 @@ export function TerminalView({
     let disposed = false;
     let terminalId: string | null = null;
     let phase: SessionPhase = "connecting";
+    let target: string | null = null;
     let renderer: SessionInfo["renderer"] = "dom";
     let echoMs: number | null = null;
     let keyAt: number | null = null;
@@ -119,6 +159,11 @@ export function TerminalView({
       scrollback: 10_000,
       allowProposedApi: true, // required by the unicode11 addon
       theme: themeRef.current,
+      ...weightsFor(themeRef.current),
+      // Colours a program picks (grey prompts, 256-colour and truecolor
+      // output) are nudged until they read on this background; palette
+      // colours already meeting it are left alone.
+      minimumContrastRatio: 4.5,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
@@ -128,16 +173,31 @@ export function TerminalView({
     term.loadAddon(new WebLinksAddon((_event, uri) => void openUrl(uri)));
     termRef.current = term;
     fitRef.current = fit;
+    // `report` is defined below; the gate only calls back once data flows.
+    const gate = new MouseGate(term, appMouseRef.current, () => report());
+    const gateHandlers = gate.attach();
+    gateRef.current = gate;
 
-    const report = () =>
-      onInfoRef.current({
+    // Every report re-renders the whole terminal window, so an unchanged one
+    // (an idle pane on the 1 s tick) is not sent.
+    let lastReport = "";
+    const report = () => {
+      const info: SessionInfo = {
         phase,
         cols: term.cols,
         rows: term.rows,
         echoMs,
         bytesPerSec,
         renderer,
-      });
+        mouseMode: term.modes.mouseTrackingMode !== "none",
+        mouseWanted: gate.wanted,
+        target,
+      };
+      const key = JSON.stringify(info);
+      if (key === lastReport) return;
+      lastReport = key;
+      onInfoRef.current(info);
+    };
 
     const fitIfVisible = () => {
       // A hidden tab measures 0×0; fitting it would shrink the remote PTY.
@@ -174,6 +234,7 @@ export function TerminalView({
       phase = "connecting";
       report();
       const { username, host, port } = tunnelRef.current;
+      target = `${username}@${host}:${port}`;
       term.write(dim(tRef.current("connecting", { target: `${username}@${host}:${port}` })) + "\r\n");
 
       // Per-attempt flag: the exit channel can fire before `terminalOpen`
@@ -187,7 +248,12 @@ export function TerminalView({
           echoMs = performance.now() - keyAt;
           keyAt = null;
         }
-        term.write(bytes);
+        const wasMouseMode = term.modes.mouseTrackingMode !== "none";
+        term.write(bytes, () => {
+          // Mouse mode is switched by escape sequences in the output; surface
+          // the change right away, not on the next 1 s tick.
+          if ((term.modes.mouseTrackingMode !== "none") !== wasMouseMode) report();
+        });
       };
       const exit = new Channel<TerminalExit>();
       exit.onmessage = ({ exitStatus, message }) => {
@@ -267,15 +333,30 @@ export function TerminalView({
     });
 
     // PuTTY conventions: releasing a selection copies it, right-click pastes.
-    const onMouseUp = (e: MouseEvent) => {
-      if (e.button === 0 && term.hasSelection()) copy(term.getSelection());
+    // The release is watched on the window, not the pane: a drag that ends
+    // past the pane's edge (overshooting a line end, the usual case) still
+    // selected text, and xterm itself tracks that drag on the document.
+    let releaseArmed = false;
+    const onRelease = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      window.removeEventListener("mouseup", onRelease, true);
+      releaseArmed = false;
+      // xterm finalises the selection in its own mouseup; read it after.
+      requestAnimationFrame(() => {
+        if (!disposed && term.hasSelection()) copy(term.getSelection());
+      });
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0 || releaseArmed) return;
+      releaseArmed = true;
+      window.addEventListener("mouseup", onRelease, true);
     };
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       void paste();
     };
     const onFocusIn = () => callbacks.current.onFocus();
-    container.addEventListener("mouseup", onMouseUp);
+    container.addEventListener("mousedown", onMouseDown, true);
     container.addEventListener("contextmenu", onContextMenu);
     container.addEventListener("focusin", onFocusIn);
 
@@ -296,18 +377,34 @@ export function TerminalView({
     void document.fonts.load(`${FONT_SIZE}px "IBM Plex Mono"`).finally(() => {
       if (disposed) return;
       term.open(container);
-      try {
-        const webgl = new WebglAddon();
-        webgl.onContextLoss(() => {
-          webgl.dispose();
+      // Disposing the WebGL addon drops xterm back to its DOM renderer, so
+      // the setting can flip without reopening the shell.
+      let webglAddon: WebglAddon | null = null;
+      const setRenderer = (useWebgl: boolean) => {
+        if (useWebgl && !webglAddon) {
+          try {
+            const addon = new WebglAddon();
+            addon.onContextLoss(() => {
+              addon.dispose();
+              if (webglAddon === addon) webglAddon = null;
+              renderer = "dom";
+              report();
+            });
+            term.loadAddon(addon);
+            webglAddon = addon;
+            renderer = "webgl";
+          } catch {
+            renderer = "dom";
+          }
+        } else if (!useWebgl && webglAddon) {
+          webglAddon.dispose();
+          webglAddon = null;
           renderer = "dom";
-          report();
-        });
-        term.loadAddon(webgl);
-        renderer = "webgl";
-      } catch {
-        renderer = "dom";
-      }
+        }
+        report();
+      };
+      setRenderer(webglRef.current);
+      setRendererRef.current = setRenderer;
       fitIfVisible();
       observer.observe(container);
       if (focusedRef.current) term.focus();
@@ -320,11 +417,15 @@ export function TerminalView({
       cancelAnimationFrame(frame);
       window.clearInterval(ticker);
       observer.disconnect();
-      container.removeEventListener("mouseup", onMouseUp);
+      container.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("mouseup", onRelease, true);
       container.removeEventListener("contextmenu", onContextMenu);
       container.removeEventListener("focusin", onFocusIn);
       window.clearTimeout(resizeTimer);
       if (terminalId) void terminalClose(terminalId);
+      gateHandlers.forEach((handler) => handler.dispose());
+      gateRef.current = null;
+      setRendererRef.current = null;
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
@@ -332,8 +433,19 @@ export function TerminalView({
   }, []);
 
   useEffect(() => {
-    if (termRef.current) termRef.current.options.theme = theme;
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = theme;
+    Object.assign(term.options, weightsFor(theme));
   }, [theme]);
+
+  useEffect(() => {
+    setRendererRef.current?.(webgl);
+  }, [webgl]);
+
+  useEffect(() => {
+    gateRef.current?.setAllowed(appMouse);
+  }, [appMouse]);
 
   useEffect(() => {
     if (!visible) return;

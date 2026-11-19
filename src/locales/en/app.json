@@ -7,9 +7,7 @@
   "terminal": "Terminal",
   "terminalTooltip": "Open the SSH terminal in a new window",
   "settings": "Settings",
-  "updateAvailable": "Update v{{version}} available.",
   "installing": "Installing…",
-  "installAndRestart": "Install & restart",
   "connectAll": "Connect all",
   "disconnectAll": "Disconnect all",
   "addTunnel": "Add tunnel",
@@ -32,5 +30,30 @@
   "preferences": "Theme",
   "preferencesTooltip": "Theme",
   "languageTooltip": "Language",
-  "bulkAdded": "Added {{count}} tunnels."
+  "bulkAdded": "Added {{count}} tunnels.",
+  "restartToUpdate": "Restart to update",
+  "restartTitle": "Restart to update to {{version}}?",
+  "restartMessage_one": "1 tunnel and any open terminal sessions will close while protunel restarts. The tunnel reconnects on its own afterwards.",
+  "restartMessage_other": "{{count}} tunnels and any open terminal sessions will close while protunel restarts. The tunnels reconnect on their own afterwards.",
+  "whatsNewTitle": "What's new in {{version}}",
+  "whatsNewHint": "protunel was just updated.",
+  "whatsNewEmpty": "No release notes for this version.",
+  "whatsNewDone": "Got it",
+  "update": {
+    "availableTitle": "protunel {{version}} is out",
+    "availableSub": "Downloads in the background; you keep working.",
+    "downloadingTitle": "Downloading {{version}}",
+    "downloadingSub": "{{percent}}% · in the background",
+    "readyTitle": "{{version}} is ready",
+    "readySub": "Restart to finish. Tunnels reconnect on their own.",
+    "download": "Download",
+    "whatsNew": "What's new",
+    "later": "Later"
+  },
+  "toolbar": {
+    "connected": "connected",
+    "connectedHint": "Tunnels connected or connecting, of all tunnels",
+    "search": "Search (Ctrl+F)"
+  },
+  "importConfig": "Import config…"
 }

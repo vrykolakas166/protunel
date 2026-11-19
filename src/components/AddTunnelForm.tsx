@@ -1,7 +1,9 @@
-import { useMemo, useState, type SubmitEvent } from "react";
+import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { forgetKnownHost, listKnownHosts } from "../api";
 import { allocatePorts, parseHostRange, rangeName, usedLocalPorts } from "../hostRange";
-import type { AuthMethod, Tunnel, TunnelInput } from "../types";
+import { hostKeyId } from "../hooks/useHostKeyMismatches";
+import type { AuthMethod, KnownHostEntry, Tunnel, TunnelInput } from "../types";
 import { Modal } from "./Modal";
 
 type AuthKind = AuthMethod["kind"];
@@ -21,6 +23,10 @@ interface Props {
    * sense (editing one tunnel).
    */
   onSubmitMany?: (inputs: TunnelInput[], secret?: string) => Promise<void>;
+  /** The edited tunnel's trusted host key was forgotten (its `host:port`). */
+  onHostKeyForgotten?: (keyId: string) => void;
+  /** The edited tunnel is up: connection changes restart it on save. */
+  running?: boolean;
   onCancel: () => void;
 }
 
@@ -37,6 +43,8 @@ export function AddTunnelForm({
   defaultSocksEnabled = true,
   onSubmit,
   onSubmitMany,
+  onHostKeyForgotten,
+  running = false,
   onCancel,
 }: Props) {
   const { t } = useTranslation("addTunnelForm");
@@ -64,6 +72,30 @@ export function AddTunnelForm({
   const [error, setError] = useState<string | null>(null);
 
   const jumpOptions = tunnels.filter((tun) => tun.id !== initial?.id);
+
+  // Editing shows the host key trusted for this server, the one place a
+  // user thinks about "this server's key" without hunting for a global list.
+  const savedKeyId = mode === "edit" && initial ? hostKeyId(initial) : null;
+  const [hostKey, setHostKey] = useState<KnownHostEntry | null>(null);
+  const [hostKeyForgotten, setHostKeyForgotten] = useState(false);
+  useEffect(() => {
+    if (!savedKeyId) return;
+    listKnownHosts()
+      .then((list) => setHostKey(list.find((entry) => entry.keyId === savedKeyId) ?? null))
+      .catch(() => {});
+  }, [savedKeyId]);
+
+  const forgetHostKey = async () => {
+    if (!savedKeyId) return;
+    try {
+      await forgetKnownHost(savedKeyId);
+      setHostKey(null);
+      setHostKeyForgotten(true);
+      onHostKeyForgotten?.(savedKeyId);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
 
   const range = useMemo(
     () => (onSubmitMany ? parseHostRange(host) : ({ kind: "single" } as const)),
@@ -303,7 +335,34 @@ export function AddTunnelForm({
           {t("connectOnStartup")}
         </label>
 
+        {savedKeyId && (hostKey || hostKeyForgotten) && (
+          <div className="rounded-lg border border-border bg-bg px-2.5 py-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className={labelClass}>{t("hostKey.label")}</span>
+              {hostKey && (
+                <button
+                  type="button"
+                  onClick={() => void forgetHostKey()}
+                  title={t("hostKey.forgetHint")}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium text-coral hover:bg-coral/10"
+                >
+                  {t("hostKey.forget")}
+                </button>
+              )}
+            </div>
+            <p className="mt-0.5 break-all font-mono text-[11px] text-muted">
+              {hostKey ? `${hostKey.algorithm} · ${hostKey.fingerprint}` : t("hostKey.forgotten")}
+            </p>
+          </div>
+        )}
+
         {error && <p className="text-sm text-coral">{error}</p>}
+
+        {mode === "edit" && running && (
+          <p className="rounded-lg border border-accent/40 bg-accent/10 px-2.5 py-2 text-[11px] text-text">
+            {t("runningNotice")}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <button

@@ -3,13 +3,11 @@
   "routerTooltip": "Router proxy theo luật",
   "router": "Router",
   "captureTooltip": "Chạy ứng dụng với traffic định tuyến qua router",
-  "capture": "Chụp",
+  "capture": "Ứng dụng",
   "terminal": "Terminal",
   "terminalTooltip": "Mở terminal SSH trong cửa sổ mới",
   "settings": "Cài đặt",
-  "updateAvailable": "Có bản cập nhật v{{version}}.",
   "installing": "Đang cài đặt…",
-  "installAndRestart": "Cài & khởi động lại",
   "connectAll": "Kết nối tất cả",
   "disconnectAll": "Ngắt tất cả",
   "addTunnel": "Thêm tunnel",
@@ -32,5 +30,30 @@
   "preferences": "Giao diện",
   "preferencesTooltip": "Chọn theme",
   "languageTooltip": "Ngôn ngữ",
-  "bulkAdded": "Đã thêm {{count}} tunnel."
+  "bulkAdded": "Đã thêm {{count}} tunnel.",
+  "restartToUpdate": "Khởi động lại để cập nhật",
+  "restartTitle": "Khởi động lại để cập nhật lên {{version}}?",
+  "restartMessage_one": "1 tunnel và các phiên terminal đang mở sẽ đóng trong lúc protunel khởi động lại. Tunnel sẽ tự kết nối lại sau đó.",
+  "restartMessage_other": "{{count}} tunnel và các phiên terminal đang mở sẽ đóng trong lúc protunel khởi động lại. Các tunnel sẽ tự kết nối lại sau đó.",
+  "whatsNewTitle": "Có gì mới trong {{version}}",
+  "whatsNewHint": "protunel vừa được cập nhật.",
+  "whatsNewEmpty": "Phiên bản này không có ghi chú phát hành.",
+  "whatsNewDone": "Đã hiểu",
+  "update": {
+    "availableTitle": "Đã có protunel {{version}}",
+    "availableSub": "Tải ngầm, không làm gián đoạn công việc.",
+    "downloadingTitle": "Đang tải {{version}}",
+    "downloadingSub": "{{percent}}% · đang tải ngầm",
+    "readyTitle": "Bản {{version}} đã sẵn sàng",
+    "readySub": "Khởi động lại để hoàn tất. Tunnel tự kết nối lại.",
+    "download": "Tải về",
+    "whatsNew": "Có gì mới",
+    "later": "Để sau"
+  },
+  "toolbar": {
+    "connected": "đang kết nối",
+    "connectedHint": "Số tunnel đã hoặc đang kết nối, trên tổng số tunnel",
+    "search": "Tìm kiếm (Ctrl+F)"
+  },
+  "importConfig": "Import cấu hình…"
 }

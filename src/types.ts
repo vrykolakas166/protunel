@@ -72,6 +72,17 @@ export interface TunnelStats {
   uptimeSecs: number;
 }
 
+/** A server offered a different key than the trusted one; the connection was refused. */
+export interface HostKeyMismatch {
+  /** `host:port`, as tunnels are matched against known hosts. */
+  keyId: string;
+  knownFingerprint: string;
+  knownAlgorithm: string;
+  trustedAt: number;
+  offeredFingerprint: string;
+  offeredAlgorithm: string;
+}
+
 export interface KnownHostEntry {
   keyId: string;
   fingerprint: string;
@@ -166,6 +177,8 @@ export interface ImportPreview {
   hasSecrets: boolean;
   secretsUnlocked: boolean;
   secretCount: number;
+  /** The UI mode the file asks for ("simple"), if any. */
+  uiMode: UiMode | null;
 }
 
 export interface ExportSections {
@@ -174,6 +187,8 @@ export interface ExportSections {
   router: boolean;
   settings: boolean;
   knownHosts: boolean;
+  /** The file opens protunel in Simple mode on the importing machine. */
+  simpleMode: boolean;
 }
 
 export interface ImportSections {
@@ -183,6 +198,8 @@ export interface ImportSections {
   knownHosts: boolean;
   secrets: boolean;
   overwriteNameConflicts: boolean;
+  /** Apply the file's UI mode. */
+  uiMode: boolean;
 }
 
 export interface ImportResult {
@@ -238,6 +255,44 @@ export interface Settings {
   language: string;
   themeLight: string;
   themeDark: string;
+  /** Programs on the server may take over the terminal's mouse (tmux, vim, htop). */
+  terminalAppMouse: boolean;
+  /** Stay in the tray when launched at sign-in. */
+  startMinimized: boolean;
+  /** GPU (WebGL) terminal rendering; off uses native text rendering. */
+  terminalWebgl: boolean;
+  /** Download updates in the background as soon as they are found. */
+  autoUpdate: boolean;
+  /** Null until the user picks (first launch, or first after updating). */
+  uiMode: UiMode | null;
+}
+
+/** Simple: one "internal network" switch for people who only browse. */
+export type UiMode = "simple" | "full";
+
+export type DebugTunnelFailure = "auth" | "unreachable" | "hostKey";
+
+export type UpdatePhase = "idle" | "checking" | "available" | "downloading" | "ready" | "error";
+
+/** Mirror of `updates::UpdateSnapshot`. */
+export interface UpdateSnapshot {
+  /** This build updates itself (Windows, AppImage); package installs don't. */
+  supported: boolean;
+  phase: UpdatePhase;
+  version: string | null;
+  notes: string | null;
+  /** 0–1 while downloading, when the size is known. */
+  progress: number | null;
+  error: string | null;
+  /** Unix seconds. */
+  lastChecked: number | null;
+  /** A ready update is applied when protunel quits (AppImage). */
+  installsOnExit: boolean;
+}
+
+export interface WhatsNew {
+  version: string;
+  notes: string;
 }
 
 export interface TerminalExit {

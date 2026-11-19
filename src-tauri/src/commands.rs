@@ -20,6 +20,8 @@ use crate::events::{
 use crate::router::rules::{self, RouterRule, RouterRuleInput};
 use crate::router::RoutingDecision;
 use crate::secrets;
+use crate::ssh::known_hosts;
+use crate::updates;
 use crate::ssh::terminal::{self, TerminalExit, TerminalInput};
 use crate::settings::{RouterConfig, Settings};
 use crate::tunnel::{ForwardCommand, TunnelHandle};
@@ -136,14 +138,32 @@ pub fn add_tunnels(
     }
 }
 
+/// Whether moving from `old` to `new` needs a new SSH session (or new local
+/// listeners). A rename or the startup flag does not.
+fn needs_reconnect(old: &Tunnel, new: &Tunnel) -> bool {
+    old.host != new.host
+        || old.port != new.port
+        || old.username != new.username
+        || old.auth != new.auth
+        || old.jump_tunnel_id != new.jump_tunnel_id
+        || old.socks_enabled != new.socks_enabled
+        || (new.socks_enabled && old.local_socks_port != new.local_socks_port)
+}
+
+/// Saves a tunnel. If it is running and the change affects its connection,
+/// it is restarted on the spot ("apply & restart"): sessions riding on it —
+/// terminals, tunnels jumping through it — drop and reconnect to the new
+/// settings. Otherwise a running tunnel would keep using what it was started
+/// with until someone toggled it by hand.
 #[tauri::command]
-pub fn update_tunnel(
+pub async fn update_tunnel(
     app: AppHandle,
-    state: State<AppState>,
+    state: State<'_, AppState>,
     id: Uuid,
     input: TunnelInput,
     secret: Option<String>,
 ) -> Result<Tunnel, String> {
+    let previous = state.db.get(id).map_err(|e| e.to_string())?;
     let tunnel = Tunnel {
         id,
         name: input.name,
@@ -158,10 +178,19 @@ pub fn update_tunnel(
         socks_enabled: input.socks_enabled,
     };
     state.db.update(&tunnel).map_err(|e| e.to_string())?;
+    let secret_changed = secret.is_some();
     if let Some(secret) = secret {
         secrets::set_secret(tunnel.id, &secret).map_err(|e| e.to_string())?;
     }
     tunnels_changed(&app);
+
+    let changed = secret_changed || previous.is_some_and(|old| needs_reconnect(&old, &tunnel));
+    if changed && state.is_connected(id) {
+        state.stop_and_wait(id).await;
+        // The save itself succeeded; a failed reconnect shows on the tunnel.
+        let _ = connect_one(&app, &state, id).await;
+        crate::tray::rebuild_menu(&app);
+    }
     Ok(tunnel)
 }
 
@@ -336,6 +365,9 @@ pub async fn wait_for_session(state: &AppState, id: Uuid, timeout: Duration) -> 
     }
 }
 
+/// Numbers each run of a tunnel; see `TunnelHandle::generation`.
+static TUNNEL_GENERATION: AtomicU64 = AtomicU64::new(0);
+
 async fn connect_single(app: &AppHandle, state: &AppState, id: Uuid) -> Result<(), String> {
     if state.is_connected(id) {
         return Ok(());
@@ -353,6 +385,8 @@ async fn connect_single(app: &AppHandle, state: &AppState, id: Uuid) -> Result<(
     let bytes_down = Arc::new(AtomicU64::new(0));
     let (forward_tx, forward_rx) = mpsc::unbounded_channel();
     let session_slot = Arc::new(Mutex::new(None));
+    let (finished_tx, finished_rx) = tokio::sync::watch::channel(false);
+    let generation = TUNNEL_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     state.start(
         id,
         TunnelHandle {
@@ -361,6 +395,8 @@ async fn connect_single(app: &AppHandle, state: &AppState, id: Uuid) -> Result<(
             bytes_down: bytes_down.clone(),
             forward_tx,
             session: session_slot.clone(),
+            finished: finished_rx,
+            generation,
         },
     );
 
@@ -382,7 +418,8 @@ async fn connect_single(app: &AppHandle, state: &AppState, id: Uuid) -> Result<(
             session_slot,
         )
         .await;
-        app_task.state::<AppState>().clear(id);
+        app_task.state::<AppState>().clear(id, generation);
+        let _ = finished_tx.send(true);
         crate::tray::rebuild_menu(&app_task);
     });
 
@@ -447,21 +484,82 @@ pub fn tunnels_changed(app: &AppHandle) {
 
 /// Shows the terminal window, creating it on first use. Async on purpose:
 /// building a window from a sync command deadlocks on Windows.
+/// How long a closed (hidden) terminal window is kept for a quick reopen
+/// before its webview is destroyed to give the memory back.
+const TERMINAL_KEEP_HIDDEN: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Bumped on every hide and every open; a pending teardown only runs if it is
+/// still the latest thing that happened to the window.
+static TERMINAL_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Destroys the hidden terminal window after `TERMINAL_KEEP_HIDDEN`, unless
+/// it was reopened in the meantime.
+pub fn schedule_terminal_teardown(app: &AppHandle) {
+    use std::sync::atomic::Ordering;
+    let generation = TERMINAL_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(TERMINAL_KEEP_HIDDEN).await;
+        if TERMINAL_GENERATION.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        if let Some(window) = app.get_webview_window(TERMINAL_WINDOW) {
+            if !window.is_visible().unwrap_or(true) {
+                let _ = window.destroy();
+            }
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn open_terminal_window(app: AppHandle) -> Result<(), String> {
+    // Cancels a pending teardown of the hidden window.
+    TERMINAL_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if let Some(window) = app.get_webview_window(TERMINAL_WINDOW) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
         return Ok(());
     }
-    WebviewWindowBuilder::new(&app, TERMINAL_WINDOW, WebviewUrl::App("terminal.html".into()))
+    let built = WebviewWindowBuilder::new(&app, TERMINAL_WINDOW, WebviewUrl::App("terminal.html".into()))
         .title("protunel — Terminal")
         .inner_size(1180.0, 740.0)
         .min_inner_size(640.0, 400.0)
-        .build()
-        .map_err(|e| e.to_string())?;
+        .build();
+    match built {
+        Ok(window) => harden_webview(&window),
+        // Two quick clicks both found no window and both tried to build it;
+        // the one that lost just shows the winner's.
+        Err(e) => {
+            let window = app.get_webview_window(TERMINAL_WINDOW).ok_or_else(|| e.to_string())?;
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+    }
     Ok(())
+}
+
+/// Turns off WebView2's browser shortcuts (F5/Ctrl+R reload, Ctrl+F find,
+/// Ctrl+P print, F7 caret browsing, Ctrl+Shift+I…) so a keystroke can never
+/// reach the browser instead of the app — a reload would drop every open
+/// shell. Release builds only: in development reload and devtools are wanted.
+/// WebKitGTK has no such built-in shortcuts; the terminal page also cancels
+/// stray keys itself on every platform.
+pub fn harden_webview(window: &tauri::WebviewWindow) {
+    #[cfg(all(windows, not(debug_assertions)))]
+    {
+        let _ = window.with_webview(|webview| unsafe {
+            use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+            use windows_core::Interface;
+            let Ok(core) = webview.controller().CoreWebView2() else { return };
+            let Ok(settings) = core.Settings() else { return };
+            if let Ok(settings) = settings.cast::<ICoreWebView2Settings3>() {
+                let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
+            }
+        });
+    }
+    #[cfg(not(all(windows, not(debug_assertions))))]
+    let _ = window;
 }
 
 #[tauri::command]
@@ -517,6 +615,106 @@ pub fn list_known_hosts(state: State<AppState>) -> Vec<KnownHostEntry> {
 #[tauri::command]
 pub fn forget_known_host(state: State<AppState>, key_id: String) {
     state.known_hosts.forget(&key_id);
+}
+
+#[tauri::command]
+pub fn update_status(app: AppHandle) -> updates::UpdateSnapshot {
+    app.state::<updates::Updates>().snapshot()
+}
+
+#[tauri::command]
+pub async fn check_for_updates(app: AppHandle) -> updates::UpdateSnapshot {
+    updates::check(&app, true).await
+}
+
+#[tauri::command]
+pub async fn download_update(app: AppHandle) -> updates::UpdateSnapshot {
+    updates::download(&app).await
+}
+
+/// Installs the downloaded update and restarts; returns only on failure.
+#[tauri::command]
+pub fn install_update(app: AppHandle) -> Result<(), String> {
+    updates::install_and_restart(&app)
+}
+
+#[tauri::command]
+pub fn take_whats_new(app: AppHandle) -> Option<updates::WhatsNew> {
+    updates::take_whats_new(&app)
+}
+
+/// The Simple-mode "internal network" switch (see `access.rs`).
+#[tauri::command]
+pub async fn set_network_access(app: AppHandle, on: bool) -> Result<(), String> {
+    crate::access::set(&app, on).await
+}
+
+// ---------------------------------------------------------------------------
+// Developer tools: buttons that fake update states and tunnel failures, for
+// testing the UI without a release or a broken server. Debug builds, or a
+// release started with PROTUNEL_DEVTOOLS=1.
+
+#[tauri::command]
+pub fn dev_tools_enabled() -> bool {
+    cfg!(debug_assertions) || std::env::var("PROTUNEL_DEVTOOLS").is_ok_and(|v| v == "1")
+}
+
+fn require_dev_tools() -> Result<(), String> {
+    if dev_tools_enabled() {
+        Ok(())
+    } else {
+        Err("developer tools are off in this build".into())
+    }
+}
+
+#[tauri::command]
+pub async fn debug_simulate_update(app: AppHandle, step: String) -> Result<updates::UpdateSnapshot, String> {
+    require_dev_tools()?;
+    updates::simulate(&app, &step).await
+}
+
+#[tauri::command]
+pub fn debug_whats_new(app: AppHandle) -> Result<updates::WhatsNew, String> {
+    require_dev_tools()?;
+    Ok(updates::simulate_whats_new(&app))
+}
+
+/// Puts a tunnel into a failed state as if connecting had just failed.
+/// `kind`: "auth" (wrong password), "unreachable" or "hostKey" (changed key).
+#[tauri::command]
+pub async fn debug_fail_tunnel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: Uuid,
+    kind: String,
+) -> Result<(), String> {
+    require_dev_tools()?;
+    let tunnel = state.db.get(id).map_err(|e| e.to_string())?.ok_or("no such tunnel")?;
+    // A live task would overwrite the fake status with its own.
+    state.stop_and_wait(id).await;
+    let message = match kind.as_str() {
+        "auth" => "password authentication failed: simulated".to_string(),
+        "unreachable" => format!(
+            "failed to connect to {}:{}: Connection timed out (os error 110)",
+            tunnel.host, tunnel.port
+        ),
+        "hostKey" => {
+            let key_id = format!("{}:{}", tunnel.host, tunnel.port);
+            let mismatch = state.known_hosts.record_fake_mismatch(&key_id);
+            let _ = app.emit(crate::events::HOST_KEY_MISMATCH_EVENT, mismatch);
+            "Unknown server key".to_string()
+        }
+        other => return Err(format!("unknown failure {other}")),
+    };
+    crate::ssh::emit_status(&app, id, &tunnel.name, crate::events::TunnelStatus::Error, Some(message));
+    Ok(())
+}
+
+/// Hosts whose server offered a different key than the trusted one since the
+/// app started. Seeds a reloaded webview; live ones arrive as events.
+#[tauri::command]
+pub fn list_host_key_mismatches(state: State<AppState>) -> Vec<known_hosts::HostKeyMismatch> {
+    state.known_hosts.mismatches()
 }
 
 #[derive(Serialize)]
@@ -669,6 +867,19 @@ pub fn get_settings(state: State<AppState>) -> Settings {
     state.settings.get()
 }
 
+/// Passed by the OS autostart entry, so a sign-in launch can be told apart
+/// from the user opening the app.
+pub const AUTOSTART_ARG: &str = "--autostart";
+
+/// Rewrites an enabled autostart entry with the current arguments.
+pub fn refresh_autostart(app: &AppHandle) {
+    let launcher = app.autolaunch();
+    if launcher.is_enabled().unwrap_or(false) {
+        let _ = launcher.disable();
+        let _ = launcher.enable();
+    }
+}
+
 /// Brings the autostart registry entry in line with `enabled`.
 ///
 /// Only touches the registry when the flag actually changes — calling
@@ -691,6 +902,8 @@ pub fn update_settings(app: AppHandle, state: State<AppState>, settings: Setting
     sync_autostart(&app, settings.autostart_enabled)?;
     state.settings.update(settings.clone());
     let _ = app.emit(SETTINGS_CHANGED_EVENT, &settings);
+    // The tray menu differs between Simple and Full mode.
+    crate::tray::rebuild_menu(&app);
     Ok(settings)
 }
 
@@ -790,4 +1003,57 @@ pub fn list_active_captures(state: State<AppState>) -> Vec<CapturedProcess> {
 #[tauri::command]
 pub fn list_capture_connections(state: State<AppState>) -> Vec<crate::capture::CaptureConnection> {
     state.capture.connections()
+}
+
+#[cfg(test)]
+mod reconnect_tests {
+    use super::needs_reconnect;
+    use crate::db::{AuthMethod, Tunnel};
+    use uuid::Uuid;
+
+    fn tunnel() -> Tunnel {
+        Tunnel {
+            id: Uuid::nil(),
+            name: "db".into(),
+            host: "10.0.0.1".into(),
+            port: 22,
+            username: "root".into(),
+            auth: AuthMethod::Password,
+            local_socks_port: 1080,
+            auto_connect: false,
+            forwards: Vec::new(),
+            jump_tunnel_id: None,
+            socks_enabled: true,
+        }
+    }
+
+    #[test]
+    fn rename_and_startup_flag_keep_the_session() {
+        let old = tunnel();
+        let new = Tunnel { name: "renamed".into(), auto_connect: true, ..tunnel() };
+        assert!(!needs_reconnect(&old, &new));
+    }
+
+    #[test]
+    fn connection_fields_need_a_new_session() {
+        let old = tunnel();
+        for new in [
+            Tunnel { host: "10.0.0.2".into(), ..tunnel() },
+            Tunnel { port: 2222, ..tunnel() },
+            Tunnel { username: "admin".into(), ..tunnel() },
+            Tunnel { auth: AuthMethod::Agent, ..tunnel() },
+            Tunnel { jump_tunnel_id: Some(Uuid::new_v4()), ..tunnel() },
+            Tunnel { socks_enabled: false, ..tunnel() },
+            Tunnel { local_socks_port: 1081, ..tunnel() },
+        ] {
+            assert!(needs_reconnect(&old, &new));
+        }
+    }
+
+    #[test]
+    fn socks_port_is_irrelevant_while_socks_is_off() {
+        let old = Tunnel { socks_enabled: false, ..tunnel() };
+        let new = Tunnel { socks_enabled: false, local_socks_port: 1090, ..tunnel() };
+        assert!(!needs_reconnect(&old, &new));
+    }
 }

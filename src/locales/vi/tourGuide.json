@@ -82,7 +82,7 @@
     },
     "settings-config": {
       "title": "Chuyển sang máy khác",
-      "body": "Xuất / nhập cấu hình mở ra hai ô lớn. Xuất ghi tunnel, rule router và cài đặt vào một file; mật khẩu chỉ được đưa vào (đã mã hóa) nếu bạn đặt passphrase. Nhập cho xem trước mọi thay đổi, và hỏi passphrase ngay trước khi bạn xác nhận."
+      "body": "Trang Sao lưu có hai ô. Xuất ghi tunnel, rule router và cài đặt vào một file; mật khẩu chỉ được đưa vào (đã mã hóa) nếu bạn đặt passphrase. Nhập cho xem trước mọi thay đổi, và hỏi passphrase ngay trước khi bạn xác nhận."
     },
     "tray": {
       "title": "Ứng dụng nằm ở khay hệ thống",

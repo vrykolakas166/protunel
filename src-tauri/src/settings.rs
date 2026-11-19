@@ -41,6 +41,31 @@ pub struct Settings {
     pub theme_light: String,
     #[serde(default = "default_theme_dark")]
     pub theme_dark: String,
+    /// Whether programs on the server (tmux, vim, htop…) may take over the
+    /// mouse in the terminal. Off: a plain drag always selects and copies.
+    #[serde(default)]
+    pub terminal_app_mouse: bool,
+    /// When launched by the OS at sign-in, stay in the tray instead of
+    /// opening the window. Launching by hand always shows it.
+    #[serde(default)]
+    pub start_minimized: bool,
+    /// GPU (WebGL) rendering in the terminal. Off falls back to xterm's DOM
+    /// renderer: native text rendering, sharper on standard-DPI screens.
+    #[serde(default = "default_true")]
+    pub terminal_webgl: bool,
+    /// Download updates in the background as soon as they are found.
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
+    /// "simple" (one "internal network" switch, read-only tunnel list, for
+    /// people who only browse through tunnels an administrator set up) or "full".
+    /// `None` until the user picks: the first launch, including the first
+    /// launch after updating from a version without modes, asks.
+    #[serde(default)]
+    pub ui_mode: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_theme_light() -> String {
@@ -82,6 +107,11 @@ impl Default for Settings {
             language: default_language(),
             theme_light: default_theme_light(),
             theme_dark: default_theme_dark(),
+            terminal_app_mouse: false,
+            start_minimized: false,
+            terminal_webgl: true,
+            auto_update: true,
+            ui_mode: None,
         }
     }
 }

@@ -1,41 +1,25 @@
 {
   "title": "Settings",
-  "sections": {
-    "appearance": "Appearance",
-    "startupAndNotifications": "Startup & notifications",
-    "connections": "Connections",
-    "dataAndSecurity": "Data & security",
-    "about": "About"
-  },
   "themeLabel": "Theme",
   "languageLabel": "Language",
   "language": {
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "launchOnStartup": "Launch protunel at login",
   "showNotifications": "Show desktop notifications",
   "autoReconnect": "Reconnect automatically when a tunnel drops",
   "keepaliveLabel": "Keepalive (s)",
   "keepaliveTooltip": "Seconds between keepalive pings so a dead connection gets noticed. 0 disables keepalives.",
   "retriesLabel": "Retries",
   "retriesTooltip": "Give up reconnecting after this many consecutive failed attempts. 0 means never give up.",
-  "portMinLabel": "Port min",
   "portMinTooltip": "Lower bound of the local SOCKS port range suggested when adding a new tunnel.",
-  "portMaxLabel": "Port max",
   "portMaxTooltip": "Upper bound of the local SOCKS port range suggested when adding a new tunnel.",
-  "exportImportConfig": "Export / import config",
-  "knownHosts": "Known hosts",
   "checkForUpdates": "Check for updates",
   "checking": "Checking…",
-  "updateAvailable": "Update available: v{{version}}",
+  "updateAvailable": "Version {{version}} is available",
   "upToDate": "You're up to date.",
   "checkFailed": "Check failed: {{error}}",
-  "downloading": "Downloading…",
   "installingUpdate": "Installing…",
-  "installedRestarting": "Installed. Restarting…",
-  "installFailed": "Install failed: {{error}}",
-  "installAndRestart": "Install v{{version}} & restart",
   "themeFixed": "One theme",
   "themeSystem": "Follow system",
   "themeSlotLight": "System light",
@@ -61,5 +45,82 @@
   },
   "themeDormantHint": "You are editing the {{slot}} theme, but your system is {{live}} right now — picks here show up once it switches.",
   "themeDormantSaved": "Saved {{name}} for {{slot}} mode. Your system is {{live}} right now, so the window keeps its current theme.",
-  "themeUseAlways": "Use it now"
+  "themeUseAlways": "Use it now",
+  "terminalAppMouse": "Let programs on the server use the terminal's mouse",
+  "terminalAppMouseHint": "For tmux (mouse on), vim, htop, mc. While they have it, selecting text needs Shift+drag. Off: dragging always selects and copies.",
+  "pages": {
+    "general": {
+      "title": "General",
+      "description": "Mode, startup and notifications."
+    },
+    "tunnels": {
+      "title": "Tunnels",
+      "description": "How tunnels stay connected, and defaults for new ones."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "description": "The SSH terminal window."
+    },
+    "backup": {
+      "title": "Backup",
+      "description": "Move tunnels, rules and settings to another machine, or keep a copy."
+    },
+    "about": {
+      "title": "About",
+      "description": "Version and updates."
+    },
+    "devtools": {
+      "title": "Developer tools",
+      "description": "Fake update states and tunnel failures for testing."
+    }
+  },
+  "runAtStartup": "Run at startup",
+  "runAtStartupHint": "Opens protunel when you sign in to your computer.",
+  "startMinimized": "Start minimized to tray",
+  "startMinimizedHint": "At sign-in, stay in the tray instead of opening the window. Opening protunel yourself always shows it.",
+  "showNotificationsHint": "When a tunnel connects, drops or gives up reconnecting.",
+  "groups": {
+    "reconnect": "Staying connected",
+    "newTunnels": "New tunnels",
+    "startup": "Startup",
+    "notifications": "Notifications",
+    "mouse": "Mouse",
+    "rendering": "Rendering",
+    "security": "Security",
+    "updates": "Updates",
+    "links": "Links",
+    "mode": "Mode"
+  },
+  "portRangeHint": "Local SOCKS ports suggested when you add a tunnel; the first free one is used.",
+  "knownHostsHint": "Servers whose host key you have trusted. A changed key is flagged on the tunnel itself.",
+  "manageKnownHosts": "Manage known hosts…",
+  "autoReconnectHint": "Retries with a growing delay when a tunnel's SSH session drops.",
+  "portRange": "SOCKS port range",
+  "terminalWebgl": "GPU rendering",
+  "terminalWebglHint": "Faster with heavy output. Turn off for the system's own text rendering, often sharper on standard-DPI screens.",
+  "knownHostsTitle": "Known hosts",
+  "tagline": "SSH tunnels, SOCKS routing and terminals in one tray app.",
+  "updatesTitle": "protunel updates",
+  "lastChecked": "Last checked {{when}}",
+  "neverChecked": "Not checked yet",
+  "links": {
+    "releaseNotes": "Release notes",
+    "sourceCode": "Source code",
+    "reportIssue": "Report a problem"
+  },
+  "license": "Free software under the GPL-3.0 licence.",
+  "updateDownloading": "Downloading {{version}}… {{percent}}%",
+  "updateReady": "Version {{version}} is downloaded and ready to install",
+  "restartToUpdate": "Restart to update",
+  "download": "Download",
+  "autoUpdate": "Download updates automatically",
+  "autoUpdateHint": "protunel checks every few hours and downloads in the background; you choose when to restart.",
+  "autoUpdateHintExit": "protunel checks every few hours and downloads in the background; a ready update installs when you quit, or restart now.",
+  "mode": {
+    "title": "Interface",
+    "simple": "Simple",
+    "full": "Full",
+    "simpleHint": "One Internal network switch; tunnels can't be changed in this mode.",
+    "fullHint": "Everything: tunnels, router rules, terminal, capture."
+  }
 }

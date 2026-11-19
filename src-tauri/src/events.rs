@@ -89,3 +89,18 @@ pub const TUNNELS_CHANGED_EVENT: &str = "tunnels-changed";
 /// Settings were saved (or imported). Carries the new `Settings`, so the
 /// terminal window can follow theme and language changes made in the main one.
 pub const SETTINGS_CHANGED_EVENT: &str = "settings-changed";
+
+/// A server offered a different host key than the trusted one; carries a
+/// `known_hosts::HostKeyMismatch`. The connection was refused.
+pub const HOST_KEY_MISMATCH_EVENT: &str = "host-key-mismatch";
+
+/// The in-app updater changed state; carries an `updates::UpdateSnapshot`.
+pub const UPDATE_STATUS_EVENT: &str = "update-status";
+
+/// The tray's "Restart to update" was picked; the main window asks first
+/// (open tunnels and terminals are about to close).
+pub const UPDATE_RESTART_REQUESTED_EVENT: &str = "update-restart-requested";
+
+/// Sent to the terminal window when its close button hides it: the window
+/// drops every tab (its shells are closed) so reopening starts clean.
+pub const TERMINAL_HIDDEN_EVENT: &str = "terminal-hidden";

@@ -43,5 +43,12 @@
   "rangeOrder": "The range ends before it starts.",
   "rangeTooMany": "{{count}} addresses — at most 256 at once.",
   "rangeNoPorts": "Not enough free local ports from this SOCKS port up.",
-  "addMany": "Add {{count}}"
+  "addMany": "Add {{count}}",
+  "hostKey": {
+    "label": "Trusted host key",
+    "forget": "Forget",
+    "forgetHint": "The next connection will ask you to confirm the server's key again.",
+    "forgotten": "Forgotten — the next connection asks you to confirm the server's key."
+  },
+  "runningNotice": "This tunnel is running. Saving a change to its host, login, jump or SOCKS port reconnects it right away: terminals on it close (press Enter in one to reopen it), tunnels jumping through it reconnect. Renaming doesn't reconnect."
 }

@@ -222,3 +222,46 @@ body.dragging .xterm * {
     animation: none;
   }
 }
+
+/* Welcome screen (ModeChooser) and the update banner: rise and fade in.
+   `--delay` staggers the welcome cards. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+.rise-in {
+  animation: rise-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--delay, 0ms);
+}
+@keyframes nudge-down {
+  0%,
+  100% {
+    transform: translateY(-1px);
+  }
+  50% {
+    transform: translateY(2px);
+  }
+}
+.nudge-down {
+  animation: nudge-down 1.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rise-in,
+  .nudge-down {
+    animation: none;
+  }
+}
+
+/* No spinner arrows on number inputs: they crowd the small fields and
+   nobody steps a port by one with the mouse. Arrow keys still step. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

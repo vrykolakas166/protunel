@@ -1,0 +1,29 @@
+{
+  "intro": "Only in developer builds, or a release started with PROTUNEL_DEVTOOLS=1. Fakes states so the screens can be checked without a release or a broken server.",
+  "groups": {
+    "updates": "Updates",
+    "mode": "Mode",
+    "failures": "Tunnel failures"
+  },
+  "updateAvailable": "Update found",
+  "updateAvailableHint": "As if a background check found v{{next}}. With automatic updates on it downloads by itself (about 3 s); otherwise use Download on the banner.",
+  "updateError": "Check failed",
+  "updateErrorHint": "As if “Check for updates” could not reach GitHub.",
+  "updateReset": "Reset",
+  "updateResetHint": "Back to no update. “Restart to update” on a simulated update really restarts: running tunnels come back and “What's new” shows, but nothing is installed.",
+  "simulate": "Simulate",
+  "whatsNew": "“What's new”",
+  "whatsNewHint": "The window a freshly updated version shows once.",
+  "show": "Show",
+  "askMode": "Mode question",
+  "askModeHint": "Clears the choice, as on the first launch after updating from a version without modes.",
+  "askAgain": "Ask again",
+  "tunnel": "Tunnel",
+  "failuresHint": "Stops the tunnel and shows the error it would get. A simulated key change clears once the tunnel connects again.",
+  "fail": {
+    "auth": "Wrong password",
+    "unreachable": "Unreachable",
+    "hostKey": "Host key changed"
+  },
+  "noTunnels": "Add or import a tunnel first."
+}

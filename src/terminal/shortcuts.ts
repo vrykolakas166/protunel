@@ -57,3 +57,41 @@ export function matchShortcut(e: KeyboardEvent): AppShortcut | null {
   }
   return null;
 }
+
+/** Ctrl/Cmd keys an ordinary text field needs; every other combo is a browser command. */
+const EDITING_KEYS = new Set([
+  "a", "c", "v", "x", "z", "y",
+  "arrowleft", "arrowright", "arrowup", "arrowdown",
+  "backspace", "delete", "home", "end",
+]);
+
+export type KeyPlace = "textField" | "terminal" | "other";
+export type StrayKeyAction = "pass" | "cancel" | "refocus";
+
+/**
+ * What the terminal window does with a keydown nobody handled (seen in the
+ * bubble phase, after xterm cancelled every key it turned into shell input).
+ * Without this the webview acts on it: F5 reloads and drops every shell,
+ * Ctrl+F/P open find/print, Ctrl+= zooms, Space scrolls the page.
+ *
+ * - textField (search box, dialog inputs): keep typing and editing keys,
+ *   cancel F-keys and other Ctrl/Cmd combos.
+ * - terminal: cancel F-keys and Ctrl/Cmd combos. Printable keys pass, since
+ *   cancelling their keydown would also cancel the text they type.
+ * - other (page body, a button): cancel and hand focus back to the shell.
+ *
+ * Ctrl+Alt is never treated as a combo: it is AltGr on many layouts and types
+ * characters (@, €, {…).
+ */
+export function strayKeyAction(
+  e: Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "altKey">,
+  place: KeyPlace,
+): StrayKeyAction {
+  const fKey = /^F\d{1,2}$/.test(e.key);
+  const combo = (e.ctrlKey || e.metaKey) && !e.altKey;
+  if (place === "textField") {
+    return fKey || (combo && !EDITING_KEYS.has(e.key.toLowerCase())) ? "cancel" : "pass";
+  }
+  if (place === "terminal") return fKey || combo ? "cancel" : "pass";
+  return "refocus";
+}

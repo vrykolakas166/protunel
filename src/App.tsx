@@ -1,12 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
 import { AddTunnelForm } from "./components/AddTunnelForm";
 import { CapturePanel } from "./components/CapturePanel";
-import { getPlatformStatus, isWindows } from "./platform";
-import { ConfigPanel } from "./components/ConfigPanel";
+import { isWindows } from "./platform";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
 import { KnownHostsPanel } from "./components/KnownHostsPanel";
@@ -16,7 +13,10 @@ import { RouterPanel } from "./components/RouterPanel";
 import { Sample1 } from "./components/Sample1";
 import { LanguageMenu } from "./components/LanguageMenu";
 import { PreferencesPanel } from "./components/PreferencesPanel";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { SettingsIcon, SettingsPanel, type SettingsPage } from "./components/SettingsPanel";
+import { useUpdates } from "./hooks/useUpdates";
+import { ReleaseNotes } from "./components/ReleaseNotes";
+import { Modal } from "./components/Modal";
 import { SetupNotice } from "./components/SetupNotice";
 import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
@@ -25,11 +25,24 @@ import { useLanguage } from "./hooks/useLanguage";
 import { usedLocalPorts } from "./hostRange";
 import { useTheme } from "./themes";
 import { useTunnelEvents } from "./hooks/useTunnelEvents";
+import { hostKeyId, useHostKeyMismatches } from "./hooks/useHostKeyMismatches";
+import { HostKeyChangedDialog } from "./components/HostKeyChangedDialog";
+import { SimpleHome } from "./components/SimpleHome";
+import { ModeChooser } from "./components/ModeChooser";
+import { UpdateBanner } from "./components/UpdateBanner";
+import { TunnelToolbar } from "./components/TunnelToolbar";
+import { openMenu } from "./contextMenu";
+import { DevToolsPage } from "./components/DevToolsPage";
 import {
   addTunnel,
   addTunnels,
   connectAll,
   connectTunnel,
+  debugWhatsNew,
+  devToolsEnabled,
+  forgetKnownHost,
+  installUpdate,
+  takeWhatsNew,
   deleteTunnel,
   disconnectAll,
   disconnectTunnel,
@@ -40,7 +53,7 @@ import {
   updateSettings,
   updateTunnel,
 } from "./api";
-import type { Settings, Tunnel, TunnelInput } from "./types";
+import type { Settings, Tunnel, TunnelInput, UiMode, WhatsNew } from "./types";
 
 interface Message {
   text: string;
@@ -51,6 +64,9 @@ type FormState =
   | { mode: "add" }
   | { mode: "edit"; tunnel: Tunnel }
   | { mode: "clone"; tunnel: Tunnel };
+
+/** Statuses that count as "up" for the toolbar: on, or on the way. */
+const LIVE = ["connected", "connecting", "reconnecting"];
 
 function suggestPort(tunnels: Tunnel[], settings: Settings | null): number {
   if (!settings) return 1080;
@@ -73,22 +89,35 @@ function App() {
   const [showRouter, setShowRouter] = useState(false);
   const [showCapture, setShowCapture] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>("general");
+  const { mismatches: hostKeyMismatches, dismiss: dismissMismatch } = useHostKeyMismatches();
+  /** Tunnel whose changed host key is being reviewed. */
+  const [reviewingKey, setReviewingKey] = useState<Tunnel | null>(null);
   const [showPreferences, setShowPreferences] = useState(false);
-  const [showConfig, setShowConfig] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Tunnel | null>(null);
   const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
-  const [pendingUpdate, setPendingUpdate] = useState<Update | null>(null);
-  const [updateInstalling, setUpdateInstalling] = useState(false);
+  const updates = useUpdates();
+  /** Restart-to-update waiting on the user (tunnels are about to drop). */
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  /** Release notes of the version this launch just updated to, shown once. */
+  const [whatsNew, setWhatsNew] = useState<WhatsNew | null>(null);
+  /** Settings › Developer tools exists (debug builds, PROTUNEL_DEVTOOLS=1). */
+  const [devTools, setDevTools] = useState(false);
 
   useTheme(settings);
   useLanguage(settings?.language);
 
   const router = useRouterEvents();
 
+  // Simple mode says what went wrong on the tunnel's row, in plain words;
+  // the raw SSH error up top would only alarm.
+  const simpleRef = useRef(false);
+  simpleRef.current = settings?.uiMode === "simple";
   const { statuses, stats, throughput, hostKeyQueue, dismissHostKey } = useTunnelEvents(
-    (_tunnelId, text) => setMessage({ text, isError: true }),
+    (_tunnelId, text) => !simpleRef.current && setMessage({ text, isError: true }),
   );
 
   useEffect(() => {
@@ -98,32 +127,42 @@ function App() {
     getSettings().then((loaded) => {
       setSettings(loaded);
       // Runs itself once on a fresh install, then never again unless replayed.
-      if (!loaded.tourCompleted) setShowTour(true);
+      // The tour shows the full app; with no mode chosen yet, the mode
+      // question comes first and starts it (see `chooseMode`).
+      if (!loaded.tourCompleted && loaded.uiMode === "full") setShowTour(true);
     });
-    getPlatformStatus()
-      .then((status) => (status.selfUpdate ? check() : null))
-      .then((update) => update && setPendingUpdate(update))
+    devToolsEnabled().then(setDevTools).catch(() => {});
+    takeWhatsNew()
+      .then((notes) => notes && setWhatsNew(notes))
       .catch(() => {});
+    // The tray's "Restart to update" lands here so the user can be asked.
+    const unlistenRestart = listen("update-restart-requested", () => setConfirmRestart(true));
     // The terminal window can add and edit hosts too.
     const unlisten = listen("tunnels-changed", () => {
       listTunnels().then(setTunnels).catch(() => {});
     });
     return () => {
       unlisten.then((f) => f());
+      unlistenRestart.then((f) => f());
     };
   }, []);
 
-  const installUpdate = async () => {
-    if (!pendingUpdate) return;
-    setUpdateInstalling(true);
+  /** Tunnels that a restart would drop (they come back after it). */
+  const liveTunnels = Object.values(statuses).filter((s) => s.status !== "disconnected" && s.status !== "error").length;
+
+  const restartToUpdate = async () => {
+    setConfirmRestart(false);
+    setRestarting(true);
     try {
-      await pendingUpdate.downloadAndInstall();
-      await relaunch();
+      await installUpdate(); // only returns if it failed
     } catch (err) {
       setMessage({ text: String(err), isError: true });
-      setUpdateInstalling(false);
     }
+    setRestarting(false);
   };
+
+  // Nothing running: no reason to ask. Otherwise say what will happen.
+  const requestRestart = () => (liveTunnels > 0 ? setConfirmRestart(true) : void restartToUpdate());
 
   useEffect(() => {
     if (!message) return;
@@ -154,12 +193,34 @@ function App() {
 
   const refresh = async () => setTunnels(await listTunnels());
 
+  const simple = settings?.uiMode === "simple";
+  /** No mode picked yet: a fresh install, or the first launch after updating. */
+  const askMode = !!settings && settings.uiMode === null;
+
+  const chooseMode = async (mode: UiMode) => {
+    if (!settings) return;
+    try {
+      const saved = await updateSettings({ ...settings, uiMode: mode });
+      setSettings(saved);
+      if (mode === "full" && !saved.tourCompleted) setShowTour(true);
+    } catch (err) {
+      setMessage({ text: String(err), isError: true });
+    }
+  };
+
+  const openSettings = (page: SettingsPage) => {
+    setSettingsPage(page);
+    setShowSettings(true);
+  };
+
   // The tour drives the modals itself so it can point at things inside them.
   // Everything it opens is closed again when it moves on or ends.
   const showTourPanel = useCallback((panel: TourPanel | null) => {
     setShowRouter(panel === "router");
     setShowCapture(panel === "capture");
-    setShowSettings(panel === "settings");
+    const settingsTarget = panel?.startsWith("settings:") ? (panel.slice(9) as SettingsPage) : null;
+    if (settingsTarget) setSettingsPage(settingsTarget);
+    setShowSettings(settingsTarget !== null);
     setShowPreferences(panel === "preferences");
     setFormState(panel === "add" ? { mode: "add" } : null);
   }, []);
@@ -272,6 +333,25 @@ function App() {
     }
   };
 
+  // Nothing until settings load: the window must not flash the full app at
+  // someone about to be asked for (or already in) Simple mode.
+  if (!settings) return <main className="h-screen bg-bg" />;
+
+  if (askMode) {
+    return (
+      <main className="flex h-screen flex-col bg-bg text-text">
+        <ModeChooser
+          settings={settings}
+          afterUpdate={tunnels.length > 0}
+          onChoose={(mode) => void chooseMode(mode)}
+          onSettingsChange={setSettings}
+        />
+        {/* A resumed tunnel can still need its key confirmed. */}
+        {hostKeyQueue[0] && <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />}
+      </main>
+    );
+  }
+
   return (
     <main className="flex h-screen flex-col bg-bg text-text">
       <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-3">
@@ -280,62 +360,67 @@ function App() {
         <LocalIps className="flex-1" />
 
         <div className="ml-auto flex items-center gap-1.5">
-          <button
-            onClick={() =>
-              openTerminalWindow().catch((err) => setMessage({ text: String(err), isError: true }))
-            }
-            data-tour="terminal"
-            title={t("terminalTooltip")}
-            className="flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs font-medium text-text hover:border-accent hover:bg-surface-hover"
-          >
-            {/* Prompt glyph: this opens a shell, not a panel. */}
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
-              <path d="M4.5 6l2 2-2 2M8 10h3" />
-            </svg>
-            {t("terminal")}
-            {/* Arrow out of a box: opens in its own window. */}
-            <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true">
-              <path d="M7 1.5h3.5V5M10.5 1.5 5.5 6.5M9 7.5v2.5a.5.5 0 0 1-.5.5h-6.5a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5H4.5" />
-            </svg>
-          </button>
-          <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
-          <button
-            onClick={() => setShowRouter(true)}
-            data-tour="router"
-            title={
-              router.status === "running"
-                ? t("routerListening", { port: router.port })
-                : t("routerTooltip")
-            }
-            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                router.status === "running"
-                  ? "bg-accent"
-                  : router.status === "error"
-                    ? "bg-coral"
-                    : "bg-slate"
-              }`}
-            />
-            {t("router")}
-          </button>
-          {isWindows && (
-            <button
-              onClick={() => setShowCapture(true)}
-              data-tour="capture"
-              title={t("captureTooltip")}
-              className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
-            >
-              {t("capture")}
-            </button>
+          {!simple && (
+            <>
+              <button
+                onClick={() =>
+                  openTerminalWindow().catch((err) => setMessage({ text: String(err), isError: true }))
+                }
+                data-tour="terminal"
+                title={t("terminalTooltip")}
+                className="flex items-center gap-1.5 rounded border border-border px-2 py-1 text-xs font-medium text-text hover:border-accent hover:bg-surface-hover"
+              >
+                {/* Prompt glyph: this opens a shell, not a panel. */}
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+                  <path d="M4.5 6l2 2-2 2M8 10h3" />
+                </svg>
+                {t("terminal")}
+                {/* Arrow out of a box: opens in its own window. */}
+                <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-muted" aria-hidden="true">
+                  <path d="M7 1.5h3.5V5M10.5 1.5 5.5 6.5M9 7.5v2.5a.5.5 0 0 1-.5.5h-6.5a.5.5 0 0 1-.5-.5V3.5a.5.5 0 0 1 .5-.5H4.5" />
+                </svg>
+              </button>
+              <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
+              <button
+                onClick={() => setShowRouter(true)}
+                data-tour="router"
+                title={
+                  router.status === "running"
+                    ? t("routerListening", { port: router.port })
+                    : t("routerTooltip")
+                }
+                className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${
+                    router.status === "running"
+                      ? "bg-accent"
+                      : router.status === "error"
+                        ? "bg-coral"
+                        : "bg-slate"
+                  }`}
+                />
+                {t("router")}
+              </button>
+              {isWindows && (
+                <button
+                  onClick={() => setShowCapture(true)}
+                  data-tour="capture"
+                  title={t("captureTooltip")}
+                  className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+                >
+                  {t("capture")}
+                </button>
+              )}
+            </>
           )}
           <button
-            onClick={() => setShowSettings(true)}
+            onClick={() => openSettings("general")}
             data-tour="settings"
-            className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
           >
+            <SettingsIcon name="settings" size={14} />
             {t("settings")}
           </button>
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
@@ -368,92 +453,100 @@ function App() {
 
       <SetupNotice tunnels={tunnels} />
 
-      {pendingUpdate && (
-        <div className="flex items-center justify-between gap-3 border-b border-border bg-accent/10 px-4 py-2 text-sm text-text">
-          <span>{t("updateAvailable", { version: pendingUpdate.version })}</span>
-          <button
-            onClick={installUpdate}
-            disabled={updateInstalling}
-            className="rounded bg-accent px-3 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
-          >
-            {updateInstalling ? t("installing") : t("installAndRestart")}
-          </button>
-        </div>
-      )}
+      <UpdateBanner
+        updates={updates}
+        restarting={restarting}
+        onRestart={requestRestart}
+        onWhatsNew={() => openSettings("about")}
+      />
 
-      <div
-        data-tour="bulk"
-        className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2"
-      >
-        <button
-          onClick={() => setPendingBulkAction("connect")}
-          disabled={filteredTunnels.length === 0}
-          className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
-        >
-          {t("connectAll")}
-        </button>
-        <button
-          onClick={() => setPendingBulkAction("disconnect")}
-          disabled={filteredTunnels.length === 0}
-          className="rounded bg-coral px-3 py-1.5 text-xs font-medium text-on-coral hover:opacity-90 disabled:opacity-50"
-        >
-          {t("disconnectAll")}
-        </button>
-        <button
-          onClick={() => setFormState({ mode: "add" })}
-          data-tour="add"
-          className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
-        >
-          {t("addTunnel")}
-        </button>
-      </div>
-
-      <div data-tour="list" className="relative flex min-h-0 flex-1 flex-col">
-        {showSearch && (
-          <div className="search-drop-in absolute inset-x-0 bottom-4 z-10 mx-auto flex w-fit items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5 shadow-lg">
-            <input
-              ref={searchInputRef}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
-              placeholder={t("searchPlaceholder")}
-              data-tour="search"
-              className="w-48 rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
-            />
-            <button
-              onClick={() => {
-                setShowSearch(false);
-                setSearch("");
-              }}
-              aria-label={t("closeSearch")}
-              className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path
-                  d="M2 2L14 14M14 2L2 14"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </button>
-          </div>
-        )}
-        <TunnelList
-          tunnels={filteredTunnels}
+      {simple ? (
+        <SimpleHome
+          tunnels={tunnels}
           statuses={statuses}
-          stats={stats}
-          throughput={throughput}
-          suggestedForwardPort={suggestPort(tunnels, settings)}
-          onToggle={handleToggle}
-          onEdit={(tunnel) => setFormState({ mode: "edit", tunnel })}
-          onClone={(tunnel) => setFormState({ mode: "clone", tunnel })}
-          onDelete={setPendingDelete}
-          onRefresh={refresh}
+          router={router}
+          hostKeyMismatches={hostKeyMismatches}
+          onImport={() => openSettings("backup")}
           onError={(text) => setMessage({ text, isError: true })}
-          onReorder={handleReorder}
         />
-      </div>
+      ) : (
+        <>
+          <TunnelToolbar
+            // Whole list, not the search result: the bulk actions act on every tunnel.
+            total={tunnels.length}
+            live={tunnels.filter((tun) => LIVE.includes(statuses[tun.id]?.status ?? "")).length}
+            searching={showSearch}
+            onConnectAll={() => setPendingBulkAction("connect")}
+            onDisconnectAll={() => setPendingBulkAction("disconnect")}
+            onSearch={() => {
+              if (showSearch) setSearch("");
+              setShowSearch(!showSearch);
+            }}
+            onAdd={() => setFormState({ mode: "add" })}
+          />
+
+          <div
+            data-tour="list"
+            className="relative flex min-h-0 flex-1 flex-col"
+            onContextMenu={(e) => {
+              // Rows and fields have their own menus; this is the empty space.
+              const target = e.target as HTMLElement;
+              if (target.closest("[data-tunnel-row], input, textarea, button")) return;
+              openMenu(e, [
+                { label: t("addTunnel"), action: () => setFormState({ mode: "add" }) },
+                { label: t("importConfig"), action: () => openSettings("backup") },
+              ]);
+            }}
+          >
+            {showSearch && (
+              <div className="search-drop-in absolute inset-x-0 bottom-4 z-10 mx-auto flex w-fit items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5 shadow-lg">
+                <input
+                  ref={searchInputRef}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
+                  placeholder={t("searchPlaceholder")}
+                  data-tour="search"
+                  className="w-48 rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    setShowSearch(false);
+                    setSearch("");
+                  }}
+                  aria-label={t("closeSearch")}
+                  className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M2 2L14 14M14 2L2 14"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )}
+            <TunnelList
+              tunnels={filteredTunnels}
+              statuses={statuses}
+              stats={stats}
+              throughput={throughput}
+              suggestedForwardPort={suggestPort(tunnels, settings)}
+              onToggle={handleToggle}
+              onEdit={(tunnel) => setFormState({ mode: "edit", tunnel })}
+              onClone={(tunnel) => setFormState({ mode: "clone", tunnel })}
+              onDelete={setPendingDelete}
+              onRefresh={refresh}
+              onError={(text) => setMessage({ text, isError: true })}
+              onReorder={handleReorder}
+              hostKeyMismatches={hostKeyMismatches}
+              onReviewHostKey={setReviewingKey}
+            />
+          </div>
+        </>
+      )}
 
       {formState && (
         <AddTunnelForm
@@ -463,6 +556,11 @@ function App() {
           tunnels={tunnels}
           onSubmit={handleSubmit}
           onSubmitMany={formState.mode === "edit" ? undefined : handleSubmitMany}
+          onHostKeyForgotten={dismissMismatch}
+          running={
+            formState.mode === "edit" &&
+            ["connected", "connecting", "reconnecting"].includes(statuses[formState.tunnel.id]?.status ?? "")
+          }
           onCancel={() => setFormState(null)}
         />
       )}
@@ -484,26 +582,97 @@ function App() {
       )}
       {showSettings && (
         <SettingsPanel
+          page={settingsPage}
+          updates={updates}
+          restarting={restarting}
+          onRestartToUpdate={requestRestart}
+          tunnels={tunnels}
           onClose={() => setShowSettings(false)}
           onSettingsChange={setSettings}
-          onOpenConfig={() => setShowConfig(true)}
-          onOpenHosts={() => setShowKnownHosts(true)}
-        />
-      )}
-      {showConfig && (
-        <ConfigPanel
-          tunnels={tunnels}
-          onClose={() => setShowConfig(false)}
           onImported={() => {
             void refresh();
             getSettings().then(setSettings);
           }}
+          onOpenHosts={() => setShowKnownHosts(true)}
+          devTools={
+            devTools ? (
+              <DevToolsPage
+                tunnels={tunnels}
+                onError={(text) => setMessage({ text, isError: true })}
+                onShowWhatsNew={() => {
+                  setShowSettings(false);
+                  debugWhatsNew()
+                    .then(setWhatsNew)
+                    .catch((err) => setMessage({ text: String(err), isError: true }));
+                }}
+                onAskMode={() => {
+                  if (!settings) return;
+                  setShowSettings(false);
+                  updateSettings({ ...settings, uiMode: null })
+                    .then(setSettings)
+                    .catch((err) => setMessage({ text: String(err), isError: true }));
+                }}
+              />
+            ) : undefined
+          }
         />
       )}
-      {showKnownHosts && <KnownHostsPanel onClose={() => setShowKnownHosts(false)} />}
+      {confirmRestart && (
+        <ConfirmDialog
+          title={t("restartTitle", { version: updates?.version ?? "" })}
+          message={t("restartMessage", { count: liveTunnels })}
+          confirmLabel={t("restartToUpdate")}
+          tone="accent"
+          onConfirm={() => void restartToUpdate()}
+          onCancel={() => setConfirmRestart(false)}
+        />
+      )}
+      {/* Only reached once a mode is chosen, so an update that adds modes asks first. */}
+      {whatsNew && (
+        <Modal
+          size="md"
+          title={
+            <div>
+              <h2 className="font-display text-base font-semibold text-text">
+                {t("whatsNewTitle", { version: whatsNew.version })}
+              </h2>
+              <p className="text-[11px] text-muted">{t("whatsNewHint")}</p>
+            </div>
+          }
+          onClose={() => setWhatsNew(null)}
+        >
+          {whatsNew.notes ? <ReleaseNotes markdown={whatsNew.notes} /> : <p className="text-sm text-muted">{t("whatsNewEmpty")}</p>}
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => setWhatsNew(null)}
+              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
+            >
+              {t("whatsNewDone")}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {showKnownHosts && (
+        <KnownHostsPanel onClose={() => setShowKnownHosts(false)} onForgotten={dismissMismatch} />
+      )}
+      {reviewingKey && hostKeyMismatches[hostKeyId(reviewingKey)] && (
+        <HostKeyChangedDialog
+          mismatch={hostKeyMismatches[hostKeyId(reviewingKey)]}
+          tunnelName={reviewingKey.name}
+          onCancel={() => setReviewingKey(null)}
+          onForget={async () => {
+            const keyId = hostKeyId(reviewingKey);
+            await forgetKnownHost(keyId);
+            dismissMismatch(keyId);
+            setReviewingKey(null);
+            // The new key now gets the first-connection prompt, fingerprint and all.
+            connectTunnel(reviewingKey.id).catch((err) => setMessage({ text: String(err), isError: true }));
+          }}
+        />
+      )}
       {/* Below the tour overlay's z-index so it is dimmed along with everything
           else while the tour runs. */}
-      {!showTour && (
+      {!showTour && !simple && (
         <button
           onClick={() => setShowTour(true)}
           title={t("showGuidedTour")}

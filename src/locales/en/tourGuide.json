@@ -82,7 +82,7 @@
     },
     "settings-config": {
       "title": "Moving to another machine",
-      "body": "Export / import config opens two big tiles. Export writes tunnels, router rules and settings to one file; passwords are only included, encrypted, if you set a passphrase. Import shows exactly what will change first, and asks for that passphrase right before you confirm."
+      "body": "The Backup page holds two tiles. Export writes tunnels, router rules and settings to one file; passwords are only included, encrypted, if you set a passphrase. Import shows exactly what will change first, and asks for that passphrase right before you confirm."
     },
     "tray": {
       "title": "It lives in the tray",

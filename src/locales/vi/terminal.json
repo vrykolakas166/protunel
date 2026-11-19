@@ -58,5 +58,11 @@
   "collapse": "Thu gọn",
   "kbSidebar": "thanh host",
   "showSidebar": "Hiện danh sách host",
-  "hideSidebar": "Ẩn danh sách host"
+  "hideSidebar": "Ẩn danh sách host",
+  "mouseSelect": "Chuột: bôi đen",
+  "mouseSelectTooltip": "Chương trình trên server muốn dùng chuột; kéo chuột vẫn bôi đen và copy. Bấm để giao chuột cho chương trình.",
+  "mouseApp": "Chuột: chương trình · Shift+kéo để bôi đen",
+  "mouseAppTooltip": "Chương trình trên server (tmux, vim, htop…) đang dùng chuột. Bấm để lấy lại, kéo chuột luôn bôi đen.",
+  "staleTarget": "đã đổi cấu hình",
+  "staleTargetHint": "Shell này được mở trước khi host bị sửa. Khi nó kết thúc, bấm Enter (hoặc mở pane mới) để kết nối bằng {{saved}}."
 }

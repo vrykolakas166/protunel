@@ -1,41 +1,25 @@
 {
   "title": "Cài đặt",
-  "sections": {
-    "appearance": "Giao diện",
-    "startupAndNotifications": "Khởi động & thông báo",
-    "connections": "Kết nối",
-    "dataAndSecurity": "Dữ liệu & bảo mật",
-    "about": "Giới thiệu"
-  },
-  "themeLabel": "Chủ đề",
+  "themeLabel": "Theme",
   "languageLabel": "Ngôn ngữ",
   "language": {
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "launchOnStartup": "Khởi chạy protunel khi đăng nhập",
   "showNotifications": "Hiện thông báo trên desktop",
   "autoReconnect": "Tự động kết nối lại khi tunnel bị rớt",
   "keepaliveLabel": "Keepalive (giây)",
   "keepaliveTooltip": "Số giây giữa các lần ping keepalive để phát hiện kết nối chết. 0 để tắt keepalive.",
   "retriesLabel": "Số lần thử lại",
   "retriesTooltip": "Ngừng kết nối lại sau số lần thất bại liên tiếp này. 0 nghĩa là không bao giờ bỏ cuộc.",
-  "portMinLabel": "Cổng nhỏ nhất",
   "portMinTooltip": "Giới hạn dưới của dải cổng SOCKS cục bộ được gợi ý khi thêm tunnel mới.",
-  "portMaxLabel": "Cổng lớn nhất",
   "portMaxTooltip": "Giới hạn trên của dải cổng SOCKS cục bộ được gợi ý khi thêm tunnel mới.",
-  "exportImportConfig": "Xuất / nhập cấu hình",
-  "knownHosts": "Máy chủ đã biết",
   "checkForUpdates": "Kiểm tra cập nhật",
   "checking": "Đang kiểm tra…",
-  "updateAvailable": "Có bản cập nhật: v{{version}}",
+  "updateAvailable": "Đã có bản {{version}}",
   "upToDate": "Bạn đang dùng bản mới nhất.",
   "checkFailed": "Kiểm tra thất bại: {{error}}",
-  "downloading": "Đang tải…",
   "installingUpdate": "Đang cài đặt…",
-  "installedRestarting": "Đã cài đặt. Đang khởi động lại…",
-  "installFailed": "Cài đặt thất bại: {{error}}",
-  "installAndRestart": "Cài v{{version}} & khởi động lại",
   "themeFixed": "Một theme",
   "themeSystem": "Theo hệ thống",
   "themeSlotLight": "Hệ thống sáng",
@@ -61,5 +45,82 @@
   },
   "themeDormantHint": "Bạn đang chọn theme cho chế độ {{slot}}, nhưng hệ thống đang ở chế độ {{live}} — theme chọn ở đây chỉ hiện khi hệ thống chuyển.",
   "themeDormantSaved": "Đã lưu {{name}} cho chế độ {{slot}}. Hệ thống đang ở chế độ {{live}} nên cửa sổ giữ theme hiện tại.",
-  "themeUseAlways": "Dùng ngay"
+  "themeUseAlways": "Dùng ngay",
+  "terminalAppMouse": "Cho chương trình trên server dùng chuột trong terminal",
+  "terminalAppMouseHint": "Cho tmux (mouse on), vim, htop, mc. Khi bật, muốn bôi đen phải giữ Shift khi kéo. Tắt: kéo chuột luôn bôi đen và copy.",
+  "pages": {
+    "general": {
+      "title": "Chung",
+      "description": "Chế độ, khởi động và thông báo."
+    },
+    "tunnels": {
+      "title": "Tunnel",
+      "description": "Cách tunnel duy trì kết nối, và giá trị mặc định cho tunnel mới."
+    },
+    "terminal": {
+      "title": "Terminal",
+      "description": "Cửa sổ terminal SSH."
+    },
+    "backup": {
+      "title": "Sao lưu",
+      "description": "Chuyển tunnel, rule và cài đặt sang máy khác, hoặc giữ một bản sao."
+    },
+    "about": {
+      "title": "Giới thiệu",
+      "description": "Phiên bản và cập nhật."
+    },
+    "devtools": {
+      "title": "Kiểm thử",
+      "description": "Giả lập trạng thái cập nhật và lỗi tunnel để kiểm tra."
+    }
+  },
+  "runAtStartup": "Chạy khi khởi động máy",
+  "runAtStartupHint": "Mở protunel khi bạn đăng nhập vào máy.",
+  "startMinimized": "Khởi động ẩn xuống khay",
+  "startMinimizedHint": "Khi đăng nhập, chỉ chạy ở khay hệ thống, không mở cửa sổ. Tự mở protunel thì cửa sổ vẫn hiện.",
+  "showNotificationsHint": "Khi tunnel kết nối, bị rớt hoặc ngừng thử kết nối lại.",
+  "groups": {
+    "reconnect": "Duy trì kết nối",
+    "newTunnels": "Tunnel mới",
+    "startup": "Khởi động",
+    "notifications": "Thông báo",
+    "mouse": "Chuột",
+    "rendering": "Hiển thị",
+    "security": "Bảo mật",
+    "updates": "Cập nhật",
+    "links": "Liên kết",
+    "mode": "Chế độ"
+  },
+  "portRangeHint": "Dải cổng SOCKS cục bộ gợi ý khi thêm tunnel; cổng trống đầu tiên được dùng.",
+  "knownHostsHint": "Các server có host key bạn đã tin cậy. Key bị đổi sẽ được báo ngay trên tunnel.",
+  "manageKnownHosts": "Quản lý known hosts…",
+  "autoReconnectHint": "Thử lại với khoảng chờ tăng dần khi phiên SSH của tunnel bị rớt.",
+  "portRange": "Dải cổng SOCKS",
+  "terminalWebgl": "Vẽ bằng GPU",
+  "terminalWebglHint": "Nhanh hơn khi output nhiều. Tắt để dùng cách hiển thị chữ của hệ thống, thường nét hơn trên màn hình DPI thường.",
+  "knownHostsTitle": "Known hosts",
+  "tagline": "SSH tunnel, định tuyến SOCKS và terminal trong một app ở khay hệ thống.",
+  "updatesTitle": "Cập nhật protunel",
+  "lastChecked": "Lần kiểm tra cuối: {{when}}",
+  "neverChecked": "Chưa kiểm tra",
+  "links": {
+    "releaseNotes": "Ghi chú phát hành",
+    "sourceCode": "Mã nguồn",
+    "reportIssue": "Báo lỗi"
+  },
+  "license": "Phần mềm tự do theo giấy phép GPL-3.0.",
+  "updateDownloading": "Đang tải {{version}}… {{percent}}%",
+  "updateReady": "Đã tải xong bản {{version}}, sẵn sàng cài",
+  "restartToUpdate": "Khởi động lại để cập nhật",
+  "download": "Tải về",
+  "autoUpdate": "Tự động tải bản cập nhật",
+  "autoUpdateHint": "protunel kiểm tra vài giờ một lần và tải ngầm; bạn tự chọn lúc khởi động lại.",
+  "autoUpdateHintExit": "protunel kiểm tra vài giờ một lần và tải ngầm; bản đã tải được cài khi bạn thoát app, hoặc khởi động lại ngay.",
+  "mode": {
+    "title": "Giao diện",
+    "simple": "Đơn giản",
+    "full": "Đầy đủ",
+    "simpleHint": "Một công tắc Mạng nội bộ; không sửa được tunnel ở chế độ này.",
+    "fullHint": "Đầy đủ tính năng: tunnel, rule router, terminal, capture."
+  }
 }

@@ -1,6 +1,6 @@
 use tauri::menu::{CheckMenuItemBuilder, Menu, MenuItemBuilder, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, Wry};
+use tauri::{AppHandle, Emitter, Manager, Wry};
 
 use crate::commands;
 use crate::AppState;
@@ -8,7 +8,9 @@ use crate::AppState;
 const TRAY_ID: &str = "main-tray";
 const TOGGLE_WINDOW_ID: &str = "toggle-window";
 const EXIT_ID: &str = "exit";
+const UPDATE_ID: &str = "restart-to-update";
 const TUNNEL_PREFIX: &str = "tunnel:";
+const ACCESS_ID: &str = "network-access";
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
@@ -43,7 +45,15 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     menu.append(&MenuItemBuilder::with_id(TOGGLE_WINDOW_ID, "Show/Hide").build(app)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
-    if let Some(state) = app.try_state::<AppState>() {
+    if crate::access::is_simple(app) {
+        // Simple mode: the one switch the window shows, nothing per tunnel.
+        menu.append(
+            &CheckMenuItemBuilder::with_id(ACCESS_ID, "Internal network")
+                .checked(crate::access::is_on(app))
+                .build(app)?,
+        )?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    } else if let Some(state) = app.try_state::<AppState>() {
         if let Ok(tunnels) = state.db.list() {
             if !tunnels.is_empty() {
                 for tunnel in &tunnels {
@@ -60,6 +70,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         }
     }
 
+    if let Some(version) = crate::updates::ready_version(app) {
+        let label = format!("Restart to update to {version}");
+        menu.append(&MenuItemBuilder::with_id(UPDATE_ID, label).build(app)?)?;
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+
     menu.append(&MenuItemBuilder::with_id(EXIT_ID, "Exit").build(app)?)?;
     Ok(menu)
 }
@@ -69,6 +85,21 @@ fn handle_menu_event(app: &AppHandle, id: &str) {
         toggle_window(app);
     } else if id == EXIT_ID {
         app.exit(0);
+    } else if id == UPDATE_ID {
+        // The main window asks first: tunnels and terminals are about to close.
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        let _ = app.emit(crate::events::UPDATE_RESTART_REQUESTED_EVENT, ());
+    } else if id == ACCESS_ID {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let on = crate::access::is_on(&app);
+            let _ = crate::access::set(&app, !on).await;
+            // A failure leaves the check mark where it was.
+            rebuild_menu(&app);
+        });
     } else if let Some(tunnel_id) = id.strip_prefix(TUNNEL_PREFIX) {
         if let Ok(uuid) = tunnel_id.parse() {
             let app = app.clone();

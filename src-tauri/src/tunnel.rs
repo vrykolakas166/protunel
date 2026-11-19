@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
 
 use russh::client;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -34,6 +34,12 @@ pub struct TunnelHandle {
     /// Populated once the SSH session is actually authenticated, so other tunnels
     /// can jump through this one via a `direct-tcpip` channel on its session.
     pub session: Arc<Mutex<Option<Arc<client::Handle<SshHandler>>>>>,
+    /// Becomes `true` once the task has fully wound down (listeners closed),
+    /// so a restart can rebind the same ports.
+    pub finished: watch::Receiver<bool>,
+    /// Which run of this tunnel the handle belongs to. A task that ends after
+    /// it was replaced (a restart) must not remove its successor's handle.
+    pub generation: u64,
 }
 
 pub struct AppState {
@@ -71,6 +77,11 @@ impl AppState {
     /// health matters, and [`AppState::session_for`] when you need to use it.
     pub fn is_connected(&self, id: Uuid) -> bool {
         self.running.lock().unwrap().contains_key(&id)
+    }
+
+    /// Every tunnel with a live supervisor task (connected or reconnecting).
+    pub fn running_ids(&self) -> Vec<Uuid> {
+        self.running.lock().unwrap().keys().copied().collect()
     }
 
     pub fn set_status(&self, event: StatusEvent) {
@@ -133,8 +144,27 @@ impl AppState {
         }
     }
 
-    /// Called by the tunnel task itself once it has fully wound down.
-    pub fn clear(&self, id: Uuid) {
-        self.running.lock().unwrap().remove(&id);
+    /// Stops the tunnel and waits (up to a few seconds) for its task to end,
+    /// so its local ports are free again. For restarting with new settings.
+    pub async fn stop_and_wait(&self, id: Uuid) {
+        let handle = self.running.lock().unwrap().remove(&id);
+        if let Some(handle) = handle {
+            handle.cancel.cancel();
+            let mut finished = handle.finished;
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                finished.wait_for(|done| *done),
+            )
+            .await;
+        }
+    }
+
+    /// Called by the tunnel task itself once it has fully wound down. Only
+    /// removes the handle of that same run.
+    pub fn clear(&self, id: Uuid, generation: u64) {
+        let mut running = self.running.lock().unwrap();
+        if running.get(&id).is_some_and(|handle| handle.generation == generation) {
+            running.remove(&id);
+        }
     }
 }

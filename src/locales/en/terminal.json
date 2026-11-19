@@ -58,5 +58,11 @@
   "collapse": "Collapse",
   "kbSidebar": "hosts sidebar",
   "showSidebar": "Show hosts",
-  "hideSidebar": "Hide hosts"
+  "hideSidebar": "Hide hosts",
+  "mouseSelect": "Mouse: select",
+  "mouseSelectTooltip": "The program on the server wants the mouse; dragging selects and copies instead. Click to give the mouse to the program.",
+  "mouseApp": "Mouse: program · Shift+drag selects",
+  "mouseAppTooltip": "The program on the server (tmux, vim, htop…) has the mouse. Click to take it back so dragging always selects.",
+  "staleTarget": "settings changed",
+  "staleTargetHint": "This shell was opened before the host was edited. Press Enter after it ends (or open a new pane) to connect as {{saved}}."
 }

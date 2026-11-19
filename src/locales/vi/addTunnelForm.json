@@ -43,5 +43,12 @@
   "rangeOrder": "Địa chỉ kết thúc nhỏ hơn địa chỉ bắt đầu.",
   "rangeTooMany": "{{count}} địa chỉ — tối đa 256 mỗi lần.",
   "rangeNoPorts": "Không đủ cổng cục bộ trống tính từ cổng SOCKS này.",
-  "addMany": "Thêm {{count}}"
+  "addMany": "Thêm {{count}}",
+  "hostKey": {
+    "label": "Host key đã tin cậy",
+    "forget": "Quên",
+    "forgetHint": "Lần kết nối sau sẽ hỏi bạn xác nhận lại key của server.",
+    "forgotten": "Đã quên — lần kết nối sau sẽ hỏi bạn xác nhận key của server."
+  },
+  "runningNotice": "Tunnel này đang chạy. Lưu thay đổi về host, đăng nhập, jump hoặc cổng SOCKS sẽ kết nối lại ngay: terminal trên nó sẽ đóng (bấm Enter trong terminal để mở lại), tunnel jump qua nó sẽ tự kết nối lại. Đổi tên thì không kết nối lại."
 }

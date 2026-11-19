@@ -8,5 +8,11 @@
   "confirm": "Confirm",
   "loading": "Loading…",
   "copy": "copy",
-  "copied": "copied"
+  "copied": "copied",
+  "contextMenu": {
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select all"
+  }
 }

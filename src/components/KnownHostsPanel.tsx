@@ -6,9 +6,11 @@ import { Modal } from "./Modal";
 
 interface Props {
   onClose: () => void;
+  /** A key was forgotten (its `host:port`). */
+  onForgotten?: (keyId: string) => void;
 }
 
-export function KnownHostsPanel({ onClose }: Props) {
+export function KnownHostsPanel({ onClose, onForgotten }: Props) {
   const { t } = useTranslation("knownHostsPanel");
   const { t: tc } = useTranslation("common");
   const [entries, setEntries] = useState<KnownHostEntry[]>([]);
@@ -26,6 +28,7 @@ export function KnownHostsPanel({ onClose }: Props) {
 
   const forget = async (keyId: string) => {
     await forgetKnownHost(keyId);
+    onForgotten?.(keyId);
     await refresh();
   };
 

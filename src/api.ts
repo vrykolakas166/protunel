@@ -6,6 +6,10 @@ import type {
   ImportResult,
   ImportSections,
   ExportSections,
+  HostKeyMismatch,
+  UpdateSnapshot,
+  WhatsNew,
+  DebugTunnelFailure,
   KnownHostEntry,
   LaunchCaptureInput,
   PlatformStatus,
@@ -69,6 +73,26 @@ export const rejectHostKey = (requestId: string) =>
 export const listKnownHosts = () => invoke<KnownHostEntry[]>("list_known_hosts");
 
 export const forgetKnownHost = (keyId: string) => invoke<void>("forget_known_host", { keyId });
+
+export const listHostKeyMismatches = () => invoke<HostKeyMismatch[]>("list_host_key_mismatches");
+
+export const updateStatus = () => invoke<UpdateSnapshot>("update_status");
+export const checkForUpdates = () => invoke<UpdateSnapshot>("check_for_updates");
+export const downloadUpdate = () => invoke<UpdateSnapshot>("download_update");
+/** Installs the downloaded update and restarts; resolves only on failure. */
+export const installUpdate = () => invoke<void>("install_update");
+/** Release notes of the version just installed, once. */
+export const takeWhatsNew = () => invoke<WhatsNew | null>("take_whats_new");
+
+/** Simple mode's switch: router + system proxy + routed tunnels, or all off. */
+export const setNetworkAccess = (on: boolean) => invoke<void>("set_network_access", { on });
+
+export const devToolsEnabled = () => invoke<boolean>("dev_tools_enabled");
+export const debugSimulateUpdate = (step: "available" | "error" | "reset") =>
+  invoke<UpdateSnapshot>("debug_simulate_update", { step });
+export const debugWhatsNew = () => invoke<WhatsNew>("debug_whats_new");
+export const debugFailTunnel = (id: string, kind: DebugTunnelFailure) =>
+  invoke<void>("debug_fail_tunnel", { id, kind });
 
 export const getSettings = () => invoke<Settings>("get_settings");
 

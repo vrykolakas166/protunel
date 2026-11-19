@@ -17,5 +17,13 @@
   "remotePortPlaceholder": "cổng từ xa",
   "localPortPlaceholder": "cổng cục bộ",
   "add": "Thêm",
-  "dragToReorder": "Kéo để sắp xếp"
+  "dragToReorder": "Kéo để sắp xếp",
+  "hostKeyChanged": "Host key đã thay đổi — đã từ chối kết nối",
+  "reviewHostKey": "Xem…",
+  "menu": {
+    "copySocks": "Sao chép địa chỉ SOCKS",
+    "copyTarget": "Sao chép địa chỉ SSH",
+    "showForwards": "Hiện port forward",
+    "hideForwards": "Ẩn port forward"
+  }
 }

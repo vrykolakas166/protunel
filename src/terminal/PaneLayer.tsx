@@ -99,6 +99,10 @@ interface Props {
   activeKey: string | null;
   byId: Record<string, Tunnel>;
   terminalTheme: ITheme;
+  /** Programs on the server may take over the mouse. */
+  appMouse: boolean;
+  /** GPU rendering for terminals. */
+  webgl: boolean;
   focusSignal: number;
   infos: Record<string, SessionInfo>;
   drag: DragState | null;
@@ -124,6 +128,8 @@ export function PaneLayer({
   activeKey,
   byId,
   terminalTheme,
+  appMouse,
+  webgl,
   focusSignal,
   infos,
   drag,
@@ -186,6 +192,10 @@ export function PaneLayer({
     const isFocused = tab.focused === id;
     const included = tab.broadcast && !tab.excluded.includes(id);
     const phase = infos[id]?.phase ?? "connecting";
+    // Where the shell really is; the saved host may have been edited since.
+    const saved = `${tunnel.username}@${tunnel.host}:${tunnel.port}`;
+    const target = infos[id]?.target ?? saved;
+    const stale = target !== saved;
     const showHeader = multi || tab.broadcast;
     const dragged = drag?.source.kind === "pane" && drag.source.paneId === id;
     const preview =
@@ -229,10 +239,16 @@ export function PaneLayer({
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PHASE_DOT[phase]}`} />
             <span className="min-w-0 flex-1 truncate">
               {tunnel.name}
-              <span className="ml-1.5 font-mono text-[10px] text-muted">
-                {tunnel.username}@{tunnel.host}
-              </span>
+              <span className="ml-1.5 font-mono text-[10px] text-muted">{target}</span>
             </span>
+            {stale && (
+              <span
+                title={t("staleTargetHint", { saved })}
+                className="shrink-0 rounded bg-amber/15 px-1 text-[10px] font-medium text-amber"
+              >
+                {t("staleTarget")}
+              </span>
+            )}
             {tab.broadcast && (
               <IconButton
                 label={included ? t("excludeFromBroadcast") : t("includeInBroadcast")}
@@ -262,6 +278,8 @@ export function PaneLayer({
             visible={shown}
             focused={isFocused}
             theme={terminalTheme}
+            appMouse={appMouse}
+            webgl={webgl}
             focusSignal={focusSignal}
             onInfo={(info) => onInfo(id, info)}
             onFocus={() => onFocusPane(tab.key, id)}

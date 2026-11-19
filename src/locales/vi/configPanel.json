@@ -36,7 +36,9 @@
     "passphrasePlaceholder": "Mật khẩu (không bắt buộc)",
     "button": "Chọn file & xuất",
     "doneWithSecrets": "Đã xuất — có kèm mật khẩu, đã mã hóa",
-    "doneNoSecrets": "Đã xuất — không kèm mật khẩu"
+    "doneNoSecrets": "Đã xuất — không kèm mật khẩu",
+    "simpleMode": "Mở ở chế độ Đơn giản",
+    "simpleModeDetail": "Dành cho QA, tester, PO chỉ cần vào trang nội bộ: người import file này chỉ thấy một công tắc Mạng nội bộ thay vì toàn bộ app."
   },
   "import": {
     "heading": "Nhập cấu hình",
@@ -67,7 +69,9 @@
     "importing": "Đang nhập…",
     "button": "Nhập",
     "buttonWithSecrets": "Nhập kèm mật khẩu",
-    "buttonWithoutSecrets": "Nhập không kèm mật khẩu"
+    "buttonWithoutSecrets": "Nhập không kèm mật khẩu",
+    "simpleMode": "Chuyển sang chế độ Đơn giản",
+    "simpleModeDetail": "Người export file này đã thiết lập để chỉ dùng vào trang. Có thể đổi lại trong Cài đặt › Chung."
   },
   "result": {
     "heading": "Đã nhập xong",
@@ -78,7 +82,6 @@
     "secrets": "mật khẩu khôi phục",
     "hosts": "máy chủ đã biết",
     "noSecretsReminder": "Không có mật khẩu nào được khôi phục — hãy mở từng tunnel vừa nhập và nhập lại mật khẩu hoặc passphrase khóa trước khi kết nối.",
-    "again": "Về màn hình đầu",
     "close": "Xong"
   }
 }

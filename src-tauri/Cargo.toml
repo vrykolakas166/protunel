@@ -54,6 +54,9 @@ zeroize = { version = "1.9.0", features = ["derive"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
+# Same versions Tauri's wry uses, so `with_webview` hands us these exact types.
+webview2-com = "0.39.1"
+windows-core = "0.62.2"
 windows-sys = { version = "0.61.2", features = [
   "Win32_Networking_WinInet",
   "Win32_Networking_WinSock",

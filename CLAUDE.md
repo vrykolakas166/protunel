@@ -25,12 +25,14 @@ bun run tauri build      # installers under src-tauri/target/release/bundle/
 bun run bump 0.3.3       # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
 ```
 
-Verification (no linter; the only tests cover the router's rule matcher):
+Verification (no linter; tests cover the router's rule matcher and a few pure
+frontend helpers in `tests/`):
 
 ```sh
 ./node_modules/.bin/tsc --noEmit -p tsconfig.json    # frontend typecheck
 cd src-tauri && cargo check                          # backend typecheck (much faster than a full build)
 cd src-tauri && cargo test --lib router              # rule matcher + PAC tests
+bun test tests                                       # host ranges, terminal key handling
 ```
 
 Do not run `cargo clean -p protunel` — it evicts the whole dependency graph
@@ -53,6 +55,17 @@ git commit -am "Bump version to <x.y.z>"
 git tag v<x.y.z>
 git push origin master v<x.y.z>
 ```
+
+**In-app updates** live in Rust (`updates.rs`), not the JS updater plugin, so they
+work while the window is hidden for days: a check 20 s after launch then every
+6 h, background download when `settings.auto_update`, a "Restart to update" item
+in the tray (`tray::build_menu`) and a banner. `install_and_restart` writes
+`resume.json` (running tunnel ids, reconnected by `updates::connect_on_launch`,
+which also handles per-tunnel "connect on startup") and `whats_new.json` (shown
+once by the new version via `take_whats_new`). AppImage builds also install a
+ready update in `RunEvent::Exit`; Windows does not, because its installer
+relaunches the app. The Windows installer ends the process with
+`std::process::exit`, so `on_before_exit` repeats the exit cleanup (system proxy).
 
 A `v*.*.*` tag triggers the `Release` workflow: signed installers, a **draft**
 GitHub release, and the `latest.json` the in-app updater polls. Needs repo secrets
@@ -133,6 +146,14 @@ names (`key_id` param → `{ keyId }` in the JS call).
 - Live forward add/remove flows over an `mpsc` `ForwardCommand` channel, handled both
   in `run_session` *and* in `wait_before_retry` — editing forwards must not block on a
   backoff sleep.
+- Editing a running tunnel: `update_tunnel` restarts it on the spot when
+  `needs_reconnect` says the change touches the connection (host, port, user,
+  auth, secret, jump, SOCKS listener) — `stop_and_wait` lets the old task free
+  its ports first. Renames don't restart. Each reconnect attempt inside
+  `run_tunnel` re-reads the tunnel and secret from DB/vault, so a retry never
+  uses stale credentials. `TunnelHandle::generation` keeps an old task that ends
+  late from `clear`ing its successor. Terminal panes show the `target` their
+  shell was opened with and flag it when the saved host differs.
 
 `AppState` (`tunnel.rs`) holds the `running` map of `TunnelHandle`s (cancel token, byte
 counters, forward sender, session slot) plus a `statuses` map. Status events are
@@ -214,13 +235,63 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   tabs; every move must keep pane ids.
 - Broadcast fans out in Rust (`terminal_write_many`) so every shell gets the
   same bytes in the same order; the frontend only picks the target ids.
-- Only the `main` window hides on close; destroying the terminal window calls
-  `Terminals::close_all`.
+- Both windows hide on close. Closing the terminal window also runs
+  `Terminals::close_all` and emits `terminal-hidden`, on which the page drops
+  every tab; the webview itself survives, so reopening is instant (rebuilding it
+  on every open is what made quick close/open lag). After 60 s hidden
+  (`schedule_terminal_teardown`, cancelled by a reopen via a generation
+  counter) it is destroyed to free memory. `Destroyed` still closes all
+  terminals.
 - Window shortcuts live in `src/terminal/shortcuts.ts` and xterm is told to
   ignore exactly those keys. Keep them off plain Ctrl+letter: the shell owns
   those (Ctrl+K kill-line, Ctrl+B tmux prefix).
+- No key or click may reach the webview's own features. `strayKeyAction`
+  cancels unhandled F-keys and Ctrl/Cmd combos (never Ctrl+Alt: AltGr), a
+  window mousedown guard keeps clicks on chrome from taking focus off the
+  shell, and release builds turn off WebView2's browser accelerator keys
+  (`commands::harden_webview`).
+- Selection copies on a mouseup watched on the window, not the pane: drags
+  usually end past the pane edge.
+- Light backgrounds get font weight 500 (`weightsFor`): the WebGL canvas only
+  has grayscale antialiasing, which thins dark-on-light text. xterm's
+  `minimumContrastRatio: 4.5` lifts faint program colours. `settings.terminal_webgl`
+  off disposes the WebGL addon live, falling back to the DOM renderer.
+- `MouseGate` (`src/terminal/mouseGate.ts`) swallows the DECSET mouse-tracking
+  modes (9/1000/1001/1002/1003) unless `settings.terminalAppMouse` is on, so a
+  plain drag always selects even under tmux/vim/htop; xterm turns the wheel
+  into arrow keys in the alt screen, so scrolling there still works. Requested
+  modes are remembered and replayed when the setting (or the footer chip)
+  flips, without waiting for the program to ask again.
 - Both windows show tunnels and host-key prompts, so `tunnels-changed` (emit
   via `commands::tunnels_changed`) and `host-key-resolved` keep them in step.
+
+### Simple mode (`settings.ui_mode`, `access.rs`, `SimpleHome`)
+
+For QA/testers/POs who only browse internal sites through tunnels an
+administrator set up. `ui_mode` is `None` until chosen: `ModeChooser` asks on a fresh install and
+on the first launch after updating from a version without modes (and before
+"What's new" and the tour). Simple mode replaces the tunnel list with one
+"Internal network" switch (`set_network_access`): on = router + Windows system
+proxy (forced on) + connect the tunnels enabled rules/default route through
+(`access::connect_routed`, also run at launch when the router was left on);
+off = router stop + every tunnel stopped. The list is read-only and filtered
+by `simpleMode.ts` `routedTunnels`; errors are classified (`classifyError`) into
+"ask your administrator" wording, raw text only in the tooltip, and the top message bar
+stays quiet. Hidden: terminal, router panel, capture, add/edit, tour, known
+hosts, the Tunnels/Terminal settings pages. The tray shows one "Internal
+network" check item instead of per-tunnel ones (`update_settings` rebuilds it).
+An administrator hands out a config exported with "Open in Simple mode" (`ConfigBundle::ui_mode`,
+applied on import only when ticked); importing the settings section never
+changes the importer's mode. An administrator fixes a tester's machine by switching to
+Full under Settings › General — the mode is a UX choice, not a lock.
+
+**Developer tools** (Settings › Developer tools; debug builds or
+`PROTUNEL_DEVTOOLS=1`, enforced in Rust by `require_dev_tools`): simulate an
+update found/downloaded/failed (`updates::simulate` — a simulated "Restart to
+update" really restarts and writes `resume.json`/`whats_new.json` but installs
+nothing), show "What's new", re-ask the mode question, and fake a tunnel's
+failure (wrong password, unreachable, changed host key via
+`KnownHosts::record_fake_mismatch`).
 
 ### Config export/import (`src-tauri/src/config_io.rs`)
 
@@ -267,6 +338,14 @@ not TS — that keeps file contents off the IPC boundary and out of
 key that mismatches is rejected outright. Do not weaken this into auto-trust — it is
 the main thing this rewrite fixed versus the old WinForms/plink app.
 
+A mismatch is also recorded in memory (`KnownHosts::record_mismatch`) and emitted as
+`host-key-mismatch` (`list_host_key_mismatches` seeds a reload), because the russh
+error ("Unknown server key") is the same as a rejected first prompt. The tunnel row
+then offers `HostKeyChangedDialog`, which shows both fingerprints and only *forgets*
+the old key before reconnecting — the new key still goes through the normal
+first-connection prompt. The edit form shows the trusted key with a Forget button;
+the full list (`KnownHostsPanel`) is a link on the Settings Backup page.
+
 ### Events
 
 Names are declared in `events.rs` and consumed by the hooks in `src/hooks/`:
@@ -278,7 +357,11 @@ evented — it grows once per proxied connection, which is far too chatty for an
 ### Tray and window
 
 Closing the window hides it (`on_window_event` → `prevent_close` + `hide`); exit is
-tray-only. `tray::rebuild_menu` rebuilds the whole menu and is called on every status
+tray-only. The main window is declared `"visible": false` and shown in `setup`,
+unless the app was started by the OS autostart entry (which passes
+`commands::AUTOSTART_ARG`) and `settings.start_minimized` is on. `setup` also
+rewrites an enabled autostart entry (`refresh_autostart`) so entries from versions
+without the argument pick it up. `tray::rebuild_menu` rebuilds the whole menu and is called on every status
 transition and every tunnel add/edit/delete — tray checkmarks have no other update path.
 
 The toggle gesture is double-click on Windows, left click on Linux. Linux gets clicks
@@ -306,6 +389,19 @@ the feature stops applying.
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up.
+- `SettingsPanel` is one page per subject (General, Tunnels, Terminal, Backup,
+  About) with a side list, drawn in a `bare` `Modal` (own frame and close
+  button); settings are `Group`/`Row` cards with a `Switch` on the right. Put a
+  new option on the page of the thing it changes.
+  Backup embeds `ConfigFlow` (export/import) inline. It listens to
+  `settings-changed` so an import can't be overwritten by its stale copy.
+- Right-click menus are native (`src/contextMenu.ts`, Tauri `Menu.popup`), never
+  the webview's (Reload, Inspect…). `installContextMenuGuard` (both windows'
+  `main.tsx`) blocks the webview menu and gives text fields Cut/Copy/Paste
+  (actions restore focus/selection, then `execCommand("insertText")` so React
+  sees the change); components open their own with `openMenu` (tunnel rows,
+  the empty list, Simple-mode error rows). Dev builds: Shift + right-click
+  still opens the webview menu for Inspect.
 - `TourGuide` spotlights whatever carries the matching `data-tour="…"` attribute, so
   moving or renaming one silently drops a step back to a centred card. Steps that
   live inside a modal declare a `panel`, and `App.showTourPanel` opens exactly that

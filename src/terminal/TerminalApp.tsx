@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { addTunnel, getSettings, listTunnels, terminalWrite, terminalWriteMany } from "../api";
+import { addTunnel, getSettings, listTunnels, terminalWrite, terminalWriteMany, updateSettings } from "../api";
 import { AddTunnelForm } from "../components/AddTunnelForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { HostKeyPrompt } from "../components/HostKeyPrompt";
@@ -13,7 +13,7 @@ import type { Settings, Tunnel, TunnelInput } from "../types";
 import { HostTree, hostRows } from "./HostTree";
 import { MAX_PANES, computeLayout, findPane, neighbor, newPane, paneIds, setRatio, splitPane, type SplitDir } from "./layout";
 import { PHASE_DOT, PaneLayer, icons } from "./PaneLayer";
-import { matchShortcut } from "./shortcuts";
+import { matchShortcut, strayKeyAction } from "./shortcuts";
 import { applyDrop, canDrop, detach, makeTab, type DragSource, type DropTarget, type Tab } from "./tabs";
 import type { SessionInfo } from "./TerminalView";
 import { useDragDrop } from "./useDragDrop";
@@ -56,6 +56,15 @@ function loadSidebarHidden(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Text fields of the window's own UI (search, dialogs) — not xterm's hidden input. */
+function isTextField(el: EventTarget | null): boolean {
+  return (
+    el instanceof HTMLElement &&
+    el.matches("input, textarea, select, [contenteditable='true']") &&
+    !el.classList.contains("xterm-helper-textarea")
+  );
 }
 
 /** Removes panes whose host no longer exists; drops tabs left empty. */
@@ -113,9 +122,20 @@ export function TerminalApp() {
     const unlisten = listen("tunnels-changed", load);
     // Theme and language are chosen in the main window's settings.
     const unlistenSettings = listen<Settings>("settings-changed", (e) => setSettings(e.payload));
+    // Closing the window only hides it (reopening is then instant); its shells
+    // end as if it had closed. Dropping every tab unmounts the panes, which
+    // closes whatever the backend has not closed already.
+    const unlistenHidden = listen("terminal-hidden", () => {
+      setTabs([]);
+      setActiveKey(null);
+      setInfos({});
+      setQuery("");
+      terminalIds.current.clear();
+    });
     return () => {
       unlisten.then((f) => f());
       unlistenSettings.then((f) => f());
+      unlistenHidden.then((f) => f());
     };
   }, []);
 
@@ -297,6 +317,17 @@ export function TerminalApp() {
     searchRef.current?.select();
   };
 
+  const toggleAppMouse = async () => {
+    if (!settings) return;
+    try {
+      // settings-changed brings the saved value back to this window.
+      setSettings(await updateSettings({ ...settings, terminalAppMouse: !settings.terminalAppMouse }));
+    } catch {
+      // Nothing changed; the chip keeps showing the current state.
+    }
+    refocus();
+  };
+
   const toggleSidebar = () => {
     setSidebarHidden((hidden) => !hidden);
     refocus();
@@ -355,6 +386,60 @@ export function TerminalApp() {
     const onKey = (e: globalThis.KeyboardEvent) => shortcutRef.current(e);
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
+  // A terminal window must behave like a native one: no key or click may
+  // reach the webview's own features (reload, find, print, caret browsing,
+  // zoom, select-all of the page…).
+  useEffect(() => {
+    // Clicks on the window's chrome (tab bar, pane headers, sidebar rows,
+    // footer) must not pull focus out of the shell, or the next keystrokes
+    // land on a button or the page body. Buttons still get their click.
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(".xterm, input, textarea, select, label, [role='dialog']")) return;
+      // A press on an element's own scrollbar must stay a scrollbar drag.
+      // (Only scrollable HTML elements: an SVG icon reports clientWidth 0.)
+      const scrollable =
+        target instanceof HTMLElement &&
+        (target.scrollHeight > target.clientHeight || target.scrollWidth > target.clientWidth);
+      if (scrollable && (e.offsetX > target.clientWidth || e.offsetY > target.clientHeight)) return;
+      e.preventDefault();
+    };
+
+    // Bubble phase: xterm has already handled (and cancelled) every key it
+    // turns into shell input; see `strayKeyAction` for the rest.
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const target = e.target as HTMLElement;
+      const place = isTextField(target)
+        ? "textField"
+        : // A dialog's own buttons keep Space/Enter, like the shell keeps its keys.
+          target.closest?.(".xterm, [role='dialog']")
+          ? "terminal"
+          : "other";
+      const action = strayKeyAction(e, place);
+      if (action === "pass") return;
+      e.preventDefault();
+      if (action === "refocus") refocus();
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) e.preventDefault(); // page zoom
+    };
+    // Coming back to the window (Alt+Tab, reopening it) resumes typing.
+    const onWindowFocus = () => refocus();
+
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("focus", onWindowFocus);
+    return () => {
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("focus", onWindowFocus);
+    };
   }, []);
 
   const toggleCollapsed = (id: string) =>
@@ -576,6 +661,8 @@ export function TerminalApp() {
             activeKey={activeKey}
             byId={byId}
             terminalTheme={theme.terminal}
+            appMouse={settings?.terminalAppMouse ?? false}
+            webgl={settings?.terminalWebgl ?? true}
             focusSignal={focusSignal}
             infos={infos}
             drag={drag}
@@ -656,9 +743,22 @@ export function TerminalApp() {
             {activeTunnel && activeInfo ? (
               <>
                 <span className="min-w-0 truncate text-text">
-                  {activeTunnel.username}@{activeTunnel.host}:{activeTunnel.port}
+                  {activeInfo.target ?? `${activeTunnel.username}@${activeTunnel.host}:${activeTunnel.port}`}
                 </span>
                 <span className="hidden shrink-0 @md:inline">{t(`phase.${activeInfo.phase}`)}</span>
+                {(activeInfo.mouseMode || activeInfo.mouseWanted) && settings && (
+                  // Only shown while a program wants the mouse: says who has
+                  // it, and one click hands it over or takes it back.
+                  <button
+                    onClick={() => void toggleAppMouse()}
+                    title={activeInfo.mouseMode ? t("mouseAppTooltip") : t("mouseSelectTooltip")}
+                    className={`shrink-0 rounded px-1.5 font-sans hover:bg-surface-hover ${
+                      activeInfo.mouseMode ? "text-amber" : "text-muted hover:text-text"
+                    }`}
+                  >
+                    {activeInfo.mouseMode ? t("mouseApp") : t("mouseSelect")}
+                  </button>
+                )}
                 <span className="ml-auto hidden shrink-0 @lg:inline">
                   {activeInfo.cols}×{activeInfo.rows}
                 </span>
