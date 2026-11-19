@@ -13,7 +13,7 @@
 # afterwards (the pacman-repo workflow does this itself).
 
 pkgname=protunel-bin
-pkgver=0.7.4
+pkgver=0.8.0
 pkgrel=1
 pkgdesc="SSH SOCKS5 tunnels, per-destination proxy router and SSH terminal"
 arch=('x86_64')
