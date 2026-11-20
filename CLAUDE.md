@@ -121,7 +121,10 @@ all tunnel state; the frontend holds no source of truth beyond what it was told.
 
 A command touches four places and all four must agree:
 
-1. `src-tauri/src/commands.rs` — `#[tauri::command]` fn; one that can fail returns
+1. `src-tauri/src/commands/<subject>.rs` (tunnels, connection, host_keys,
+   terminal_window, router_rules, app_settings, app_update, process_capture,
+   dev_tools; re-exported by `commands/mod.rs`, so it is still
+   `commands::name`) — `#[tauri::command]` fn; one that can fail returns
    `Result<T, String>` (plain getters return `T`)
 2. `src-tauri/src/lib.rs` — register in `invoke_handler![...]`
 3. `src/api.ts` — typed `invoke<T>()` wrapper
@@ -451,12 +454,19 @@ the feature stops applying.
   passphrase, regex, wildcard, and in the terminal pane/tab/broadcast/workspace.
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
-  presentational and call back up.
+  presentational and call back up. The big panels that replace each other
+  (add/edit form, Router, Capture, theme drawer, Settings + page) are one
+  `panel` state — the tour opens exactly one; confirmations and prompts stack
+  on top as their own state. Search lives in `useTunnelSearch`, restart-to-update
+  in `useRestartToUpdate`.
 - `SettingsPanel` is one page per subject (General, Tunnels, Terminal, Backup,
   About) with a side list, drawn in a `bare` `Modal` (own frame and close
   button); settings are `Group`/`Row` cards with a `Switch` on the right. Put a
   new option on the page of the thing it changes.
-  Backup embeds `ConfigFlow` (export/import) inline. It listens to
+  Backup embeds `ConfigFlow` (export/import) inline: the hub routes to
+  `components/config/{ExportView,ImportView,ImportedView}` (shared pieces in
+  `config/parts.tsx`); each import pick remounts `ImportView` so its choices
+  start over. It listens to
   `settings-changed` so an import can't be overwritten by its stale copy.
 - Every modal surface (`Modal`, `Drawer`) uses `useDialogFocus`
   (`src/dialogFocus.ts`): focus moves in on open, Tab wraps inside, focus
@@ -492,7 +502,7 @@ src/                React UI — panels, event hooks, typed IPC wrappers
   terminal/          terminal window: panes, tabs, drag-and-drop, broadcast
   themes/            theme catalogue and token derivation
 src-tauri/src/
-  commands.rs        every #[tauri::command]; the IPC surface
+  commands/          every #[tauri::command], one file per subject; the IPC surface
   tunnel.rs          AppState: running tunnels, statuses, router state
   ssh/               per-tunnel supervisor, SOCKS5 + local forwards, TOFU,
                      terminal PTY channels
