@@ -9,7 +9,7 @@ import { formatBytes, formatDuration } from "../format";
 import { addPortForward, deletePortForward } from "../api";
 import { TunnelWaveform } from "./TunnelWaveform";
 import { openMenu } from "../contextMenu";
-import { classifyError } from "../simpleMode";
+import { plainSshError } from "../simpleMode";
 
 const DOT_COLOR: Record<string, string> = {
   disconnected: "bg-slate",
@@ -570,10 +570,10 @@ export function TunnelList({
                   {/* Plain words first for the errors we recognise; the server's own
                       text stays after it (and whole in the tooltip) for diagnosis. */}
                   {(() => {
-                    const kind = classifyError(runtime.message);
-                    return kind === "auth" || kind === "unreachable" ? (
+                    const plain = plainSshError(runtime.message);
+                    return plain ? (
                       <>
-                        {t(`errorKind.${kind}`)}
+                        {plain}
                         <span className="text-muted"> · {runtime.message}</span>
                       </>
                     ) : (

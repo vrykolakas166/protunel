@@ -17,6 +17,7 @@ import { SettingsIcon, SettingsPanel, type SettingsPage } from "./components/Set
 import { useUpdates } from "./hooks/useUpdates";
 import { useRestartToUpdate } from "./hooks/useRestartToUpdate";
 import { useTunnelSearch } from "./hooks/useTunnelSearch";
+import { plainSshError } from "./simpleMode";
 import { ReleaseNotes } from "./components/ReleaseNotes";
 import { Modal } from "./components/Modal";
 import { SetupNotice } from "./components/SetupNotice";
@@ -122,9 +123,18 @@ function App() {
   // Simple mode says what went wrong on the tunnel's row, in plain words;
   // the raw SSH error up top would only alarm.
   const simpleRef = useRef(false);
+  const tunnelsRef = useRef(tunnels);
+  tunnelsRef.current = tunnels;
   simpleRef.current = settings?.uiMode === "simple";
   const { statuses, stats, throughput, hostKeyQueue, dismissHostKey } = useTunnelEvents(
-    (_tunnelId, text) => !simpleRef.current && setMessage({ text, isError: true }),
+    (tunnelId, text) => {
+      if (simpleRef.current) return;
+      // Same plain words as the tunnel row, the server's text kept after them.
+      const plain = plainSshError(text);
+      const name = tunnelsRef.current.find((tun) => tun.id === tunnelId)?.name;
+      const body = plain ? `${plain} · ${text}` : text;
+      setMessage({ text: name ? `${name}: ${body}` : body, isError: true });
+    },
   );
 
   useEffect(() => {

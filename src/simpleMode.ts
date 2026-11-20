@@ -1,3 +1,4 @@
+import i18n from "./i18n";
 import type { RouterConfig, RouterRule, Tunnel } from "./types";
 
 /**
@@ -52,4 +53,14 @@ export function routedTunnels(tunnels: Tunnel[], rules: RouterRule[], config: Ro
     }
   }
   return tunnels.filter((tun) => shown.has(tun.id));
+}
+
+/**
+ * An SSH error in plain words, in the UI language, for the kinds the user can
+ * act on (sign-in, unreachable); null otherwise. Callers keep the raw text
+ * next to it for diagnosis. Used on the tunnel row and in the message bar.
+ */
+export function plainSshError(message: string): string | null {
+  const kind = classifyError(message);
+  return kind === "auth" || kind === "unreachable" ? i18n.t(`tunnelList:errorKind.${kind}`) : null;
 }

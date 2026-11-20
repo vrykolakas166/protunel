@@ -2,9 +2,9 @@
   "title": "Ứng dụng qua router",
   "description": "Khởi chạy một ứng dụng với toàn bộ lưu lượng TCP đi ra được chuyển hướng qua cổng SOCKS5 của router, dành cho các ứng dụng không có tuỳ chọn proxy riêng (client RDP, công cụ dòng lệnh, client cơ sở dữ liệu có IP đích thay đổi khi chạy). Quy tắc router sẽ quyết định lưu lượng đi đâu, giống như mọi kết nối được định tuyến khác.",
   "hookWarning": "Cơ chế này hoạt động bằng cách chèn một hook nhỏ vào tiến trình được khởi chạy. Một số phần mềm diệt virus có thể cảnh báo về hành vi này dù không có gì độc hại thực sự — nếu Windows Defender cảnh báo, đó là lý do.",
-  "routerNotRunning": "Router hiện chưa chạy. Khởi chạy một tiến trình chụp ở đây sẽ tự động khởi động router trước.",
+  "routerNotRunning": "Router hiện chưa chạy. Khởi chạy một ứng dụng qua router ở đây sẽ tự động khởi động router trước.",
   "launch": {
-    "heading": "Khởi chạy tiến trình cần chụp",
+    "heading": "Khởi chạy ứng dụng qua router",
     "recentLabel": "Gần đây:",
     "executableLabel": "Tệp thực thi",
     "executablePlaceholder": "C:\\đường-dẫn\\đến\\app.exe",
@@ -16,7 +16,7 @@
     "launchButton": "Khởi chạy"
   },
   "active": {
-    "heading": "Tiến trình đang chụp",
+    "heading": "Ứng dụng đang chạy qua router",
     "empty": "Chưa có tiến trình nào đang chạy.",
     "pid": "pid {{pid}}",
     "stop": "Dừng"

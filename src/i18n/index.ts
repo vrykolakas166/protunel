@@ -39,7 +39,8 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 // Both windows' <html lang> follows the UI language, so screen readers (and
 // the browser's own hyphenation and spell-check) treat the text as what it is.
 i18next.on("languageChanged", (lng) => {
-  document.documentElement.lang = lng;
+  // Absent when pure helpers that import i18n run under `bun test`.
+  if (typeof document !== "undefined") document.documentElement.lang = lng;
 });
 
 void i18next.use(initReactI18next).init({

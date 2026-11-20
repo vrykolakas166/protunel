@@ -94,7 +94,7 @@
   },
   "portRangeHint": "Dải cổng SOCKS cục bộ gợi ý khi thêm tunnel; cổng trống đầu tiên được dùng.",
   "knownHostsHint": "Các máy chủ có khóa bạn đã tin cậy. Khóa bị đổi sẽ được báo ngay trên tunnel.",
-  "manageKnownHosts": "Quản lý known hosts…",
+  "manageKnownHosts": "Quản lý máy chủ đã tin cậy…",
   "autoReconnectHint": "Thử lại với khoảng chờ tăng dần khi phiên SSH của tunnel bị rớt.",
   "portRange": "Dải cổng SOCKS",
   "terminalWebgl": "Vẽ bằng GPU",

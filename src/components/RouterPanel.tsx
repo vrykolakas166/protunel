@@ -533,9 +533,9 @@ function RuleTable({
             title={rule.enabled ? t("ruleTable.disableRule") : t("ruleTable.enableRule")}
             onChange={() => onToggle(rule)}
           />
-          {/* The pattern is what you check a rule by: it keeps room, and the
-              side columns shrink first in a narrow window. */}
-          <span title={t(`ruleKind.${rule.kind}`)} className="w-24 min-w-0 shrink truncate text-muted">
+          {/* Nothing is cut off in a narrow window: columns wrap instead,
+              and the pattern keeps the most room. */}
+          <span className="w-24 min-w-0 shrink break-words text-muted">
             {t(`ruleKind.${rule.kind}`)}
           </span>
           {/* Wraps rather than truncates: a rule is checked by its exact pattern. */}
@@ -548,10 +548,7 @@ function RuleTable({
           <span className={`w-16 shrink-0 ${ACTION_COLOR[rule.action]}`}>
             {t(`ruleAction.${rule.action}`)}
           </span>
-          <span
-            title={rule.action === "tunnel" ? tunnelName(rule.targetTunnelId) : undefined}
-            className="w-32 min-w-0 shrink truncate text-muted"
-          >
+          <span className="w-32 min-w-0 shrink break-words text-muted">
             {rule.action === "tunnel" ? tunnelName(rule.targetTunnelId) : "—"}
           </span>
           <button
@@ -631,10 +628,7 @@ function DecisionLog({
             <span className={`w-14 shrink-0 ${ACTION_COLOR[d.action]}`}>
               {t(`ruleAction.${d.action}`)}
             </span>
-            <span
-              title={d.action === "tunnel" ? tunnelName(d.targetTunnelId) : undefined}
-              className="w-28 min-w-0 shrink truncate text-muted"
-            >
+            <span className="w-28 min-w-0 shrink break-words text-muted">
               {d.action === "tunnel" ? tunnelName(d.targetTunnelId) : "—"}
             </span>
             <span

@@ -454,9 +454,10 @@ the feature stops applying.
   title; in the terminal pane = khung, broadcast = gõ đồng thời. Kept in
   English: tunnel, SSH, SOCKS5, port forward, passphrase, regex, wildcard,
   tab, workspace, and UI names of other programs (Firefox's settings).
-- SSH errors the user can act on (`simpleMode.ts` `classifyError`: auth,
-  unreachable) get plain words on the tunnel row in Full mode too, with the
-  server's text after them and whole in the tooltip.
+- SSH errors the user can act on (`simpleMode.ts` `plainSshError`: auth,
+  unreachable) get plain words in Full mode too — on the tunnel row and in
+  the top message bar (prefixed with the tunnel name) — with the server's
+  text kept after them (and whole in the row's tooltip).
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up. The big panels that replace each other

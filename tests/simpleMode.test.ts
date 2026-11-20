@@ -63,3 +63,15 @@ describe("routedTunnels", () => {
     expect(routedTunnels(cyclic, [rule("a")], config(null)).map((t) => t.id)).toEqual(["a", "b"]);
   });
 });
+
+import { plainSshError } from "../src/simpleMode";
+
+describe("plainSshError", () => {
+  test("sign-in and unreachable errors get plain words", () => {
+    expect(plainSshError("Authentication failed: invalid password")).toContain("Sign-in failed");
+    expect(plainSshError("Connection refused (os error 111)")).toContain("Can't reach the server");
+  });
+  test("anything else is left to the raw text", () => {
+    expect(plainSshError("channel closed")).toBeNull();
+  });
+});
