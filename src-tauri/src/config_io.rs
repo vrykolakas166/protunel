@@ -547,7 +547,7 @@ pub async fn apply_import(
             .db
             .replace_router_rules(&rules)
             .map_err(|e| e.to_string())?;
-        state.router.store.update(bundle.router_config.clone());
+        state.router.store.update(bundle.router_config.clone())?;
         crate::router::apply_change(&app, true).await?;
     }
 
@@ -558,7 +558,7 @@ pub async fn apply_import(
             ui_mode: state.settings.get().ui_mode,
             ..bundle.settings.clone()
         };
-        state.settings.update(settings.clone());
+        state.settings.update(settings.clone())?;
         crate::commands::sync_autostart(&app, settings.autostart_enabled)?;
         let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &settings);
     }
@@ -571,7 +571,7 @@ pub async fn apply_import(
     if let (true, Some(mode)) = (sections.ui_mode, &bundle.ui_mode) {
         let mut settings = state.settings.get();
         settings.ui_mode = Some(mode.clone());
-        state.settings.update(settings.clone());
+        state.settings.update(settings.clone())?;
         let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &settings);
         crate::tray::rebuild_menu(&app);
     }

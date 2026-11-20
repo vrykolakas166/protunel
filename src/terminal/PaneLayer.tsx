@@ -27,6 +27,18 @@ const PREVIEW_INSET: Record<DropSide, string> = {
 };
 
 export const icons = {
+  // Stacked panes: a saved set of tabs.
+  workspace: (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="4.5" width="9.5" height="8" rx="1.5" />
+      <path d="M4.5 4.5V3.5A1.5 1.5 0 0 1 6 2h6.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-1" />
+    </svg>
+  ),
+  restore: (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 8a5 5 0 1 0 1.5-3.6M3 2.5v2.5h2.5" />
+    </svg>
+  ),
   zoom: (
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
@@ -116,6 +128,9 @@ interface Props {
   onToggleExclude: (tabKey: string, paneId: string) => void;
   send: (tabKey: string, paneId: string, data: string, ownId: string) => void;
   confirmPaste: (tabKey: string, paneId: string, text: string) => Promise<boolean>;
+  suggestions: boolean;
+  longCommandSecs: number;
+  onAttention: (paneId: string) => void;
 }
 
 /**
@@ -143,6 +158,9 @@ export function PaneLayer({
   onToggleExclude,
   send,
   confirmPaste,
+  suggestions,
+  longCommandSecs,
+  onAttention,
 }: Props) {
   const { t } = useTranslation("terminal");
   const areaRef = useRef<HTMLDivElement>(null);
@@ -286,6 +304,9 @@ export function PaneLayer({
             onTerminalId={(terminalId) => onTerminalId(id, terminalId)}
             send={(data, ownId) => send(tab.key, id, data, ownId)}
             confirmPaste={(text) => confirmPaste(tab.key, id, text)}
+            suggestions={suggestions}
+            longCommandSecs={longCommandSecs}
+            onAttention={() => onAttention(id)}
           />
           {frame && <div className="pointer-events-none absolute inset-0" style={{ boxShadow: frame }} />}
         </div>

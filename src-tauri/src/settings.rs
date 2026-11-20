@@ -1,6 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use uuid::Uuid;
 
@@ -62,6 +62,19 @@ pub struct Settings {
     /// launch after updating from a version without modes, asks.
     #[serde(default)]
     pub ui_mode: Option<String>,
+    /// Terminal suggestions: remember the commands typed per host (locally,
+    /// never exported) to offer the usual opening sequence and fixes after
+    /// common errors. Off also stops recording.
+    #[serde(default = "default_true")]
+    pub terminal_suggestions: bool,
+    /// A command that ran at least this long, finishing while its pane is out
+    /// of sight, raises a desktop notification. 0 turns it off.
+    #[serde(default = "default_long_command_secs")]
+    pub terminal_long_command_secs: u32,
+}
+
+fn default_long_command_secs() -> u32 {
+    15
 }
 
 fn default_true() -> bool {
@@ -112,6 +125,8 @@ impl Default for Settings {
             terminal_webgl: true,
             auto_update: true,
             ui_mode: None,
+            terminal_suggestions: true,
+            terminal_long_command_secs: default_long_command_secs(),
         }
     }
 }
@@ -161,10 +176,7 @@ pub struct JsonStore<T> {
 
 impl<T: Clone + Serialize + DeserializeOwned + Default> JsonStore<T> {
     pub fn load(path: PathBuf) -> Self {
-        let current = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
+        let current = load_json(&path).unwrap_or_default();
         Self {
             path,
             current: Mutex::new(current),
@@ -175,13 +187,67 @@ impl<T: Clone + Serialize + DeserializeOwned + Default> JsonStore<T> {
         self.current.lock().unwrap().clone()
     }
 
-    pub fn update(&self, value: T) {
+    /// Replaces the value and writes it out. The in-memory value changes even
+    /// when the write fails, so the app keeps working; the error says it
+    /// won't survive a restart.
+    pub fn update(&self, value: T) -> Result<(), String> {
         let mut current = self.current.lock().unwrap();
         *current = value;
-        if let Ok(data) = serde_json::to_string_pretty(&*current) {
-            let _ = std::fs::write(&self.path, data);
+        let data = serde_json::to_string_pretty(&*current).map_err(|e| e.to_string())?;
+        write_atomic(&self.path, data.as_bytes())
+            .map_err(|e| format!("cannot save {}: {e}", self.path.display()))
+    }
+
+    /// `update` for background bookkeeping nobody waits on: a failed write
+    /// is logged, not returned.
+    pub fn update_or_log(&self, value: T) {
+        if let Err(e) = self.update(value) {
+            eprintln!("protunel: {e}");
         }
     }
+}
+
+/// Reads a JSON file. Missing is `None` (first run). Present but unreadable
+/// is also `None`, after moving the file aside to `<name>.corrupt`: falling
+/// back to defaults is better than refusing to start, but the next write must
+/// not destroy what might still be recovered by hand.
+pub fn load_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            eprintln!("protunel: cannot read {}: {e}", path.display());
+            return None;
+        }
+    };
+    match serde_json::from_str(&text) {
+        Ok(value) => Some(value),
+        Err(e) => {
+            let aside = path.with_extension("json.corrupt");
+            eprintln!(
+                "protunel: {} is unreadable ({e}); moved to {} and starting from defaults",
+                path.display(),
+                aside.display()
+            );
+            let _ = std::fs::rename(path, &aside);
+            None
+        }
+    }
+}
+
+/// Writes through a temporary file renamed over the target, so a crash or
+/// power cut mid-write leaves the old file intact instead of a truncated one
+/// (which the next start would read as corrupt). The data is flushed to disk
+/// before the rename.
+pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut file = std::fs::File::create(&tmp)?;
+        file.write_all(data)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&tmp, path)
 }
 
 pub type SettingsStore = JsonStore<Settings>;
@@ -210,3 +276,85 @@ pub struct CaptureConfig {
 }
 
 pub type CaptureStore = JsonStore<CaptureConfig>;
+
+/// What the terminal window learns from use, in `terminal_memory.json`: the
+/// commands typed per host and the saved workspaces. Local only — commands can
+/// hold secrets, so this file is never part of a config export. The terminal
+/// window owns the logic; Rust only persists the document.
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalMemory {
+    /// Keyed by tunnel id.
+    #[serde(default)]
+    pub hosts: std::collections::HashMap<String, HostMemory>,
+    #[serde(default)]
+    pub workspaces: Vec<Workspace>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HostMemory {
+    /// The opening commands of recent shells, oldest first.
+    #[serde(default)]
+    pub sessions: Vec<Vec<String>>,
+    /// Command → times run, for "did you mean" after `command not found`.
+    #[serde(default)]
+    pub commands: std::collections::HashMap<String, u32>,
+    /// Suggested sequences the user dismissed (key → times in a row).
+    #[serde(default)]
+    pub dismissed: std::collections::HashMap<String, u32>,
+}
+
+/// A named set of terminal tabs; `tabs` holds the window's layout trees as-is.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Workspace {
+    pub id: String,
+    pub name: String,
+    pub tabs: Vec<serde_json::Value>,
+}
+
+pub type TerminalMemoryStore = JsonStore<TerminalMemory>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("protunel-test-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn update_writes_and_leaves_no_temp_file() {
+        let dir = scratch("write");
+        let path = dir.join("settings.json");
+        let store = JsonStore::<RouterConfig>::load(path.clone());
+        let config = RouterConfig { port: 4321, ..RouterConfig::default() };
+        store.update(config).unwrap();
+        assert_eq!(JsonStore::<RouterConfig>::load(path.clone()).get().port, 4321);
+        assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn corrupt_file_is_set_aside_not_overwritten() {
+        let dir = scratch("corrupt");
+        let path = dir.join("known_hosts.json");
+        std::fs::write(&path, "{ truncated").unwrap();
+        let loaded: Option<HashMap<String, String>> = load_json(&path);
+        assert!(loaded.is_none());
+        assert!(!path.exists());
+        assert_eq!(std::fs::read_to_string(path.with_extension("json.corrupt")).unwrap(), "{ truncated");
+    }
+
+    #[test]
+    fn missing_file_is_a_first_run() {
+        let dir = scratch("missing");
+        let loaded: Option<RouterConfig> = load_json(&dir.join("router.json"));
+        assert!(loaded.is_none());
+        assert!(!dir.join("router.json.corrupt").exists());
+    }
+}

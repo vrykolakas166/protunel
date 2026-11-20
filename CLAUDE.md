@@ -121,7 +121,8 @@ all tunnel state; the frontend holds no source of truth beyond what it was told.
 
 A command touches four places and all four must agree:
 
-1. `src-tauri/src/commands.rs` — `#[tauri::command]` fn, returns `Result<T, String>`
+1. `src-tauri/src/commands.rs` — `#[tauri::command]` fn; one that can fail returns
+   `Result<T, String>` (plain getters return `T`)
 2. `src-tauri/src/lib.rs` — register in `invoke_handler![...]`
 3. `src/api.ts` — typed `invoke<T>()` wrapper
 4. `src/types.ts` — mirror of the Rust type
@@ -264,6 +265,48 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   flips, without waiting for the program to ask again.
 - Both windows show tunnels and host-key prompts, so `tunnels-changed` (emit
   via `commands::tunnels_changed`) and `host-key-resolved` keep them in step.
+- Suggestions (`settings.terminal_suggestions`) live in `SmartSession`
+  (`src/terminal/smartSession.ts`), which `TerminalView` only feeds input,
+  output and keys; ghost text is `GhostSuggest` (`ghost.ts`), the chip and Tab
+  reminder are `SuggestionChip.tsx`. Keep new terminal smarts there, not in
+  `TerminalView`'s effect. `ShellWatcher`
+  (`src/terminal/shellWatch.ts`) reads each command off the screen — the line
+  at Enter from where typing began — and calls it finished when output goes
+  quiet with a line matching the prompt shape learned from the shell's first
+  prompt (`smart.ts` `promptShape`; a REPL's prompt doesn't match, so its lines
+  aren't commands). OSC 133 marks, when a shell sends them, replace both
+  heuristics and add the exit code. `smart.ts` (pure, `tests/smart.test.ts`)
+  decides what is remembered (`normalizeCommand` drops secret-looking lines and
+  lines starting with a space; a command that fails — exit code, or error
+  wording via `commandFailed` — is taken back with `forgetCommand`), the usual
+  sequence (commands in ≥40% and ≥2 of the last 10 non-empty shells, in their
+  usual order — not an exact shared prefix, habits are never typed identically;
+  muted after 3 dismissals) and fixes (`suggestFix`: sudo, typos, hints
+  programs print). Chips never take focus and no key runs anything: Alt+Enter
+  puts the fix (or a sequence's first command) at the prompt, any other key
+  dismisses; only a click on a sequence's Run runs it, one step per prompt,
+  stopping on a non-zero exit. Autocomplete (`predictCommand`) draws the rest
+  of a remembered command as an xterm decoration after the cursor
+  (`ShellWatcher.promptInput`; nothing when text follows the cursor, so
+  zsh-autosuggestions/fish win); on a fresh prompt it offers what followed the
+  previous command at least twice. Tab stays the shell's; two Tabs in a row
+  over a ghost show a "use →" reminder (≤ once per 10 min, never after →
+  accepted 3 times, counted in localStorage). → accepts, Ctrl+→ one word — never Alt+arrows,
+  which are the window's pane keys (`shortcuts.ts`) and xterm's block-select modifier.
+  Chip input goes to that pane only (`terminalWrite`), never broadcast.
+  xterm's own replies (`isTerminalReport`) are not typing.
+- Long commands (`settings.terminal_long_command_secs`, 0 = off) ending while
+  the pane is hidden or the window unfocused raise `terminal_notify` and an
+  amber dot on the tab.
+- `terminal_memory.json` (`settings::TerminalMemory`, `src/terminal/memory.ts`)
+  holds commands per host and workspaces (named sets of layout trees, revived
+  with fresh pane ids by `layout.ts` `reviveLayout`; `last-session` is saved on
+  `terminal-hidden` and offered as "Restore last session", naming user@host
+  when it was one shell). A tab opened from (or added to) a workspace carries
+  `Tab.workspaceId`; when the linked tabs' `layoutShape` differs from the saved
+  one the save button shows a dot and "Save changes" writes the open linked
+  tabs back (a closed one leaves the workspace). Local only: never
+  add it to config export — commands can carry secrets.
 
 ### Simple mode (`settings.ui_mode`, `access.rs`, `SimpleHome`)
 
@@ -326,7 +369,13 @@ not TS — that keeps file contents off the IPC boundary and out of
 - **JSON files** in `app_data_dir` — `settings.json`, `router.json` (both
   `settings.rs`, via the shared `JsonStore<T>`), and `known_hosts.json`
   (`ssh/known_hosts.rs`). New `Settings` fields need `#[serde(default …)]` or
-  existing installs fail to deserialize and silently reset. Router config is a
+  existing installs fail to deserialize and reset. All of them write through
+  `settings::write_atomic` (temp file + rename) and read through
+  `settings::load_json`, which moves an unreadable file to `<name>.json.corrupt`
+  before falling back to defaults — never plain `fs::write` (a crash mid-write
+  would truncate the file, and a truncated `known_hosts.json` silently forgets
+  every trusted key). `JsonStore::update` returns the write error: propagate it
+  from commands, `update_or_log` only for background bookkeeping. Router config is a
   *separate* store on purpose: the settings panel writes back a whole `Settings`
   object and would otherwise clobber router state edited in the other panel.
 
@@ -348,13 +397,19 @@ the full list (`KnownHostsPanel`) is a link on the Settings Backup page.
 
 ### Events
 
-Names are declared in `events.rs` and consumed by the hooks in `src/hooks/`:
+Names are declared in `events.rs` (never a string literal at the `emit` call)
+and consumed by the hooks in `src/hooks/`:
 `tunnel-status`, `tunnel-stats` (1 Hz per connected tunnel), and `host-key-pending`
 in `useTunnelEvents.ts`; `router-status` and `router-stats` (1 Hz while running) in
 `useRouterEvents.ts`. The routing decision log is *polled* by `RouterPanel`, not
 evented — it grows once per proxied connection, which is far too chatty for an event.
 
 ### Tray and window
+
+Text Rust shows by itself (tray menu, desktop notifications) goes through
+`i18n.rs` (`i18n::t(app, Text::…)`, by `settings.language`) — never a
+hard-coded English string; everything the webview draws stays in
+`src/locales`. Errors from servers and libraries stay untranslated.
 
 Closing the window hides it (`on_window_event` → `prevent_close` + `hide`); exit is
 tray-only. The main window is declared `"visible": false` and shown in `setup`,
@@ -385,7 +440,9 @@ the feature stops applying.
   theme. `settings.theme` is a theme id or `"system"` (then `themeLight` /
   `themeDark`); legacy `"light"`/`"dark"` map to the two `protunel_*` themes.
   The picker previews on hover via `setThemePreview`. `settings-changed` keeps
-  the terminal window in step.
+  every window's copy in step (`App`, `SettingsPanel`, `TerminalApp` all
+  listen): saves send the whole `Settings` object, so a window holding a stale
+  copy would revert another window's change on its next save.
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up.

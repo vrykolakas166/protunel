@@ -127,7 +127,7 @@ impl CaptureState {
 
     fn persist_tracking(&self) {
         let snapshot: Vec<CapturedProcess> = self.running.lock().unwrap().values().cloned().collect();
-        self.tracking.update(snapshot);
+        self.tracking.update_or_log(snapshot);
     }
 
     /// Cheap check `router/listener.rs`'s connection hot path gates on, so
@@ -188,7 +188,7 @@ impl CaptureState {
             },
         );
         config.recent.truncate(MAX_RECENT_CAPTURES);
-        self.store.update(config);
+        self.store.update_or_log(config);
     }
 
     /// Attributes a router connection to a captured process, if `pid`

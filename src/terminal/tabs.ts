@@ -24,6 +24,8 @@ export interface Tab {
   broadcast: boolean;
   /** Panes left out of the broadcast. */
   excluded: string[];
+  /** The workspace this tab was opened from (or added to), saved back with it. */
+  workspaceId: string | null;
 }
 
 export type DragSource =
@@ -46,6 +48,7 @@ export function makeTab(root: LayoutNode, focused?: string): Tab {
     zoomed: null,
     broadcast: false,
     excluded: [],
+    workspaceId: null,
   };
 }
 

@@ -757,7 +757,7 @@ pub async fn update_router_config(
         || previous.bypass_list != config.bypass_list
         || previous.port != config.port;
 
-    state.router.store.update(config.clone());
+    state.router.store.update(config.clone())?;
 
     let result = if config.enabled {
         if state.router.running_port().is_none() {
@@ -773,7 +773,7 @@ pub async fn update_router_config(
     // A failed start must not leave the stored config claiming the router is on,
     // or the UI shows a running router that isn't listening.
     if let Err(e) = result {
-        state.router.store.update(RouterConfig {
+        state.router.store.update_or_log(RouterConfig {
             enabled: false,
             ..config
         });
@@ -867,6 +867,36 @@ pub fn get_settings(state: State<AppState>) -> Settings {
     state.settings.get()
 }
 
+#[tauri::command]
+pub fn get_terminal_memory(state: State<AppState>) -> crate::settings::TerminalMemory {
+    state.terminal_memory.get()
+}
+
+#[tauri::command]
+pub fn save_terminal_memory(state: State<AppState>, memory: crate::settings::TerminalMemory) -> Result<(), String> {
+    state.terminal_memory.update(memory)
+}
+
+/// "Forget remembered commands" in settings: keeps the workspaces.
+#[tauri::command]
+pub fn clear_terminal_commands(app: AppHandle, state: State<AppState>) -> Result<(), String> {
+    let mut memory = state.terminal_memory.get();
+    memory.hosts.clear();
+    state.terminal_memory.update(memory)?;
+    let _ = app.emit(crate::events::TERMINAL_MEMORY_CLEARED_EVENT, ());
+    Ok(())
+}
+
+/// A long command finished while its pane was out of sight.
+#[tauri::command]
+pub fn terminal_notify(app: AppHandle, state: State<AppState>, title: String, body: String) {
+    use tauri_plugin_notification::NotificationExt;
+    if !state.settings.get().notifications_enabled {
+        return;
+    }
+    let _ = app.notification().builder().title(title).body(body).show();
+}
+
 /// Passed by the OS autostart entry, so a sign-in launch can be told apart
 /// from the user opening the app.
 pub const AUTOSTART_ARG: &str = "--autostart";
@@ -900,7 +930,7 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn update_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<Settings, String> {
     sync_autostart(&app, settings.autostart_enabled)?;
-    state.settings.update(settings.clone());
+    state.settings.update(settings.clone())?;
     let _ = app.emit(SETTINGS_CHANGED_EVENT, &settings);
     // The tray menu differs between Simple and Full mode.
     crate::tray::rebuild_menu(&app);

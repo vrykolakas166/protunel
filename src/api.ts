@@ -24,6 +24,7 @@ import type {
   Settings,
   StatusEvent,
   TerminalExit,
+  TerminalMemory,
   Tunnel,
   TunnelInput,
 } from "./types";
@@ -169,6 +170,18 @@ export const terminalOpen = (
 
 export const terminalWrite = (id: string, data: string) =>
   invoke<void>("terminal_write", { id, data });
+
+export const getTerminalMemory = () => invoke<TerminalMemory>("get_terminal_memory");
+
+export const saveTerminalMemory = (memory: TerminalMemory) =>
+  invoke<void>("save_terminal_memory", { memory });
+
+/** Forgets every remembered command; workspaces stay. */
+export const clearTerminalCommands = () => invoke<void>("clear_terminal_commands");
+
+/** Desktop notification (respects the notifications setting). */
+export const terminalNotify = (title: string, body: string) =>
+  invoke<void>("terminal_notify", { title, body });
 
 /** Broadcast: the same input to several terminals, in order, in one call. */
 export const terminalWriteMany = (ids: string[], data: string) =>

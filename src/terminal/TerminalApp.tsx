@@ -1,17 +1,40 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { addTunnel, getSettings, listTunnels, terminalWrite, terminalWriteMany, updateSettings } from "../api";
 import { AddTunnelForm } from "../components/AddTunnelForm";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Modal } from "../components/Modal";
+import { openMenu } from "../contextMenu";
 import { HostKeyPrompt } from "../components/HostKeyPrompt";
 import { formatBytes } from "../format";
 import { useLanguage } from "../hooks/useLanguage";
 import { useTheme } from "../themes";
 import { useTunnelEvents } from "../hooks/useTunnelEvents";
-import type { Settings, Tunnel, TunnelInput } from "../types";
+import type { Settings, Tunnel, TunnelInput, Workspace } from "../types";
 import { HostTree, hostRows } from "./HostTree";
-import { MAX_PANES, computeLayout, findPane, neighbor, newPane, paneIds, setRatio, splitPane, type SplitDir } from "./layout";
+import {
+  MAX_PANES,
+  computeLayout,
+  findPane,
+  layoutShape,
+  neighbor,
+  newPane,
+  paneIds,
+  reviveLayout,
+  setRatio,
+  splitPane,
+  type SplitDir,
+} from "./layout";
+import {
+  LAST_SESSION_ID,
+  deleteWorkspace,
+  flushMemory,
+  loadMemory,
+  pruneHosts,
+  saveWorkspace,
+  useTerminalMemory,
+} from "./memory";
 import { PHASE_DOT, PaneLayer, icons } from "./PaneLayer";
 import { matchShortcut, strayKeyAction } from "./shortcuts";
 import { applyDrop, canDrop, detach, makeTab, type DragSource, type DropTarget, type Tab } from "./tabs";
@@ -100,6 +123,11 @@ export function TerminalApp() {
   const [adding, setAdding] = useState(false);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
   const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden);
+  /** Panes whose long command finished out of sight; their tab shows a dot. */
+  const [attention, setAttention] = useState<Set<string>>(new Set());
+  /** The save-workspace dialog: a new name, or the workspace being updated. */
+  const [naming, setNaming] = useState<{ name: string; id: string | null } | null>(null);
+  const memory = useTerminalMemory();
   const searchRef = useRef<HTMLInputElement>(null);
   /** Pane id → backend terminal id, for the panes whose shell is open. */
   const terminalIds = useRef(new Map<string, string>());
@@ -109,6 +137,7 @@ export function TerminalApp() {
   tabsRef.current = tabs;
 
   useEffect(() => {
+    void loadMemory();
     getSettings().then(setSettings).catch(() => {});
     const load = () =>
       listTunnels()
@@ -126,7 +155,13 @@ export function TerminalApp() {
     // end as if it had closed. Dropping every tab unmounts the panes, which
     // closes whatever the backend has not closed already.
     const unlistenHidden = listen("terminal-hidden", () => {
+      // What was open becomes "restore last session" next time.
+      if (tabsRef.current.length > 0) {
+        saveWorkspace({ id: LAST_SESSION_ID, name: "", tabs: tabsRef.current.map((tab) => tab.root) });
+        flushMemory();
+      }
       setTabs([]);
+      setAttention(new Set());
       setActiveKey(null);
       setInfos({});
       setQuery("");
@@ -141,10 +176,20 @@ export function TerminalApp() {
 
   const byId = useMemo(() => Object.fromEntries(tunnels.map((tun) => [tun.id, tun])), [tunnels]);
 
-  // A deleted host takes its panes with it.
+  // A deleted host takes its panes (and what was learned about it) with it.
   useEffect(() => {
-    if (loaded) setTabs((prev) => pruneTabs(prev, byId));
+    if (!loaded) return;
+    setTabs((prev) => pruneTabs(prev, byId));
+    void loadMemory().then(() => pruneHosts(new Set(Object.keys(byId))));
   }, [byId, loaded]);
+
+  // Looking at a tab clears its "finished while you were away" dot.
+  useEffect(() => {
+    const tab = tabs.find((x) => x.key === activeKey);
+    if (!tab) return;
+    const ids = paneIds(tab.root);
+    setAttention((prev) => (ids.some((id) => prev.has(id)) ? new Set([...prev].filter((id) => !ids.includes(id))) : prev));
+  }, [activeKey, tabs]);
 
   const rows = useMemo(() => hostRows(tunnels, query, collapsed), [tunnels, query, collapsed]);
 
@@ -173,6 +218,7 @@ export function TerminalApp() {
 
   const forgetPanes = (ids: string[]) => {
     for (const id of ids) terminalIds.current.delete(id);
+    setAttention((prev) => (ids.some((id) => prev.has(id)) ? new Set([...prev].filter((id) => !ids.includes(id))) : prev));
     setInfos((prev) => {
       const next = { ...prev };
       for (const id of ids) delete next[id];
@@ -188,6 +234,130 @@ export function TerminalApp() {
     searchRef.current?.blur();
     refocus();
   };
+
+  const namedWorkspaces = memory.workspaces.filter((w) => w.id !== LAST_SESSION_ID);
+  const lastSession = memory.workspaces.find((w) => w.id === LAST_SESSION_ID) ?? null;
+
+  /** Panes a workspace would open now (its deleted hosts left out). */
+  const workspacePanes = (workspace: Workspace) =>
+    workspace.tabs
+      .map((root) => reviveLayout(root, (id) => !!byId[id]))
+      .reduce((n, root) => n + (root ? paneIds(root).length : 0), 0);
+
+  /** Opens a workspace's tabs after the open ones, each pane a new shell. */
+  const openWorkspace = (workspace: Workspace) => {
+    const added = workspace.tabs
+      .map((root) => reviveLayout(root, (id) => !!byId[id]))
+      .filter((root) => root !== null)
+      .map((root) => ({ ...makeTab(root), workspaceId: workspace.id }));
+    if (added.length === 0) return;
+    setTabs((prev) => [...prev, ...added]);
+    setActiveKey(added[0].key);
+    refocus();
+  };
+
+  const commitWorkspace = () => {
+    if (!naming) return;
+    const name = naming.name.trim();
+    if (!name || tabs.length === 0) return;
+    // Saving under an existing name updates that workspace.
+    const existing = naming.id ?? namedWorkspaces.find((w) => w.name.toLowerCase() === name.toLowerCase())?.id;
+    const id = existing ?? crypto.randomUUID();
+    saveWorkspace({ id, name, tabs: tabs.map((tab) => tab.root) });
+    // From now on these tabs are that workspace: their changes can be saved back.
+    setTabs((prev) => prev.map((tab) => ({ ...tab, workspaceId: id })));
+    setNaming(null);
+    refocus();
+  };
+
+  /** The named workspace a tab belongs to, if it still exists. */
+  const workspaceOf = (tab: Tab | null) =>
+    (tab?.workspaceId && namedWorkspaces.find((w) => w.id === tab.workspaceId)) || null;
+
+  /** Open tabs of a workspace, in tab order. */
+  const linkedTabs = (workspace: Workspace) => tabs.filter((tab) => tab.workspaceId === workspace.id);
+
+  /** Panes split, closed, moved or resized (or tabs added/closed) since it was saved. */
+  const workspaceChanged = (workspace: Workspace) => {
+    const open = linkedTabs(workspace);
+    if (open.length === 0) return false;
+    const now = open.map((tab) => layoutShape(tab.root)).join("|");
+    return now !== workspace.tabs.map(layoutShape).join("|");
+  };
+
+  /** Saves a workspace as its open tabs now look; a closed tab leaves it. */
+  const saveWorkspaceChanges = (workspace: Workspace) => {
+    const open = linkedTabs(workspace);
+    if (open.length > 0) saveWorkspace({ ...workspace, tabs: open.map((tab) => tab.root) });
+    refocus();
+  };
+
+  const activeWorkspace = workspaceOf(activeTab);
+  const activeWorkspaceChanged = activeWorkspace ? workspaceChanged(activeWorkspace) : false;
+
+  const onSaveButton = (e: ReactMouseEvent) => {
+    if (!activeWorkspace) {
+      setNaming({ name: "", id: null });
+      return;
+    }
+    openMenu(e, [
+      {
+        label: t("workspace.saveChanges", { name: activeWorkspace.name }),
+        enabled: activeWorkspaceChanged,
+        action: () => saveWorkspaceChanges(activeWorkspace),
+      },
+      { label: t("workspace.saveAsNew"), action: () => setNaming({ name: "", id: null }) },
+    ]);
+  };
+
+  /** Right-click on a tab: put it in a workspace, or take it out. */
+  const tabMenu = (e: ReactMouseEvent, tab: Tab) => {
+    const own = workspaceOf(tab);
+    openMenu(e, [
+      ...namedWorkspaces
+        .filter((w) => w.id !== own?.id)
+        .map((w) => ({
+          label: t("workspace.addTab", { name: w.name }),
+          action: () => updateTab(tab.key, (x) => ({ ...x, workspaceId: w.id })),
+        })),
+      ...(own
+        ? [{ label: t("workspace.removeTab", { name: own.name }), action: () => updateTab(tab.key, (x) => ({ ...x, workspaceId: null })) }]
+        : []),
+      ...(namedWorkspaces.length > 0 ? (["separator"] as const) : []),
+      { label: t("closeTab"), action: () => closeTab(tab.key) },
+    ]);
+  };
+
+  /** "user@host" when the last session was a single shell; nothing for more. */
+  const lastSessionTarget = (() => {
+    if (!lastSession) return null;
+    const roots = lastSession.tabs.map((root) => reviveLayout(root, (id) => !!byId[id])).filter((r) => r !== null);
+    const panes = roots.flatMap((root) => computeLayout(root).panes);
+    if (panes.length !== 1) return null;
+    const tun = byId[panes[0].tunnelId];
+    return tun ? `${tun.username}@${tun.host}` : null;
+  })();
+
+  const workspaceMenu = (e: ReactMouseEvent, workspace: Workspace) =>
+    openMenu(e, [
+      { label: t("workspace.open"), action: () => openWorkspace(workspace) },
+      {
+        label: t("workspace.saveChanges", { name: workspace.name }),
+        enabled: workspaceChanged(workspace),
+        action: () => saveWorkspaceChanges(workspace),
+      },
+      {
+        label: t("workspace.update"),
+        enabled: tabs.length > 0,
+        action: () => {
+          saveWorkspace({ ...workspace, tabs: tabs.map((tab) => tab.root) });
+          setTabs((prev) => prev.map((tab) => ({ ...tab, workspaceId: workspace.id })));
+        },
+      },
+      { label: t("workspace.rename"), action: () => setNaming({ name: workspace.name, id: workspace.id }) },
+      "separator",
+      { label: t("workspace.delete"), action: () => deleteWorkspace(workspace.id) },
+    ]);
 
   /** Keyboard split: another shell on the focused pane's host. */
   const splitFocused = (dir: SplitDir) => {
@@ -339,7 +509,7 @@ export function TerminalApp() {
     const shortcut = matchShortcut(e);
     if (!shortcut) return;
     // A dialog owns the keyboard while it is open.
-    if (pendingPaste || adding || hostKeyQueue.length > 0) return;
+    if (pendingPaste || adding || naming || hostKeyQueue.length > 0) return;
     e.preventDefault();
     e.stopPropagation();
     const index = tabs.findIndex((tab) => tab.key === activeKey);
@@ -503,6 +673,33 @@ export function TerminalApp() {
       >
         {/* Fixed inner width so the content slides out instead of reflowing. */}
         <div className={`flex min-h-0 w-60 flex-1 flex-col ${sidebarHidden ? "invisible" : ""}`}>
+          {namedWorkspaces.length > 0 && (
+            <div className="border-b border-border px-2 pb-2 pt-3">
+              <span className="px-1 font-display text-xs font-semibold uppercase tracking-wider text-muted">
+                {t("workspace.title")}
+              </span>
+              <ul className="mt-1.5 space-y-0.5">
+                {namedWorkspaces.map((workspace) => {
+                  const panes = workspacePanes(workspace);
+                  return (
+                    <li key={workspace.id}>
+                      <button
+                        onClick={() => openWorkspace(workspace)}
+                        onContextMenu={(e) => workspaceMenu(e, workspace)}
+                        disabled={panes === 0}
+                        title={t("workspace.openHint")}
+                        className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-sm text-text hover:bg-surface-hover disabled:opacity-40"
+                      >
+                        <span className="text-accent">{icons.workspace}</span>
+                        <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+                        <span className="shrink-0 font-mono text-[10px] text-muted">{panes}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
           <div className="flex items-center justify-between px-3 pb-2 pt-3">
             <span className="font-display text-xs font-semibold uppercase tracking-wider text-muted">
               {t("hosts")}
@@ -584,6 +781,7 @@ export function TerminalApp() {
                     refocus();
                   }}
                   onAuxClick={(e) => e.button === 1 && closeTab(tab.key)}
+                  onContextMenu={(e) => tabMenu(e, tab)}
                   className={`group relative mt-1 flex max-w-52 shrink-0 cursor-pointer items-center gap-2 rounded-t-lg pl-3 pr-1.5 text-xs ${
                     isActive
                       ? "border-x border-t border-border bg-bg text-text"
@@ -599,7 +797,18 @@ export function TerminalApp() {
                     />
                   )}
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PHASE_DOT[phase]}`} />
+                  {workspaceOf(tab) && (
+                    <span className="shrink-0 text-muted" title={t("workspace.inWorkspace", { name: workspaceOf(tab)!.name })}>
+                      {icons.workspace}
+                    </span>
+                  )}
                   <span className="truncate">{label}</span>
+                  {!isActive && paneIds(tab.root).some((id) => attention.has(id)) && (
+                    <span
+                      title={t("smart.finishedHere")}
+                      className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber"
+                    />
+                  )}
                   {tab.broadcast && (
                     <span className="shrink-0 text-amber" title={t("broadcastOn")}>
                       {icons.broadcast}
@@ -639,7 +848,28 @@ export function TerminalApp() {
               </button>
             )}
           </div>
-          <div className="flex shrink-0 items-center border-l border-border px-1.5">
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
+            <button
+              onClick={onSaveButton}
+              disabled={tabs.length === 0}
+              title={
+                activeWorkspace
+                  ? activeWorkspaceChanged
+                    ? t("workspace.changedHint", { name: activeWorkspace.name })
+                    : t("workspace.savedHint", { name: activeWorkspace.name })
+                  : t("workspace.save")
+              }
+              aria-label={t("workspace.save")}
+              className={`relative rounded p-1.5 hover:bg-surface-hover disabled:opacity-40 ${
+                activeWorkspace ? "text-accent" : "text-muted hover:text-text"
+              }`}
+            >
+              {icons.workspace}
+              {activeWorkspaceChanged && (
+                // Unsaved changes to the workspace this tab belongs to.
+                <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-amber" />
+              )}
+            </button>
             <button
               onClick={() => activeTab && toggleBroadcast(activeTab.key)}
               disabled={!activeTab}
@@ -681,6 +911,9 @@ export function TerminalApp() {
             onToggleExclude={toggleExclude}
             send={send}
             confirmPaste={confirmPaste}
+            suggestions={settings?.terminalSuggestions ?? true}
+            longCommandSecs={settings?.terminalLongCommandSecs ?? 15}
+            onAttention={(paneId) => setAttention((prev) => new Set(prev).add(paneId))}
           />
           {tabs.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center overflow-y-auto p-6">
@@ -714,6 +947,33 @@ export function TerminalApp() {
                     {t("newHost")}
                   </button>
                 ) : (
+                  <>
+                  {(lastSession || namedWorkspaces.length > 0) && (
+                    <div className="mx-auto mt-4 flex max-w-xs flex-wrap justify-center gap-1.5">
+                      {lastSession && workspacePanes(lastSession) > 0 && (
+                        <button
+                          onClick={() => openWorkspace(lastSession)}
+                          className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-on-accent shadow-sm hover:bg-accent-hover"
+                        >
+                          {icons.restore}
+                          {lastSessionTarget
+                            ? t("workspace.restoreOne", { target: lastSessionTarget })
+                            : t("workspace.restore", { count: workspacePanes(lastSession) })}
+                        </button>
+                      )}
+                      {namedWorkspaces.map((workspace) => (
+                        <button
+                          key={workspace.id}
+                          onClick={() => openWorkspace(workspace)}
+                          disabled={workspacePanes(workspace) === 0}
+                          className="flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-text hover:border-accent hover:text-accent disabled:opacity-40"
+                        >
+                          {icons.workspace}
+                          {workspace.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <ul className="mx-auto mt-4 grid w-fit grid-cols-[auto_auto] items-center gap-x-3 gap-y-1 text-[11px] text-muted">
                     {SHORTCUTS.map(([keys, label]) => (
                       <li key={keys} className="contents">
@@ -724,6 +984,7 @@ export function TerminalApp() {
                       </li>
                     ))}
                   </ul>
+                  </>
                 )}
               </div>
             </div>
@@ -794,6 +1055,51 @@ export function TerminalApp() {
           onSubmit={handleAdd}
           onCancel={() => setAdding(false)}
         />
+      )}
+      {naming && (
+        <Modal title={naming.id ? t("workspace.renameTitle") : t("workspace.saveTitle")} onClose={() => setNaming(null)} size="sm">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (naming.id) {
+                const workspace = namedWorkspaces.find((w) => w.id === naming.id);
+                if (workspace && naming.name.trim()) saveWorkspace({ ...workspace, name: naming.name.trim() });
+                setNaming(null);
+                refocus();
+              } else commitWorkspace();
+            }}
+            className="space-y-3"
+          >
+            {!naming.id && (
+              <p className="text-sm text-muted">
+                {t("workspace.saveHint", { tabs: tabs.length, panes: tabs.reduce((n, tab) => n + paneIds(tab.root).length, 0) })}
+              </p>
+            )}
+            <input
+              autoFocus
+              value={naming.name}
+              onChange={(e) => setNaming({ ...naming, name: e.target.value })}
+              placeholder={t("workspace.namePlaceholder")}
+              className="w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setNaming(null)}
+                className="rounded px-3 py-1.5 text-sm text-muted hover:bg-surface-hover hover:text-text"
+              >
+                {t("workspace.cancel")}
+              </button>
+              <button
+                type="submit"
+                disabled={!naming.name.trim()}
+                className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
+              >
+                {t("workspace.saveButton")}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
       {pendingPaste && (
         <ConfirmDialog

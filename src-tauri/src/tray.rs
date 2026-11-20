@@ -3,6 +3,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
 use crate::commands;
+use crate::i18n::{self, Text};
 use crate::AppState;
 
 const TRAY_ID: &str = "main-tray";
@@ -42,13 +43,13 @@ pub fn rebuild_menu(app: &AppHandle) {
 
 fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let menu = Menu::new(app)?;
-    menu.append(&MenuItemBuilder::with_id(TOGGLE_WINDOW_ID, "Show/Hide").build(app)?)?;
+    menu.append(&MenuItemBuilder::with_id(TOGGLE_WINDOW_ID, i18n::t(app, Text::ShowHide)).build(app)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
 
     if crate::access::is_simple(app) {
         // Simple mode: the one switch the window shows, nothing per tunnel.
         menu.append(
-            &CheckMenuItemBuilder::with_id(ACCESS_ID, "Internal network")
+            &CheckMenuItemBuilder::with_id(ACCESS_ID, i18n::t(app, Text::InternalNetwork))
                 .checked(crate::access::is_on(app))
                 .build(app)?,
         )?;
@@ -71,12 +72,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     }
 
     if let Some(version) = crate::updates::ready_version(app) {
-        let label = format!("Restart to update to {version}");
+        let label = i18n::t_version(app, Text::RestartToUpdate, &version);
         menu.append(&MenuItemBuilder::with_id(UPDATE_ID, label).build(app)?)?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
-    menu.append(&MenuItemBuilder::with_id(EXIT_ID, "Exit").build(app)?)?;
+    menu.append(&MenuItemBuilder::with_id(EXIT_ID, i18n::t(app, Text::Exit)).build(app)?)?;
     Ok(menu)
 }
 

@@ -141,8 +141,13 @@ function App() {
     const unlisten = listen("tunnels-changed", () => {
       listTunnels().then(setTunnels).catch(() => {});
     });
+    // Settings saved anywhere else (the terminal window's mouse chip, an
+    // import). Every save sends the whole object, so a stale copy here would
+    // put the other window's change back on this window's next save.
+    const unlistenSettings = listen<Settings>("settings-changed", (e) => setSettings(e.payload));
     return () => {
       unlisten.then((f) => f());
+      unlistenSettings.then((f) => f());
       unlistenRestart.then((f) => f());
     };
   }, []);

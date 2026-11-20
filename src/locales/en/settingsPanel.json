@@ -89,7 +89,8 @@
     "security": "Security",
     "updates": "Updates",
     "links": "Links",
-    "mode": "Mode"
+    "mode": "Mode",
+    "smart": "Suggestions & alerts"
   },
   "portRangeHint": "Local SOCKS ports suggested when you add a tunnel; the first free one is used.",
   "knownHostsHint": "Servers whose host key you have trusted. A changed key is flagged on the tunnel itself.",
@@ -122,5 +123,13 @@
     "full": "Full",
     "simpleHint": "One Internal network switch; tunnels can't be changed in this mode.",
     "fullHint": "Everything: tunnels, router rules, terminal, capture."
-  }
+  },
+  "terminalSuggestions": "Remember commands and suggest",
+  "terminalSuggestionsHint": "Suggests as you type: the rest of a command you have run on this host (→ takes it, Ctrl+→ one word), the commands you usually start with, and a fix after common errors (Alt+Enter puts it at the prompt; nothing runs by itself). Kept on this computer only, never exported. Lines starting with a space or looking like a password are skipped.",
+  "terminalLongCommand": "Notify when a long command finishes",
+  "terminalLongCommandHint": "Seconds a command must run before its end raises a notification, if you are looking elsewhere. 0 turns it off.",
+  "terminalForget": "Forget remembered commands",
+  "terminalForgetHint": "Clears what was learned on every host. Workspaces stay.",
+  "terminalForgetButton": "Forget",
+  "terminalForgotten": "Forgotten"
 }

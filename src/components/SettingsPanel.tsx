@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { checkForUpdates, downloadUpdate, getSettings, updateSettings } from "../api";
+import { checkForUpdates, clearTerminalCommands, downloadUpdate, getSettings, updateSettings } from "../api";
 import type { Settings, Tunnel, UiMode, UpdateSnapshot } from "../types";
 import { REPO_URL } from "../updates";
 import { ReleaseNotes } from "./ReleaseNotes";
@@ -219,6 +219,7 @@ export function SettingsPanel({
   const [settings, setSettings] = useState<Settings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forgotten, setForgotten] = useState(false);
   const [version, setVersion] = useState<string | null>(null);
   /** The last manual check found nothing (a background one stays quiet). */
   const [upToDate, setUpToDate] = useState(false);
@@ -518,6 +519,42 @@ export function SettingsPanel({
                     disabled={busy}
                     onChange={(on) => save({ ...settings, terminalWebgl: on })}
                   />
+                }
+              />
+            </Group>
+            <Group title={t("groups.smart")}>
+              <Row
+                title={t("terminalSuggestions")}
+                description={t("terminalSuggestionsHint")}
+                control={
+                  <Switch
+                    label={t("terminalSuggestions")}
+                    checked={settings.terminalSuggestions}
+                    disabled={busy}
+                    onChange={(on) => save({ ...settings, terminalSuggestions: on })}
+                  />
+                }
+              />
+              <Row
+                title={t("terminalLongCommand")}
+                description={t("terminalLongCommandHint")}
+                control={numberControl(
+                  settings.terminalLongCommandSecs,
+                  (v) => setSettings({ ...settings, terminalLongCommandSecs: Math.max(0, Math.round(v)) }),
+                  t("terminalLongCommandHint"),
+                )}
+              />
+              <Row
+                title={t("terminalForget")}
+                description={t("terminalForgetHint")}
+                control={
+                  <button
+                    onClick={() => void clearTerminalCommands().then(() => setForgotten(true))}
+                    disabled={forgotten}
+                    className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text hover:border-coral hover:text-coral disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    {forgotten ? t("terminalForgotten") : t("terminalForgetButton")}
+                  </button>
                 }
               />
             </Group>

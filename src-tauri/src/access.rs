@@ -65,11 +65,12 @@ pub async fn set(app: &AppHandle, on: bool) -> Result<(), String> {
         // Simple mode has no other way to point a browser at the router.
         config.set_system_proxy = true;
     }
-    state.router.store.update(config.clone());
+    state.router.store.update(config.clone())?;
 
     if on {
         if let Err(e) = crate::router::start(app).await {
-            state.router.store.update(crate::settings::RouterConfig { enabled: false, ..config });
+            // Already failing: the start error is the one worth reporting.
+            state.router.store.update_or_log(crate::settings::RouterConfig { enabled: false, ..config });
             crate::tray::rebuild_menu(app);
             return Err(e);
         }

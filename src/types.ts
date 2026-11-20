@@ -265,6 +265,33 @@ export interface Settings {
   autoUpdate: boolean;
   /** Null until the user picks (first launch, or first after updating). */
   uiMode: UiMode | null;
+  /** Remember commands per host to suggest the usual sequence and error fixes. */
+  terminalSuggestions: boolean;
+  /** Notify when a command this long ends out of sight; 0 = off. */
+  terminalLongCommandSecs: number;
+}
+
+/** `terminal_memory.json`: learned per host, never exported. */
+export interface TerminalMemory {
+  /** Keyed by tunnel id. */
+  hosts: Record<string, HostMemory>;
+  workspaces: Workspace[];
+}
+
+export interface HostMemory {
+  /** Opening commands of recent shells, oldest first. */
+  sessions: string[][];
+  /** Command → times run. */
+  commands: Record<string, number>;
+  /** Suggested sequence key → dismissals in a row. */
+  dismissed: Record<string, number>;
+}
+
+/** A named set of terminal tabs. `tabs` are layout trees (`LayoutNode`). */
+export interface Workspace {
+  id: string;
+  name: string;
+  tabs: unknown[];
 }
 
 /** Simple: one "internal network" switch for people who only browse. */

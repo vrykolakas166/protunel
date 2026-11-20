@@ -37,10 +37,9 @@ pub struct KnownHosts {
 
 impl KnownHosts {
     pub fn load(path: PathBuf) -> Self {
-        let entries = std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<HashMap<String, TrustedKey>>(&s).ok())
-            .unwrap_or_default();
+        // An unreadable file is set aside, not overwritten: losing trusted
+        // keys silently would turn every host back into a first connection.
+        let entries = crate::settings::load_json::<HashMap<String, TrustedKey>>(&path).unwrap_or_default();
         Self {
             path,
             entries: Mutex::new(entries),
@@ -147,7 +146,9 @@ impl KnownHosts {
 
     fn persist(&self, entries: &HashMap<String, TrustedKey>) {
         if let Ok(data) = serde_json::to_string_pretty(entries) {
-            let _ = std::fs::write(&self.path, data);
+            if let Err(e) = crate::settings::write_atomic(&self.path, data.as_bytes()) {
+                eprintln!("protunel: cannot save {}: {e}", self.path.display());
+            }
         }
     }
 }

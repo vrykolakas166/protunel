@@ -64,5 +64,51 @@
   "mouseApp": "Chuột: chương trình · Shift+kéo để bôi đen",
   "mouseAppTooltip": "Chương trình trên server (tmux, vim, htop…) đang dùng chuột. Bấm để lấy lại, kéo chuột luôn bôi đen.",
   "staleTarget": "đã đổi cấu hình",
-  "staleTargetHint": "Shell này được mở trước khi host bị sửa. Khi nó kết thúc, bấm Enter (hoặc mở pane mới) để kết nối bằng {{saved}}."
+  "staleTargetHint": "Shell này được mở trước khi host bị sửa. Khi nó kết thúc, bấm Enter (hoặc mở pane mới) để kết nối bằng {{saved}}.",
+  "smart": {
+    "usual": "Hay chạy ở đây:",
+    "run": "Chạy",
+    "runHint": "Chạy lần lượt tất cả, lệnh sau chờ lệnh trước xong",
+    "insert": "Điền",
+    "insertHint": "Điền vào dòng lệnh, chưa chạy (Alt+Enter)",
+    "dismiss": "Bỏ qua (hoặc cứ gõ tiếp)",
+    "fix": {
+      "sudo": "Cần quyền root?",
+      "typo": "Có phải ý bạn là",
+      "hint": "Gợi ý:"
+    },
+    "doneTitle": "Đã chạy xong trên {{host}}",
+    "ok": "thành công",
+    "finishedHere": "Một lệnh chạy lâu vừa xong ở đây",
+    "insertFirstHint": "Điền lệnh đầu tiên vào dòng lệnh (Alt+Enter); các lệnh sau sẽ được gợi ý dần",
+    "tabHintBefore": "Nhận gợi ý chữ mờ bằng",
+    "tabHintWhole": "(cả lệnh) hoặc",
+    "tabHintWord": "(một từ)",
+    "tabHintAfter": "Tab là gợi ý riêng của shell"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "save": "Lưu các tab đang mở thành workspace",
+    "saveTitle": "Lưu workspace",
+    "renameTitle": "Đổi tên workspace",
+    "saveHint": "{{tabs}} tab, {{panes}} pane. Khi mở lại, mỗi pane sẽ mở một shell mới. Lưu trùng tên sẽ thay thế workspace cũ.",
+    "namePlaceholder": "VD: Web production",
+    "saveButton": "Lưu",
+    "cancel": "Huỷ",
+    "open": "Mở",
+    "openHint": "Mở các tab của workspace · chuột phải để xem thêm",
+    "update": "Thay bằng tất cả tab đang mở",
+    "rename": "Đổi tên…",
+    "delete": "Xoá",
+    "restore_one": "Khôi phục phiên trước ({{count}} pane)",
+    "restore_other": "Khôi phục phiên trước ({{count}} pane)",
+    "saveChanges": "Lưu thay đổi vào “{{name}}”",
+    "saveAsNew": "Lưu thành workspace mới…",
+    "addTab": "Thêm vào workspace “{{name}}”",
+    "removeTab": "Gỡ khỏi “{{name}}”",
+    "inWorkspace": "Thuộc workspace “{{name}}”",
+    "changedHint": "“{{name}}” đã thay đổi so với lúc lưu: bấm để lưu",
+    "savedHint": "Workspace “{{name}}”, không có thay đổi chưa lưu",
+    "restoreOne": "Khôi phục phiên trước · {{target}}"
+  }
 }

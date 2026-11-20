@@ -138,9 +138,12 @@ pub(crate) fn emit_status(
     crate::tray::rebuild_menu(app);
 
     let body = match status {
-        TunnelStatus::Connected => Some("Connected".to_string()),
-        TunnelStatus::Disconnected => Some("Disconnected".to_string()),
-        TunnelStatus::Error => Some(message.unwrap_or_else(|| "Connection error".to_string())),
+        TunnelStatus::Connected => Some(crate::i18n::t(app, crate::i18n::Text::Connected)),
+        TunnelStatus::Disconnected => Some(crate::i18n::t(app, crate::i18n::Text::Disconnected)),
+        // The server's or the SSH library's own words: technical, not translated.
+        TunnelStatus::Error => {
+            Some(message.unwrap_or_else(|| crate::i18n::t(app, crate::i18n::Text::ConnectionError)))
+        }
         // Retries are noisy by nature — the UI shows them, the tray doesn't need
         // to pop a toast for every backoff tick.
         TunnelStatus::Connecting | TunnelStatus::Reconnecting => None,

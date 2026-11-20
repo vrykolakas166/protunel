@@ -88,6 +88,39 @@ export function removePane(root: LayoutNode, id: string): LayoutNode | null {
   return a === root.a && b === root.b ? root : { ...root, a, b };
 }
 
+/**
+ * A saved layout made live again (a workspace): every pane and split gets a
+ * fresh id, so opening a workspace twice never makes two panes share one, and
+ * panes whose host has been deleted are dropped. Null when none is left, or
+ * when `saved` isn't a layout at all (a hand-edited file).
+ */
+export function reviveLayout(saved: unknown, hostExists: (tunnelId: string) => boolean): LayoutNode | null {
+  if (!saved || typeof saved !== "object") return null;
+  const node = saved as Partial<Record<string, unknown>>;
+  if (node.kind === "pane") {
+    return typeof node.tunnelId === "string" && hostExists(node.tunnelId) ? newPane(node.tunnelId) : null;
+  }
+  if (node.kind !== "split" || (node.dir !== "row" && node.dir !== "col")) return null;
+  const a = reviveLayout(node.a, hostExists);
+  const b = reviveLayout(node.b, hostExists);
+  if (!a || !b) return a ?? b;
+  const ratio = typeof node.ratio === "number" && node.ratio > 0 && node.ratio < 1 ? node.ratio : 0.5;
+  return { kind: "split", id: crypto.randomUUID(), dir: node.dir, ratio, a, b };
+}
+
+/**
+ * A layout's shape without its ids: which hosts, split which way, how far.
+ * Equal shapes look the same on screen, so a workspace whose open tabs have
+ * the shape it was saved with has nothing to save.
+ */
+export function layoutShape(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as Partial<Record<string, unknown>>;
+  if (n.kind === "pane") return String(n.tunnelId);
+  const ratio = typeof n.ratio === "number" ? Math.round(n.ratio * 50) / 50 : 0.5;
+  return `(${String(n.dir)}:${ratio} ${layoutShape(n.a)} ${layoutShape(n.b)})`;
+}
+
 export function setRatio(root: LayoutNode, splitId: string, ratio: number): LayoutNode {
   if (root.kind === "pane") return root;
   if (root.id === splitId) return { ...root, ratio };

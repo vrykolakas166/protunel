@@ -104,3 +104,6 @@ pub const UPDATE_RESTART_REQUESTED_EVENT: &str = "update-restart-requested";
 /// Sent to the terminal window when its close button hides it: the window
 /// drops every tab (its shells are closed) so reopening starts clean.
 pub const TERMINAL_HIDDEN_EVENT: &str = "terminal-hidden";
+
+/// "Forget remembered commands" ran; the terminal window drops its copy.
+pub const TERMINAL_MEMORY_CLEARED_EVENT: &str = "terminal-memory-cleared";

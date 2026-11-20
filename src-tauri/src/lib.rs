@@ -4,6 +4,7 @@ mod commands;
 mod config_io;
 mod db;
 mod events;
+mod i18n;
 mod network;
 mod platform;
 mod router;
@@ -169,6 +170,10 @@ pub fn run() {
             commands::debug_whats_new,
             commands::debug_fail_tunnel,
             commands::get_settings,
+            commands::get_terminal_memory,
+            commands::save_terminal_memory,
+            commands::clear_terminal_commands,
+            commands::terminal_notify,
             commands::update_settings,
             commands::get_router_config,
             commands::update_router_config,

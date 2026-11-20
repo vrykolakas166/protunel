@@ -271,8 +271,8 @@ fn mark_ready(app: &AppHandle) {
         let _ = app
             .notification()
             .builder()
-            .title(format!("protunel {version} is ready"))
-            .body("Restart protunel to finish updating.")
+            .title(crate::i18n::t_version(app, crate::i18n::Text::UpdateReadyTitle, &version))
+            .body(crate::i18n::t(app, crate::i18n::Text::UpdateReadyBody))
             .show();
     }
 }

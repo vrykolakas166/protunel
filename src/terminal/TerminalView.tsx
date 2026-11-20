@@ -9,10 +9,13 @@ import { WebglAddon } from "@xterm/addon-webgl";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { terminalClose, terminalOpen, terminalResize } from "../api";
+import { terminalClose, terminalNotify, terminalOpen, terminalResize, terminalWrite } from "../api";
 import type { TerminalExit, Tunnel } from "../types";
 import { MouseGate } from "./mouseGate";
 import { matchShortcut } from "./shortcuts";
+import { isTerminalReport, type CommandResult } from "./shellWatch";
+import { SmartSession, type Chip } from "./smartSession";
+import { SuggestionChip, TabHint } from "./SuggestionChip";
 import type { ITheme } from "@xterm/xterm";
 
 export type SessionPhase = "connecting" | "open" | "closed";
@@ -56,6 +59,13 @@ function weightsFor(theme: ITheme): { fontWeight: "normal" | 500; fontWeightBold
   return light ? { fontWeight: 500, fontWeightBold: 700 } : { fontWeight: "normal", fontWeightBold: "bold" };
 }
 
+function formatDuration(ms: number): string {
+  const secs = Math.round(ms / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  return mins < 60 ? `${mins}m ${secs % 60}s` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
 const dim = (text: string) => `\x1b[2m${text}\x1b[0m`;
 const red = (text: string) => `\x1b[31m${text}\x1b[0m`;
 
@@ -81,6 +91,12 @@ interface Props {
   send: (data: string, ownId: string) => void;
   /** Lets the window veto a paste, e.g. multi-line text about to be broadcast. */
   confirmPaste: (text: string) => Promise<boolean>;
+  /** Remember commands and suggest sequences and fixes (`settings.terminalSuggestions`). */
+  suggestions: boolean;
+  /** Notify when a command at least this long ends out of sight; 0 = never. */
+  longCommandSecs: number;
+  /** A long command finished while this pane was out of sight. */
+  onAttention: () => void;
 }
 
 /**
@@ -101,6 +117,9 @@ export function TerminalView({
   onTerminalId,
   send,
   confirmPaste,
+  suggestions,
+  longCommandSecs,
+  onAttention,
 }: Props) {
   const { t } = useTranslation("terminal");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,8 +144,18 @@ export function TerminalView({
   themeRef.current = theme;
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
-  const callbacks = useRef({ onFocus, onTerminalId, send, confirmPaste });
-  callbacks.current = { onFocus, onTerminalId, send, confirmPaste };
+  const callbacks = useRef({ onFocus, onTerminalId, send, confirmPaste, onAttention });
+  callbacks.current = { onFocus, onTerminalId, send, confirmPaste, onAttention };
+  const smartRef = useRef({ suggestions, longCommandSecs, visible });
+  smartRef.current = { suggestions, longCommandSecs, visible };
+  const [chip, setChip] = useState<Chip | null>(null);
+  /** "Use → for the suggestion" reminder after Tab was pressed for it. */
+  const [tabHint, setTabHint] = useState(false);
+  const tabHintTimer = useRef(0);
+  const chipRef = useRef(chip);
+  chipRef.current = chip;
+  /** The pane's suggestions and command tracking, once its terminal exists. */
+  const smartSessionRef = useRef<SmartSession | null>(null);
   // Characters in the last copy, shown briefly as a toast; null when hidden.
   const [copied, setCopied] = useState<number | null>(null);
   const copiedTimer = useRef(0);
@@ -177,6 +206,48 @@ export function TerminalView({
     const gate = new MouseGate(term, appMouseRef.current, () => report());
     const gateHandlers = gate.attach();
     gateRef.current = gate;
+
+    // Commands typed at the prompt: remembered per host, offered back as
+    // suggestions, timed for a notification (`smartSession.ts`).
+    const smart = new SmartSession(
+      term,
+      { fontFamily: FONT_FAMILY, fontSize: FONT_SIZE, color: () => themeRef.current.foreground ?? "#888" },
+      {
+        hostId: () => tunnelRef.current.id,
+        options: () => smartRef.current,
+        isOpen: () => phase === "open",
+        writeOwn: (data) => {
+          if (terminalId) void terminalWrite(terminalId, data).catch(() => {});
+        },
+        getChip: () => chipRef.current,
+        setChip: (next) => {
+          chipRef.current = next; // read again before the re-render lands
+          setChip(next);
+        },
+        showTabHint: () => {
+          setTabHint(true);
+          window.clearTimeout(tabHintTimer.current);
+          tabHintTimer.current = window.setTimeout(() => setTabHint(false), 5000);
+        },
+        hideTabHint: () => setTabHint(false),
+        onLongCommand: (result: CommandResult) => {
+          const status =
+            result.exitCode === null
+              ? ""
+              : result.exitCode === 0
+                ? ` · ${tRef.current("smart.ok")}`
+                : ` · ${tRef.current("exitCode", { code: result.exitCode })}`;
+          void terminalNotify(
+            tRef.current("smart.doneTitle", { host: tunnelRef.current.name }),
+            `${result.command} · ${formatDuration(result.durationMs)}${status}`,
+          ).catch(() => {});
+          callbacks.current.onAttention();
+        },
+        focus: () => term.focus(),
+      },
+    );
+    const smartHandlers = smart.attach();
+    smartSessionRef.current = smart;
 
     // Every report re-renders the whole terminal window, so an unchanged one
     // (an idle pane on the 1 s tick) is not sent.
@@ -232,6 +303,7 @@ export function TerminalView({
     const connect = async () => {
       if (disposed) return;
       phase = "connecting";
+      smart.reset();
       report();
       const { username, host, port } = tunnelRef.current;
       target = `${username}@${host}:${port}`;
@@ -250,6 +322,7 @@ export function TerminalView({
         }
         const wasMouseMode = term.modes.mouseTrackingMode !== "none";
         term.write(bytes, () => {
+          smart.onOutput();
           // Mouse mode is switched by escape sequences in the output; surface
           // the change right away, not on the next 1 s tick.
           if ((term.modes.mouseTrackingMode !== "none") !== wasMouseMode) report();
@@ -282,6 +355,7 @@ export function TerminalView({
         if (ended) return;
         setTerminalId(id);
         phase = "open";
+        smart.opened();
       } catch (err) {
         phase = "closed";
         term.write(red(String(err)) + "\r\n" + dim(tRef.current("pressEnterRetry")) + "\r\n");
@@ -293,6 +367,11 @@ export function TerminalView({
       if (e.type !== "keydown") return true;
       if (matchShortcut(e)) return false; // the window handles these
       const key = e.key.toLowerCase();
+      // Alt+Enter (chip) and → / Ctrl+→ (ghost); see `SmartSession.handleKey`.
+      if (smart.handleKey(e)) {
+        e.preventDefault();
+        return false;
+      }
       // Ctrl+C is always SIGINT, selection or not. Copy is Ctrl+Shift+C (or
       // just selecting); paste is Ctrl+Shift+V (or right-click).
       if (e.ctrlKey && e.shiftKey && !e.altKey && key === "c") {
@@ -313,6 +392,7 @@ export function TerminalView({
 
     term.onData((data) => {
       if (phase === "open" && terminalId) {
+        if (!isTerminalReport(data)) smart.onInput(data);
         if (keyAt === null) keyAt = performance.now();
         callbacks.current.send(data, terminalId);
       } else if (phase === "closed" && data.includes("\r")) {
@@ -414,6 +494,7 @@ export function TerminalView({
     return () => {
       disposed = true;
       window.clearTimeout(copiedTimer.current);
+      window.clearTimeout(tabHintTimer.current);
       cancelAnimationFrame(frame);
       window.clearInterval(ticker);
       observer.disconnect();
@@ -424,6 +505,9 @@ export function TerminalView({
       window.clearTimeout(resizeTimer);
       if (terminalId) void terminalClose(terminalId);
       gateHandlers.forEach((handler) => handler.dispose());
+      smartHandlers.forEach((handler) => handler.dispose());
+      smart.dispose();
+      smartSessionRef.current = null;
       gateRef.current = null;
       setRendererRef.current = null;
       term.dispose();
@@ -474,6 +558,16 @@ export function TerminalView({
           {t("copied", { count: copied })}
         </div>
       )}
+      {tabHint && !chip && <TabHint onClose={() => setTabHint(false)} />}
+      {chip && (
+        <SuggestionChip
+          chip={chip}
+          onRun={() => smartSessionRef.current?.runChip()}
+          onInsert={() => smartSessionRef.current?.insertChip()}
+          onDismiss={() => smartSessionRef.current?.dismissChip()}
+        />
+      )}
     </div>
   );
 }
+

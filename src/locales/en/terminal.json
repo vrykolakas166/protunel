@@ -64,5 +64,51 @@
   "mouseApp": "Mouse: program · Shift+drag selects",
   "mouseAppTooltip": "The program on the server (tmux, vim, htop…) has the mouse. Click to take it back so dragging always selects.",
   "staleTarget": "settings changed",
-  "staleTargetHint": "This shell was opened before the host was edited. Press Enter after it ends (or open a new pane) to connect as {{saved}}."
+  "staleTargetHint": "This shell was opened before the host was edited. Press Enter after it ends (or open a new pane) to connect as {{saved}}.",
+  "smart": {
+    "usual": "Usual here:",
+    "run": "Run",
+    "runHint": "Run them all, one after another, each after the previous one finishes",
+    "insert": "Insert",
+    "insertHint": "Put it at the prompt without running it (Alt+Enter)",
+    "dismiss": "Dismiss (or just keep typing)",
+    "fix": {
+      "sudo": "Needs root?",
+      "typo": "Did you mean",
+      "hint": "Suggested:"
+    },
+    "doneTitle": "Finished on {{host}}",
+    "ok": "ok",
+    "finishedHere": "A long command finished here",
+    "insertFirstHint": "Put the first command at the prompt (Alt+Enter); the next ones are offered as you go",
+    "tabHintBefore": "Take the dim suggestion with",
+    "tabHintWhole": "(all) or",
+    "tabHintWord": "(one word)",
+    "tabHintAfter": "Tab is the shell's own completion"
+  },
+  "workspace": {
+    "title": "Workspaces",
+    "save": "Save open tabs as a workspace",
+    "saveTitle": "Save workspace",
+    "renameTitle": "Rename workspace",
+    "saveHint": "{{tabs}} tab(s), {{panes}} pane(s). Opening it later starts a new shell in every pane. Saving under an existing name replaces it.",
+    "namePlaceholder": "e.g. Production web",
+    "saveButton": "Save",
+    "cancel": "Cancel",
+    "open": "Open",
+    "openHint": "Open its tabs · right-click for more",
+    "update": "Replace with all open tabs",
+    "rename": "Rename…",
+    "delete": "Delete",
+    "restore_one": "Restore last session ({{count}} pane)",
+    "restore_other": "Restore last session ({{count}} panes)",
+    "saveChanges": "Save changes to “{{name}}”",
+    "saveAsNew": "Save as a new workspace…",
+    "addTab": "Add to workspace “{{name}}”",
+    "removeTab": "Remove from “{{name}}”",
+    "inWorkspace": "In workspace “{{name}}”",
+    "changedHint": "Changed since “{{name}}” was saved: click to save",
+    "savedHint": "Workspace “{{name}}”, no unsaved changes",
+    "restoreOne": "Restore last session · {{target}}"
+  }
 }

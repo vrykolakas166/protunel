@@ -13,7 +13,7 @@ use crate::db::Db;
 use crate::db::PortForward;
 use crate::events::{StatusEvent, TunnelStatus};
 use crate::router::RouterState;
-use crate::settings::SettingsStore;
+use crate::settings::{SettingsStore, TerminalMemoryStore};
 use crate::ssh::known_hosts::KnownHosts;
 use crate::ssh::terminal::Terminals;
 use crate::ssh::PendingHostKeyRequests;
@@ -47,6 +47,7 @@ pub struct AppState {
     pub known_hosts: Arc<KnownHosts>,
     pub pending_host_key: PendingHostKeyRequests,
     pub settings: SettingsStore,
+    pub terminal_memory: TerminalMemoryStore,
     pub router: RouterState,
     pub capture: CaptureState,
     pub terminals: Terminals,
@@ -64,6 +65,7 @@ impl AppState {
             known_hosts: Arc::new(KnownHosts::load(data_dir.join("known_hosts.json"))),
             pending_host_key: PendingHostKeyRequests::default(),
             settings: SettingsStore::load(data_dir.join("settings.json")),
+            terminal_memory: TerminalMemoryStore::load(data_dir.join("terminal_memory.json")),
             router: RouterState::new(data_dir),
             capture: CaptureState::new(data_dir),
             terminals: Terminals::default(),

@@ -89,7 +89,8 @@
     "security": "Bảo mật",
     "updates": "Cập nhật",
     "links": "Liên kết",
-    "mode": "Chế độ"
+    "mode": "Chế độ",
+    "smart": "Gợi ý & thông báo"
   },
   "portRangeHint": "Dải cổng SOCKS cục bộ gợi ý khi thêm tunnel; cổng trống đầu tiên được dùng.",
   "knownHostsHint": "Các server có host key bạn đã tin cậy. Key bị đổi sẽ được báo ngay trên tunnel.",
@@ -122,5 +123,13 @@
     "full": "Đầy đủ",
     "simpleHint": "Một công tắc Mạng nội bộ; không sửa được tunnel ở chế độ này.",
     "fullHint": "Đầy đủ tính năng: tunnel, rule router, terminal, capture."
-  }
+  },
+  "terminalSuggestions": "Ghi nhớ lệnh và gợi ý",
+  "terminalSuggestionsHint": "Gợi ý khi gõ: phần còn lại của lệnh bạn đã chạy trên host này (→ để nhận, Ctrl+→ nhận một từ), các lệnh hay chạy khi mở host, và cách sửa sau lỗi thường gặp (Alt+Enter điền vào dòng lệnh, không tự chạy). Chỉ lưu trên máy này, không bao giờ xuất ra file. Bỏ qua các dòng bắt đầu bằng dấu cách hoặc có vẻ chứa mật khẩu.",
+  "terminalLongCommand": "Báo khi lệnh chạy lâu xong",
+  "terminalLongCommandHint": "Lệnh chạy ít nhất bấy nhiêu giây sẽ có thông báo khi xong, nếu lúc đó bạn đang không xem nó. Đặt 0 để tắt.",
+  "terminalForget": "Quên các lệnh đã ghi nhớ",
+  "terminalForgetHint": "Xoá những gì đã học trên mọi host. Các workspace vẫn giữ nguyên.",
+  "terminalForgetButton": "Quên",
+  "terminalForgotten": "Đã quên"
 }
