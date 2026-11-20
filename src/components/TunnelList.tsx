@@ -35,6 +35,9 @@ interface Props {
   /** Refused host keys by `host:port` (see `useHostKeyMismatches`). */
   hostKeyMismatches: Record<string, HostKeyMismatch>;
   onReviewHostKey: (tunnel: Tunnel) => void;
+  /** The search `tunnels` was filtered by ("" when not searching). */
+  searchQuery: string;
+  onClearSearch: () => void;
 }
 
 /** The tunnel a row hangs under in the tree, or null for a top-level row. */
@@ -44,6 +47,8 @@ function parentOf(tunnel: Tunnel, ids: Set<string>): string | null {
 
 export function TunnelList({
   tunnels,
+  searchQuery,
+  onClearSearch,
   statuses,
   stats,
   throughput,
@@ -266,10 +271,20 @@ export function TunnelList({
   };
 
   if (tunnels.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted">
-        {t("empty")}
+    // A search that matches nothing is not an empty list: the tunnels are
+    // all still there, and saying otherwise reads as if they were lost.
+    return searchQuery.trim() ? (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted">
+        <span>{t("noMatches", { query: searchQuery.trim() })}</span>
+        <button
+          onClick={onClearSearch}
+          className="rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-accent hover:text-accent"
+        >
+          {t("clearSearch")}
+        </button>
       </div>
+    ) : (
+      <div className="flex flex-1 items-center justify-center text-sm text-muted">{t("empty")}</div>
     );
   }
 

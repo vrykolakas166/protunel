@@ -41,8 +41,8 @@
       "body": "Các rule được xếp thứ tự từ trên xuống, rule đang bật khớp đầu tiên sẽ được áp dụng. Có thể khớp theo wildcard của host, regex, hoặc dải IP, sau đó gửi qua một tunnel, đi thẳng (direct), hoặc chặn lại. Traffic không khớp rule nào sẽ theo hành động mặc định."
     },
     "router-proxy": {
-      "title": "Bắt traffic từ mọi ứng dụng",
-      "body": "Bật tùy chọn này để chính Windows trỏ đến router, nhờ đó mọi ứng dụng đều tuân theo rule của bạn mà không cần cấu hình riêng từng app. Thiết lập này sẽ tự hoàn tác khi router dừng — kể cả khi ứng dụng bị crash."
+      "title": "Ứng dụng dùng proxy hệ thống",
+      "body": "Bật tùy chọn này để Windows trỏ proxy hệ thống về router, nhờ đó trình duyệt và các ứng dụng dùng proxy hệ thống sẽ đi theo quy tắc của bạn mà không cần cấu hình riêng. Ứng dụng bỏ qua proxy hệ thống có thể được khởi chạy qua router trong mục Ứng dụng. Thiết lập này tự hoàn tác khi router dừng — kể cả khi ứng dụng bị crash."
     },
     "router-log": {
       "title": "Vì sao kết nối đó lại đi direct?",

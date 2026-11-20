@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 interface Props {
   /** Every tunnel (the bulk actions ignore the search filter). */
   total: number;
-  /** Of those, how many are up or on their way up. */
-  live: number;
+  /** Of those, how many are up. */
+  connected: number;
+  /** And how many are on their way up (connecting or reconnecting). */
+  connecting: number;
   searching: boolean;
   onConnectAll: () => void;
   onDisconnectAll: () => void;
@@ -29,9 +31,10 @@ const iconProps = {
  * one quiet pair (disconnect only turns coral on hover — it's not the thing
  * to reach for), search, and the one primary action, Add.
  */
-export function TunnelToolbar({ total, live, searching, onConnectAll, onDisconnectAll, onSearch, onAdd }: Props) {
+export function TunnelToolbar({ total, connected, connecting, searching, onConnectAll, onDisconnectAll, onSearch, onAdd }: Props) {
   const { t } = useTranslation("app");
-  const fraction = total ? live / total : 0;
+  const live = connected + connecting;
+  const fraction = total ? connected / total : 0;
 
   const pairButton =
     "flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-40";
@@ -40,7 +43,7 @@ export function TunnelToolbar({ total, live, searching, onConnectAll, onDisconne
     // A floating card, matching the update card above it (`UpdateBanner`).
     <div className="px-4 pt-3">
       <div data-tour="bulk" className="flex items-center gap-2 rounded-xl border border-border bg-surface p-2 shadow-sm">
-        {/* Live count: a ring that fills as tunnels come up. */}
+        {/* A ring that fills as tunnels come up; the count says only what is up. */}
         <span
           title={t("toolbar.connectedHint")}
           className="flex items-center gap-2 rounded-full border border-border bg-bg py-1 pl-1 pr-2.5 text-xs text-muted"
@@ -59,8 +62,14 @@ export function TunnelToolbar({ total, live, searching, onConnectAll, onDisconne
             />
           </svg>
           <span>
-            <span className="font-mono font-semibold text-text">{live}</span>
+            <span className="font-mono font-semibold text-text">{connected}</span>
             <span className="font-mono">/{total}</span> {t("toolbar.connected")}
+            {connecting > 0 && (
+              <span className="text-amber">
+                {" · "}
+                <span className="font-mono font-semibold">{connecting}</span> {t("toolbar.connecting")}
+              </span>
+            )}
           </span>
         </span>
 

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useDialogFocus } from "../dialogFocus";
 import { useTranslation } from "react-i18next";
 import { fitWindow, popupClosed, popupOpened } from "../windowFit";
 
@@ -51,6 +52,9 @@ export function Modal({
   const panelRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const pressedOnBackdrop = useRef(false);
+  const titleId = useId();
+
+  const trapTab = useDialogFocus(panelRef, bodyRef);
 
   useLayoutEffect(() => {
     popupOpened();
@@ -93,12 +97,23 @@ export function Modal({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className={`modal-panel flex max-h-full flex-col overflow-hidden rounded-lg border ${borderClassName} bg-surface shadow-xl`}
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={trapTab}
+        className={`modal-panel flex max-h-full flex-col overflow-hidden rounded-lg border outline-none ${borderClassName} bg-surface shadow-xl`}
         style={{ width: `min(92vw, ${SIZE_PX[size]}px)` }}
       >
+        {bare && (
+          // The content draws its own heading; the dialog still needs a name.
+          <div id={titleId} className="sr-only">
+            {title}
+          </div>
+        )}
         {!bare && (
           <div className="flex shrink-0 items-start gap-3 pl-5 pr-3 pt-3">
-            <div className="min-w-0 flex-1 pt-2">{title}</div>
+            <div id={titleId} className="min-w-0 flex-1 pt-2">
+              {title}
+            </div>
             <button
               onClick={onClose}
               aria-label={t("close")}

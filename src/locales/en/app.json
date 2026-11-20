@@ -52,8 +52,11 @@
   },
   "toolbar": {
     "connected": "connected",
-    "connectedHint": "Tunnels connected or connecting, of all tunnels",
-    "search": "Search (Ctrl+F)"
+    "connectedHint": "Tunnels connected, of all tunnels (and how many are still connecting)",
+    "search": "Search (Ctrl+F)",
+    "connecting": "connecting"
   },
-  "importConfig": "Import config…"
+  "importConfig": "Import config…",
+  "connectAllFiltered": "Connect all {{count}} tunnels, including the ones the search hides?",
+  "disconnectAllFiltered": "Disconnect every active tunnel, including the ones the search hides?"
 }

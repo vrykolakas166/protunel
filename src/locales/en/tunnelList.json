@@ -1,5 +1,5 @@
 {
-  "empty": "No tunnels yet. Add one to open a socket.",
+  "empty": "No tunnels yet. Add a tunnel to get started.",
   "expandDependents": "Expand dependents",
   "collapseDependents": "Collapse dependents",
   "connect": "Connect",
@@ -25,5 +25,7 @@
     "copyTarget": "Copy SSH address",
     "showForwards": "Show port forwards",
     "hideForwards": "Hide port forwards"
-  }
+  },
+  "noMatches": "No tunnels match “{{query}}”.",
+  "clearSearch": "Clear search"
 }

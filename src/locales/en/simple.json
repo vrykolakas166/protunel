@@ -4,7 +4,7 @@
   "turningOn": "Turning on…",
   "turningOff": "Turning off…",
   "on": "On. Internal sites open in your browser through the tunnels.",
-  "onManual": "On. Point your browser at the address below (once).",
+  "onManual": "On. Paste the address below into your browser's automatic proxy configuration setting (once).",
   "pacHint": "Automatic proxy configuration URL:",
   "onNoProxy": "On, but the system proxy could not be set: {{error}}. Tell your administrator.",
   "error": "Could not turn on: {{error}}",
@@ -17,7 +17,7 @@
     "off": "Off"
   },
   "problem": {
-    "auth": "Login rejected — ask your administrator to update the password",
+    "auth": "Couldn't sign in — ask your administrator to check the login details",
     "unreachable": "Server unreachable — check your VPN or network",
     "hostKey": "Server's security key changed — contact your administrator before using it",
     "other": "Could not connect — contact your administrator"

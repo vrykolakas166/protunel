@@ -1,5 +1,5 @@
 {
-  "empty": "Chưa có tunnel nào. Thêm một cái để mở socket.",
+  "empty": "Chưa có tunnel nào. Thêm một tunnel để bắt đầu.",
   "expandDependents": "Mở rộng các tunnel phụ thuộc",
   "collapseDependents": "Thu gọn các tunnel phụ thuộc",
   "connect": "Kết nối",
@@ -25,5 +25,7 @@
     "copyTarget": "Sao chép địa chỉ SSH",
     "showForwards": "Hiện port forward",
     "hideForwards": "Ẩn port forward"
-  }
+  },
+  "noMatches": "Không có tunnel nào khớp “{{query}}”.",
+  "clearSearch": "Xoá tìm kiếm"
 }

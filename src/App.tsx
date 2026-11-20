@@ -65,8 +65,8 @@ type FormState =
   | { mode: "edit"; tunnel: Tunnel }
   | { mode: "clone"; tunnel: Tunnel };
 
-/** Statuses that count as "up" for the toolbar: on, or on the way. */
-const LIVE = ["connected", "connecting", "reconnecting"];
+/** Statuses on their way up, counted apart from "connected" in the toolbar. */
+const CONNECTING = ["connecting", "reconnecting"];
 
 function suggestPort(tunnels: Tunnel[], settings: Settings | null): number {
   if (!settings) return 1080;
@@ -479,7 +479,8 @@ function App() {
           <TunnelToolbar
             // Whole list, not the search result: the bulk actions act on every tunnel.
             total={tunnels.length}
-            live={tunnels.filter((tun) => LIVE.includes(statuses[tun.id]?.status ?? "")).length}
+            connected={tunnels.filter((tun) => statuses[tun.id]?.status === "connected").length}
+            connecting={tunnels.filter((tun) => CONNECTING.includes(statuses[tun.id]?.status ?? "")).length}
             searching={showSearch}
             onConnectAll={() => setPendingBulkAction("connect")}
             onDisconnectAll={() => setPendingBulkAction("disconnect")}
@@ -548,6 +549,8 @@ function App() {
               onReorder={handleReorder}
               hostKeyMismatches={hostKeyMismatches}
               onReviewHostKey={setReviewingKey}
+              searchQuery={search}
+              onClearSearch={() => setSearch("")}
             />
           </div>
         </>
@@ -707,9 +710,15 @@ function App() {
         <ConfirmDialog
           title={pendingBulkAction === "connect" ? t("connectAllTitle") : t("disconnectAllTitle")}
           message={
-            pendingBulkAction === "connect"
-              ? t("connectAllMessage")
-              : t("disconnectAllMessage")
+            // While searching, say that hidden tunnels are included too:
+            // the bulk actions never follow the filter.
+            search.trim()
+              ? t(pendingBulkAction === "connect" ? "connectAllFiltered" : "disconnectAllFiltered", {
+                  count: tunnels.length,
+                })
+              : pendingBulkAction === "connect"
+                ? t("connectAllMessage")
+                : t("disconnectAllMessage")
           }
           confirmLabel={pendingBulkAction === "connect" ? t("connectAll") : t("disconnectAll")}
           tone={pendingBulkAction === "connect" ? "accent" : "danger"}

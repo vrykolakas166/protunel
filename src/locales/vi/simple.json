@@ -4,7 +4,7 @@
   "turningOn": "Đang bật…",
   "turningOff": "Đang tắt…",
   "on": "Đang bật. Trang nội bộ mở thẳng trên trình duyệt, qua tunnel.",
-  "onManual": "Đang bật. Trỏ trình duyệt tới địa chỉ bên dưới (làm một lần).",
+  "onManual": "Đang bật. Dán địa chỉ bên dưới vào mục Cấu hình proxy tự động của trình duyệt (làm một lần).",
   "pacHint": "URL cấu hình proxy tự động:",
   "onNoProxy": "Đang bật nhưng chưa đặt được proxy hệ thống: {{error}}. Báo quản trị viên.",
   "error": "Không bật được: {{error}}",
@@ -17,7 +17,7 @@
     "off": "Tắt"
   },
   "problem": {
-    "auth": "Đăng nhập bị từ chối — nhờ quản trị viên cập nhật mật khẩu",
+    "auth": "Không xác thực được — nhờ quản trị viên kiểm tra thông tin đăng nhập",
     "unreachable": "Không tới được máy chủ — kiểm tra VPN hoặc mạng",
     "hostKey": "Khoá bảo mật của máy chủ đã đổi — liên hệ quản trị viên trước khi dùng",
     "other": "Không kết nối được — liên hệ quản trị viên"
@@ -25,8 +25,8 @@
   "needChanges": "Cần đổi máy chủ hay mật khẩu? Quản trị viên có thể chuyển protunel sang chế độ Đầy đủ trong Cài đặt › Chung.",
   "empty": {
     "title": "Chưa có cấu hình",
-    "body": "Lấy file cấu hình protunel từ quản trị viên rồi import vào đây.",
-    "import": "Import file cấu hình…"
+    "body": "Lấy tệp cấu hình protunel từ quản trị viên rồi nhập vào đây.",
+    "import": "Nhập tệp cấu hình…"
   },
   "chooser": {
     "welcome": "Chào mừng đến với protunel",

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useDialogFocus } from "../dialogFocus";
 import { useTranslation } from "react-i18next";
 
 /** Matches `.drawer-panel-out` in index.css. */
@@ -21,6 +22,9 @@ export function Drawer({ title, onClose, width = 380, children }: Props) {
   const { t } = useTranslation("common");
   const [closing, setClosing] = useState(false);
   const timer = useRef<number | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  const titleId = useId();
+  const trapTab = useDialogFocus(panelRef);
 
   const close = useCallback(() => {
     if (timer.current !== null) return;
@@ -44,13 +48,19 @@ export function Drawer({ title, onClose, width = 380, children }: Props) {
   return (
     <div className="fixed inset-0 z-50" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <aside
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        className={`${closing ? "drawer-panel-out" : "drawer-panel"} absolute inset-y-2 right-2 flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl`}
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={trapTab}
+        className={`outline-none ${closing ? "drawer-panel-out" : "drawer-panel"} absolute inset-y-2 right-2 flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-2xl`}
         style={{ width: `min(calc(92vw - 0.5rem), ${width}px)` }}
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-border pl-5 pr-3 py-3">
-          <div className="min-w-0 flex-1 pt-1">{title}</div>
+          <div id={titleId} className="min-w-0 flex-1 pt-1">
+            {title}
+          </div>
           <button
             onClick={close}
             aria-label={t("close")}

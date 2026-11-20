@@ -41,8 +41,8 @@
       "body": "Ordered top to bottom, first enabled match wins. Match on a host wildcard, a regex, or an IP range, then send it through a tunnel, straight out (direct), or block it. Anything unmatched takes the default action."
     },
     "router-proxy": {
-      "title": "Catching every app",
-      "body": "Tick this and Windows itself is pointed at the router, so every app follows your rules with no per-app setup. It's undone when the router stops — including after a crash."
+      "title": "Apps that use the system proxy",
+      "body": "Tick this and Windows points its system proxy at the router, so browsers and other apps that use the system proxy follow your rules with no per-app setup. Apps that ignore it can be launched through the router from Capture. It's undone when the router stops — including after a crash."
     },
     "router-log": {
       "title": "Why did that go direct?",

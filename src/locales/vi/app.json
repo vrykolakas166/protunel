@@ -51,9 +51,12 @@
     "later": "Để sau"
   },
   "toolbar": {
-    "connected": "đang kết nối",
-    "connectedHint": "Số tunnel đã hoặc đang kết nối, trên tổng số tunnel",
-    "search": "Tìm kiếm (Ctrl+F)"
+    "connected": "đã kết nối",
+    "connectedHint": "Số tunnel đã kết nối trên tổng số (và số tunnel còn đang kết nối)",
+    "search": "Tìm kiếm (Ctrl+F)",
+    "connecting": "đang kết nối"
   },
-  "importConfig": "Import cấu hình…"
+  "importConfig": "Import cấu hình…",
+  "connectAllFiltered": "Kết nối cả {{count}} tunnel, kể cả các tunnel đang bị ẩn do tìm kiếm?",
+  "disconnectAllFiltered": "Ngắt mọi tunnel đang hoạt động, kể cả các tunnel đang bị ẩn do tìm kiếm?"
 }

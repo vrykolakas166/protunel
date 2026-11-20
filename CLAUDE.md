@@ -452,6 +452,11 @@ the feature stops applying.
   new option on the page of the thing it changes.
   Backup embeds `ConfigFlow` (export/import) inline. It listens to
   `settings-changed` so an import can't be overwritten by its stale copy.
+- Every modal surface (`Modal`, `Drawer`) uses `useDialogFocus`
+  (`src/dialogFocus.ts`): focus moves in on open, Tab wraps inside, focus
+  returns on close, and the panel is named by its title (`aria-labelledby`).
+  A new overlay with `aria-modal` must use it too, or Tab walks out behind
+  the backdrop.
 - Right-click menus are native (`src/contextMenu.ts`, Tauri `Menu.popup`), never
   the webview's (Reload, Inspect…). `installContextMenuGuard` (both windows'
   `main.tsx`) blocks the webview menu and gives text fields Cut/Copy/Paste
