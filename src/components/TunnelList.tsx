@@ -9,6 +9,7 @@ import { formatBytes, formatDuration } from "../format";
 import { addPortForward, deletePortForward } from "../api";
 import { TunnelWaveform } from "./TunnelWaveform";
 import { openMenu } from "../contextMenu";
+import { classifyError } from "../simpleMode";
 
 const DOT_COLOR: Record<string, string> = {
   disconnected: "bg-slate",
@@ -275,7 +276,8 @@ export function TunnelList({
     // all still there, and saying otherwise reads as if they were lost.
     return searchQuery.trim() ? (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-sm text-muted">
-        <span>{t("noMatches", { query: searchQuery.trim() })}</span>
+        {/* A long query (a pasted line) must wrap, not widen the window. */}
+        <span className="max-w-full break-all px-4 text-center">{t("noMatches", { query: searchQuery.trim() })}</span>
         <button
           onClick={onClearSearch}
           className="rounded-md border border-border px-2.5 py-1 text-xs font-medium text-text hover:border-accent hover:text-accent"
@@ -322,8 +324,7 @@ export function TunnelList({
 
   return (
     // `relative`: rows measure `offsetTop` against the list itself.
-    // pb-16: the last row can scroll clear of the floating "?" tour button.
-    <ul ref={listRef} className="relative flex flex-1 flex-col gap-2 overflow-y-auto p-4 pb-16">
+    <ul ref={listRef} className="relative flex flex-1 flex-col gap-2 overflow-y-auto p-4">
       {rows.map(({ tunnel, depth }) => {
         const children = childrenByParent.get(tunnel.id) ?? [];
         const hasChildren = children.length > 0;
@@ -566,7 +567,19 @@ export function TunnelList({
               status === "error" &&
               runtime?.message && (
                 <p title={runtime.message} className="mt-1.5 truncate text-[11px] text-coral">
-                  {runtime.message}
+                  {/* Plain words first for the errors we recognise; the server's own
+                      text stays after it (and whole in the tooltip) for diagnosis. */}
+                  {(() => {
+                    const kind = classifyError(runtime.message);
+                    return kind === "auth" || kind === "unreachable" ? (
+                      <>
+                        {t(`errorKind.${kind}`)}
+                        <span className="text-muted"> · {runtime.message}</span>
+                      </>
+                    ) : (
+                      runtime.message
+                    );
+                  })()}
                 </p>
               )
             )}

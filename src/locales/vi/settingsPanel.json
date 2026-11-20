@@ -6,7 +6,7 @@
     "en": "English",
     "vi": "Tiếng Việt"
   },
-  "showNotifications": "Hiện thông báo trên desktop",
+  "showNotifications": "Hiện thông báo trên màn hình",
   "autoReconnect": "Tự động kết nối lại khi tunnel bị rớt",
   "keepaliveLabel": "Keepalive (giây)",
   "keepaliveTooltip": "Số giây giữa các lần ping keepalive để phát hiện kết nối chết. 0 để tắt keepalive.",
@@ -99,7 +99,7 @@
   "portRange": "Dải cổng SOCKS",
   "terminalWebgl": "Vẽ bằng GPU",
   "terminalWebglHint": "Nhanh hơn khi output nhiều. Tắt để dùng cách hiển thị chữ của hệ thống, thường nét hơn trên màn hình DPI thường.",
-  "knownHostsTitle": "Known hosts",
+  "knownHostsTitle": "Máy chủ đã tin cậy",
   "tagline": "SSH tunnel, định tuyến SOCKS và terminal trong một ứng dụng ở khay hệ thống.",
   "updatesTitle": "Cập nhật protunel",
   "lastChecked": "Lần kiểm tra cuối: {{when}}",
@@ -129,7 +129,7 @@
   "terminalLongCommand": "Báo khi lệnh chạy lâu xong",
   "terminalLongCommandHint": "Lệnh chạy ít nhất bấy nhiêu giây sẽ có thông báo khi xong, nếu lúc đó bạn đang không xem nó. Đặt 0 để tắt.",
   "terminalForget": "Quên các lệnh đã ghi nhớ",
-  "terminalForgetHint": "Xoá những gì đã học trên mọi host. Các workspace vẫn giữ nguyên.",
+  "terminalForgetHint": "Xoá những gì đã học trên mọi máy chủ. Các workspace vẫn giữ nguyên.",
   "terminalForgetButton": "Quên",
   "terminalForgotten": "Đã quên"
 }

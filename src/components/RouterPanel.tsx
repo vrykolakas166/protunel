@@ -538,7 +538,8 @@ function RuleTable({
           <span title={t(`ruleKind.${rule.kind}`)} className="w-24 min-w-0 shrink truncate text-muted">
             {t(`ruleKind.${rule.kind}`)}
           </span>
-          <span title={rule.pattern || "*"} className="min-w-32 flex-1 truncate">
+          {/* Wraps rather than truncates: a rule is checked by its exact pattern. */}
+          <span className="min-w-32 flex-1 break-all">
             {rule.pattern || "*"}
           </span>
           <span className="w-16 shrink-0 text-muted">
@@ -624,7 +625,7 @@ function DecisionLog({
             <span className="w-16 shrink-0 text-muted">
               {formatTimestamp(d.at, "time")}
             </span>
-            <span title={`${d.host}:${d.port}`} className="min-w-32 flex-1 truncate text-text">
+            <span className="min-w-32 flex-1 break-all text-text">
               {d.host}:{d.port}
             </span>
             <span className={`w-14 shrink-0 ${ACTION_COLOR[d.action]}`}>

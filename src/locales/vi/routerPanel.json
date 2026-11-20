@@ -17,7 +17,7 @@
   "defaultTunnelPlaceholder": "Chọn một tunnel…",
   "setSystemProxy": "Trỏ proxy hệ thống Windows vào đây trong khi đang chạy",
   "bypassListLabel": "Danh sách bỏ qua (cách nhau bằng dấu chấm phẩy; các mục này không qua router)",
-  "pacDescription": "Được nối qua một script PAC, vì thiết lập proxy <code>socks=</code> thuần của Windows nghĩa là SOCKS4, trong khi listener này dùng SOCKS5.",
+  "pacDescription": "Được nối qua một tệp cấu hình PAC, vì thiết lập proxy <code>socks=</code> thuần của Windows nghĩa là SOCKS4, trong khi cổng này dùng SOCKS5.",
   "pacServing": "Đang phục vụ tại <code>{{url}}</code>",
   "resolveForIpRules": "Phân giải tên máy chủ cục bộ để các quy tắc IP/CIDR có thể khớp",
   "ruleIgnored": "Bỏ qua quy tắc — {{error}}",

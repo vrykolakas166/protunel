@@ -2,7 +2,7 @@ import { useEffect, type KeyboardEvent, type RefObject } from "react";
 
 /** What Tab can land on inside a dialog. */
 const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href], summary, button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 function focusables(panel: HTMLElement): HTMLElement[] {
   return Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
@@ -28,7 +28,9 @@ export function useDialogFocus(panelRef: RefObject<HTMLElement | null>, bodyRef?
     if (!panel.contains(document.activeElement)) {
       const body = bodyRef?.current;
       const items = focusables(panel);
-      const first = (body && items.find((el) => body.contains(el))) ?? items[0];
+      // Not a disclosure toggle (<summary>): it is reachable by Tab, but the
+      // first thing to type into or press is what the dialog is for.
+      const first = (body && items.find((el) => body.contains(el) && el.tagName !== "SUMMARY")) ?? items[0];
       (first ?? panel).focus();
     }
     return () => {

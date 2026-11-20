@@ -13,7 +13,7 @@
   "noForwardsYet": "Chưa có port forward nào.",
   "removeForward": "Xóa forward",
   "remove": "Xóa",
-  "remoteHostPlaceholder": "host từ xa",
+  "remoteHostPlaceholder": "máy chủ đích",
   "remotePortPlaceholder": "cổng từ xa",
   "localPortPlaceholder": "cổng cục bộ",
   "add": "Thêm",
@@ -27,5 +27,9 @@
     "hideForwards": "Ẩn port forward"
   },
   "noMatches": "Không có tunnel nào khớp “{{query}}”.",
-  "clearSearch": "Xoá tìm kiếm"
+  "clearSearch": "Xoá tìm kiếm",
+  "errorKind": {
+    "auth": "Đăng nhập thất bại — kiểm tra mật khẩu hoặc khóa",
+    "unreachable": "Không tới được máy chủ — kiểm tra địa chỉ, cổng hoặc VPN"
+  }
 }

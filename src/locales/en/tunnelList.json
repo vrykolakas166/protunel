@@ -27,5 +27,9 @@
     "hideForwards": "Hide port forwards"
   },
   "noMatches": "No tunnels match “{{query}}”.",
-  "clearSearch": "Clear search"
+  "clearSearch": "Clear search",
+  "errorKind": {
+    "auth": "Sign-in failed — check the password or key",
+    "unreachable": "Can't reach the server — check the address, port or VPN"
+  }
 }

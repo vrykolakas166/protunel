@@ -448,10 +448,15 @@ the feature stops applying.
   copy would revert another window's change on its next save.
 - Dates and times shown to the user go through `format.ts` `formatTimestamp`
   (the app's language, not the OS locale) — never a bare `toLocale*String()`.
-- Vietnamese wording follows one glossary: máy chủ, khóa máy chủ, quy tắc,
-  lưu lượng, nhập/xuất cấu hình, tệp, chủ đề, sao chép, ứng dụng; "Định tuyến
-  ứng dụng" for capture. Kept in English: tunnel, SSH, SOCKS5, port forward,
-  passphrase, regex, wildcard, and in the terminal pane/tab/broadcast/workspace.
+- Vietnamese wording follows one glossary: máy chủ, khóa máy chủ, máy chủ đã
+  tin cậy, quy tắc, lưu lượng, nhập/xuất cấu hình, tệp, chủ đề, sao chép, ứng
+  dụng; capture is "Ứng dụng" on its button and "Ứng dụng qua router" as a
+  title; in the terminal pane = khung, broadcast = gõ đồng thời. Kept in
+  English: tunnel, SSH, SOCKS5, port forward, passphrase, regex, wildcard,
+  tab, workspace, and UI names of other programs (Firefox's settings).
+- SSH errors the user can act on (`simpleMode.ts` `classifyError`: auth,
+  unreachable) get plain words on the tunnel row in Full mode too, with the
+  server's text after them and whole in the tooltip.
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up. The big panels that replace each other
