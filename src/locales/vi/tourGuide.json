@@ -10,7 +10,7 @@
     },
     "add-auth": {
       "title": "Cách xác thực",
-      "body": "Mật khẩu, tệp private key, hoặc SSH agent (Pageant trên Windows, $SSH_AUTH_SOCK trên Linux). Mật khẩu và passphrase của key được lưu trong kho thông tin xác thực của hệ điều hành, không bao giờ lưu trong cơ sở dữ liệu riêng của ứng dụng."
+      "body": "Mật khẩu, tệp khóa riêng (private key), hoặc SSH agent (Pageant trên Windows, $SSH_AUTH_SOCK trên Linux). Mật khẩu và passphrase của khóa được lưu trong kho thông tin xác thực của hệ điều hành, không bao giờ lưu trong cơ sở dữ liệu riêng của ứng dụng."
     },
     "add-socks": {
       "title": "Tunnel cung cấp gì",
@@ -22,7 +22,7 @@
     },
     "list": {
       "title": "Danh sách tunnel",
-      "body": "Bật/tắt tunnel bằng công tắc. Đường nét đứt sẽ chạy hoạt ảnh khi có traffic đi qua. Mở rộng mục Forwards để thêm port forward ngay khi đang chạy — không cần kết nối lại. Các tunnel nhảy qua tunnel khác sẽ được thụt vào dưới tunnel cha; kéo tay nắm bên trái để sắp xếp lại thứ tự."
+      "body": "Bật/tắt tunnel bằng công tắc. Đường nét đứt sẽ chạy hoạt ảnh khi có lưu lượng đi qua. Mở rộng mục Forwards để thêm port forward ngay khi đang chạy — không cần kết nối lại. Các tunnel nhảy qua tunnel khác sẽ được thụt vào dưới tunnel cha; kéo tay nắm bên trái để sắp xếp lại thứ tự."
     },
     "bulk": {
       "title": "Tìm kiếm và thao tác hàng loạt",
@@ -30,39 +30,39 @@
     },
     "router": {
       "title": "Bộ định tuyến proxy (router)",
-      "body": "Với cổng SOCKS riêng cho từng tunnel, bạn phải chọn tunnel cho từng ứng dụng. Router đảo ngược cách làm đó: chỉ một cổng cục bộ duy nhất, và các rule sẽ chọn đích đến cho từng kết nối."
+      "body": "Với cổng SOCKS riêng cho từng tunnel, bạn phải chọn tunnel cho từng ứng dụng. Router đảo ngược cách làm đó: chỉ một cổng cục bộ duy nhất, và các quy tắc sẽ chọn đích đến cho từng kết nối."
     },
     "router-enable": {
       "title": "Bật router",
-      "body": "Router chỉ gắn (bind) một cổng SOCKS5 duy nhất trên 127.0.0.1. Một rule trỏ đến tunnel chưa kết nối sẽ tự động kết nối tunnel đó khi cần, nên bạn có thể để mọi thứ ở trạng thái ngắt kết nối và để traffic tự quay số khi cần."
+      "body": "Router chỉ gắn (bind) một cổng SOCKS5 duy nhất trên 127.0.0.1. Một quy tắc trỏ đến tunnel chưa kết nối sẽ tự động kết nối tunnel đó khi cần, nên bạn có thể để mọi thứ ở trạng thái ngắt kết nối và để traffic tự quay số khi cần."
     },
     "router-rules": {
-      "title": "Rule quyết định traffic đi đâu",
-      "body": "Các rule được xếp thứ tự từ trên xuống, rule đang bật khớp đầu tiên sẽ được áp dụng. Có thể khớp theo wildcard của host, regex, hoặc dải IP, sau đó gửi qua một tunnel, đi thẳng (direct), hoặc chặn lại. Traffic không khớp rule nào sẽ theo hành động mặc định."
+      "title": "Quy tắc quyết định lưu lượng đi đâu",
+      "body": "Các quy tắc được xếp thứ tự từ trên xuống, quy tắc đang bật khớp đầu tiên sẽ được áp dụng. Có thể khớp theo wildcard của host, regex, hoặc dải IP, sau đó gửi qua một tunnel, đi trực tiếp, hoặc chặn lại. Traffic không khớp rule nào sẽ theo hành động mặc định."
     },
     "router-proxy": {
       "title": "Ứng dụng dùng proxy hệ thống",
       "body": "Bật tùy chọn này để Windows trỏ proxy hệ thống về router, nhờ đó trình duyệt và các ứng dụng dùng proxy hệ thống sẽ đi theo quy tắc của bạn mà không cần cấu hình riêng. Ứng dụng bỏ qua proxy hệ thống có thể được khởi chạy qua router trong mục Ứng dụng. Thiết lập này tự hoàn tác khi router dừng — kể cả khi ứng dụng bị crash."
     },
     "router-log": {
-      "title": "Vì sao kết nối đó lại đi direct?",
-      "body": "Mỗi kết nối đi qua proxy đều được ghi log kèm rule đã quyết định nó. Đây là nơi đầu tiên nên kiểm tra khi một rule không hoạt động như bạn mong đợi."
+      "title": "Vì sao kết nối đó lại đi trực tiếp?",
+      "body": "Mỗi kết nối đi qua proxy đều được ghi lại kèm quy tắc đã quyết định nó. Đây là nơi đầu tiên nên kiểm tra khi một quy tắc không hoạt động như bạn mong đợi."
     },
     "capture": {
-      "title": "Capture ứng dụng không có tùy chọn proxy",
-      "body": "Client RDP, công cụ CLI, client cơ sở dữ liệu — hầu hết các ứng dụng này không có chỗ để nhập địa chỉ proxy. Capture sẽ khởi chạy ứng dụng kèm một hook nhỏ được inject vào, nhờ đó traffic của nó vẫn đến được router. Từ đó, rule sẽ quyết định traffic đi đâu, giống như mọi kết nối khác."
+      "title": "Định tuyến ứng dụng không có tùy chọn proxy",
+      "body": "Client RDP, công cụ CLI, client cơ sở dữ liệu — hầu hết các ứng dụng này không có chỗ để nhập địa chỉ proxy. Định tuyến ứng dụng sẽ khởi chạy ứng dụng kèm một hook nhỏ được inject vào, nhờ đó lưu lượng của nó vẫn đến được router. Từ đó, rule sẽ quyết định traffic đi đâu, giống như mọi kết nối khác."
     },
     "capture-launch": {
-      "title": "Khởi chạy một tiến trình được capture",
+      "title": "Khởi chạy một ứng dụng qua router",
       "body": "Trỏ đến một tệp .exe (dùng nút Browse hoặc dán đường dẫn), thêm tham số nếu cần. Các mục đã khởi chạy gần đây sẽ hiện thành các nút khởi chạy nhanh phía trên form."
     },
     "capture-active": {
       "title": "Các tiến trình đang chạy",
-      "body": "Mọi tiến trình được capture sẽ được liệt kê ở đây kèm PID, giúp bạn dừng một tiến trình mà không cần tìm trong Task Manager."
+      "body": "Mọi tiến trình chạy qua router sẽ được liệt kê ở đây kèm PID, giúp bạn dừng một tiến trình mà không cần tìm trong Task Manager."
     },
     "capture-log": {
       "title": "Traffic của nó thực sự đi đâu",
-      "body": "Mỗi kết nối mà tiến trình được capture tạo ra sẽ hiện ở đây kèm quyết định của rule — tương tự log quyết định của router, nhưng chỉ giới hạn trong tiến trình này."
+      "body": "Mỗi kết nối mà tiến trình chạy qua router tạo ra sẽ hiện ở đây kèm quyết định của quy tắc — tương tự nhật ký quyết định của router, nhưng chỉ giới hạn trong tiến trình này."
     },
     "terminal": {
       "title": "Terminal SSH, mở cửa sổ riêng",
@@ -70,19 +70,19 @@
     },
     "preferences": {
       "title": "Giao diện & ngôn ngữ",
-      "body": "Nút bảng màu ở mép phải mở bảng chọn theme; nút quả địa cầu bên cạnh đổi ngôn ngữ. Cả hai áp dụng ngay, không cần bấm Lưu."
+      "body": "Nút bảng màu ở mép phải mở bảng chọn chủ đề; nút quả địa cầu bên cạnh đổi ngôn ngữ. Cả hai áp dụng ngay, không cần bấm Lưu."
     },
     "settings-theme": {
-      "title": "Theme",
-      "body": "Hơn 180 theme màu. Panel trượt ra từ cạnh phải và không làm tối cửa sổ, nên rê chuột lên thẻ là thấy ngay theme trên toàn bộ phía sau; bấm để chọn. \"Theo hệ thống\" tự đổi giữa một theme sáng và một theme tối do bạn chọn. Cửa sổ terminal đổi theo."
+      "title": "Chủ đề",
+      "body": "Hơn 180 chủ đề màu. Panel trượt ra từ cạnh phải và không làm tối cửa sổ, nên rê chuột lên thẻ là thấy ngay chủ đề trên toàn bộ phía sau; bấm để chọn. \"Theo hệ thống\" tự đổi giữa một chủ đề sáng và một chủ đề tối do bạn chọn. Cửa sổ terminal đổi theo."
     },
     "settings-reconnect": {
       "title": "Duy trì kết nối",
-      "body": "Keepalive là cách duy nhất để phát hiện một kết nối đã chết; cơ chế backoff giúp không dồn dập thử lại khi server chập chờn. Cổng cục bộ vẫn được giữ trong lúc mất kết nối để không ứng dụng nào khác chiếm mất."
+      "body": "Keepalive là cách duy nhất để phát hiện một kết nối đã chết; cơ chế backoff giúp không dồn dập thử lại khi máy chủ chập chờn. Cổng cục bộ vẫn được giữ trong lúc mất kết nối để không ứng dụng nào khác chiếm mất."
     },
     "settings-config": {
       "title": "Chuyển sang máy khác",
-      "body": "Trang Sao lưu có hai ô. Xuất ghi tunnel, rule router và cài đặt vào một file; mật khẩu chỉ được đưa vào (đã mã hóa) nếu bạn đặt passphrase. Nhập cho xem trước mọi thay đổi, và hỏi passphrase ngay trước khi bạn xác nhận."
+      "body": "Trang Sao lưu có hai ô. Xuất ghi tunnel, quy tắc router và cài đặt vào một tệp; mật khẩu chỉ được đưa vào (đã mã hóa) nếu bạn đặt passphrase. Nhập cho xem trước mọi thay đổi, và hỏi passphrase ngay trước khi bạn xác nhận."
     },
     "tray": {
       "title": "Ứng dụng nằm ở khay hệ thống",

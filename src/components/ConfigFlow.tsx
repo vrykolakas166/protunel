@@ -9,6 +9,7 @@ import type {
   Tunnel,
   TunnelDisposition,
 } from "../types";
+import { formatTimestamp } from "../format";
 
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text font-mono focus:border-accent focus:outline-none disabled:opacity-50";
@@ -408,7 +409,7 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
               <p className="text-[11px] text-muted">
                 {t("import.writtenBy", {
                   version: preview.appVersion,
-                  date: new Date(preview.exportedAt * 1000).toLocaleString(),
+                  date: formatTimestamp(preview.exportedAt),
                 })}
               </p>
             </div>

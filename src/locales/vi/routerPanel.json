@@ -57,17 +57,17 @@
     "showMore": "Xem thêm"
   },
   "linuxProxy": {
-    "title": "Dùng router cho các app khác",
+    "title": "Dùng router cho các ứng dụng khác",
     "pacHeading": "Trình duyệt (khuyên dùng) — URL cấu hình proxy tự động:",
     "pacFirefox": "Firefox: Settings → Network Settings → <code>Automatic proxy configuration URL</code>, dán URL vào, và tick <code>Proxy DNS when using SOCKS v5</code>.",
-    "pacChromium": "Chromium, Chrome, Edge, Brave — thêm vào lệnh chạy hoặc file .desktop:",
-    "pacNote": "Khi protunel chạy, trình duyệt đi theo rule của router. Khi tắt app, trình duyệt tự kết nối trực tiếp, không cần chuyển lại gì. Trong Firefox, đặt network.proxy.failover_timeout = 10 ở about:config để vào lại trang nội bộ ngay khi bật lại protunel.",
-    "hyprlandHeading": "Mọi app bạn mở (thêm vào ~/.config/hypr/hyprland.conf):",
-    "sessionHeading": "Mọi app chạy từ shell (thêm vào ~/.profile hoặc file rc của shell):",
-    "sessionNote": "Có hiệu lực sau khi đăng nhập lại. Áp dụng cho curl, git, đa số công cụ dòng lệnh, cùng Chromium, Chrome và app Electron ngoài GNOME/KDE. App nào bỏ qua <code>all_proxy</code> vẫn kết nối trực tiếp.",
-    "chromiumHeading": "Hoặc chỉ Chromium / Chrome — thêm vào lệnh chạy hoặc file .desktop:",
+    "pacChromium": "Chromium, Chrome, Edge, Brave — thêm vào lệnh chạy hoặc tệp .desktop:",
+    "pacNote": "Khi protunel chạy, trình duyệt đi theo quy tắc của router. Khi tắt protunel, trình duyệt tự kết nối trực tiếp, không cần chuyển lại gì. Trong Firefox, đặt network.proxy.failover_timeout = 10 ở about:config để vào lại trang nội bộ ngay khi bật lại protunel.",
+    "hyprlandHeading": "Mọi ứng dụng bạn mở (thêm vào ~/.config/hypr/hyprland.conf):",
+    "sessionHeading": "Mọi ứng dụng chạy từ shell (thêm vào ~/.profile hoặc tệp rc của shell):",
+    "sessionNote": "Có hiệu lực sau khi đăng nhập lại. Áp dụng cho curl, git, đa số công cụ dòng lệnh, cùng Chromium, Chrome và ứng dụng Electron ngoài GNOME/KDE. Ứng dụng nào bỏ qua <code>all_proxy</code> vẫn kết nối trực tiếp.",
+    "chromiumHeading": "Hoặc chỉ Chromium / Chrome — thêm vào lệnh chạy hoặc tệp .desktop:",
     "firefoxHeading": "Firefox",
     "firefoxSteps": "Settings → Network Settings → Manual proxy configuration: SOCKS Host <code>127.0.0.1</code>, port <code>{{port}}</code>, SOCKS v5, và tick <code>Proxy DNS when using SOCKS v5</code>.",
-    "failClosed": "App trỏ thẳng vào cổng SOCKS (các dòng bên dưới) sẽ mất mạng khi router tắt — giữ \"Chạy router\" luôn bật và bật khởi động cùng hệ thống trong Cài đặt."
+    "failClosed": "Ứng dụng trỏ thẳng vào cổng SOCKS (các dòng bên dưới) sẽ mất mạng khi router tắt — giữ \"Chạy router\" luôn bật và bật khởi động cùng hệ thống trong Cài đặt."
   }
 }

@@ -2,7 +2,7 @@
   "routerListening": "Router đang nghe trên 127.0.0.1:{{port}}",
   "routerTooltip": "Router proxy theo luật",
   "router": "Router",
-  "captureTooltip": "Chạy ứng dụng với traffic định tuyến qua router",
+  "captureTooltip": "Chạy ứng dụng với lưu lượng định tuyến qua router",
   "capture": "Ứng dụng",
   "terminal": "Terminal",
   "terminalTooltip": "Mở terminal SSH trong cửa sổ mới",
@@ -28,7 +28,7 @@
     "hyprlandNote": "Các dòng bắt đầu bằng exec-once / env đặt vào ~/.config/hypr/hyprland.conf; đăng xuất rồi đăng nhập lại để áp dụng."
   },
   "preferences": "Giao diện",
-  "preferencesTooltip": "Chọn theme",
+  "preferencesTooltip": "Chọn chủ đề",
   "languageTooltip": "Ngôn ngữ",
   "bulkAdded": "Đã thêm {{count}} tunnel.",
   "restartToUpdate": "Khởi động lại để cập nhật",
@@ -56,7 +56,7 @@
     "search": "Tìm kiếm (Ctrl+F)",
     "connecting": "đang kết nối"
   },
-  "importConfig": "Import cấu hình…",
+  "importConfig": "Nhập cấu hình…",
   "connectAllFiltered": "Kết nối cả {{count}} tunnel, kể cả các tunnel đang bị ẩn do tìm kiếm?",
   "disconnectAllFiltered": "Ngắt mọi tunnel đang hoạt động, kể cả các tunnel đang bị ẩn do tìm kiếm?"
 }

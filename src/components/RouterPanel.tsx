@@ -11,7 +11,7 @@ import {
   updateRouterConfig,
   updateRouterRule,
 } from "../api";
-import { formatBytes } from "../format";
+import { formatBytes, formatTimestamp } from "../format";
 import type {
   RouterConfig,
   RouterRule,
@@ -613,7 +613,7 @@ function DecisionLog({
             className="flex items-center gap-2 font-mono text-[11px]"
           >
             <span className="w-16 shrink-0 text-muted">
-              {new Date(d.at * 1000).toLocaleTimeString()}
+              {formatTimestamp(d.at, "time")}
             </span>
             <span className="min-w-0 flex-1 truncate text-text">
               {d.host}:{d.port}

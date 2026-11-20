@@ -34,10 +34,10 @@
     "subtitle": "Bạn sẽ dùng protunel thế nào?",
     "simpleTitle": "Đơn giản",
     "simpleTagline": "Vào trang nội bộ chỉ với một công tắc",
-    "simpleDetail": "Quản trị viên thiết lập sẵn máy chủ và gửi bạn file cấu hình. Bạn chỉ cần bật mạng nội bộ rồi mở trình duyệt, không phải cấu hình gì thêm.",
+    "simpleDetail": "Quản trị viên thiết lập sẵn máy chủ và gửi bạn tệp cấu hình. Bạn chỉ cần bật mạng nội bộ rồi mở trình duyệt, không phải cấu hình gì thêm.",
     "fullTitle": "Đầy đủ",
-    "fullTagline": "Tunnel, rule định tuyến, terminal SSH",
-    "fullDetail": "Tạo và sửa tunnel, port forward, rule router; mở terminal SSH; định tuyến riêng từng ứng dụng.",
+    "fullTagline": "Tunnel, quy tắc định tuyến, terminal SSH",
+    "fullDetail": "Tạo và sửa tunnel, port forward, quy tắc router; mở terminal SSH; định tuyến riêng từng ứng dụng.",
     "roles": {
       "qa": "QA",
       "tester": "Tester",

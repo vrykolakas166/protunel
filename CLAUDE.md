@@ -443,6 +443,12 @@ the feature stops applying.
   every window's copy in step (`App`, `SettingsPanel`, `TerminalApp` all
   listen): saves send the whole `Settings` object, so a window holding a stale
   copy would revert another window's change on its next save.
+- Dates and times shown to the user go through `format.ts` `formatTimestamp`
+  (the app's language, not the OS locale) — never a bare `toLocale*String()`.
+- Vietnamese wording follows one glossary: máy chủ, khóa máy chủ, quy tắc,
+  lưu lượng, nhập/xuất cấu hình, tệp, chủ đề, sao chép, ứng dụng; "Định tuyến
+  ứng dụng" for capture. Kept in English: tunnel, SSH, SOCKS5, port forward,
+  passphrase, regex, wildcard, and in the terminal pane/tab/broadcast/workspace.
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up.

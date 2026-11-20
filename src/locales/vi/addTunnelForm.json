@@ -6,18 +6,18 @@
   },
   "name": "Tên",
   "clonedName": "{{name}} (bản sao)",
-  "host": "Host",
+  "host": "Máy chủ",
   "port": "Cổng",
   "username": "Tên đăng nhập",
   "authentication": "Xác thực",
   "authKind": {
     "password": "Mật khẩu",
-    "privateKey": "Tệp private key",
+    "privateKey": "Tệp khóa riêng (private key)",
     "agent": "SSH agent"
   },
-  "keyFilePath": "Đường dẫn tệp key",
+  "keyFilePath": "Đường dẫn tệp khóa",
   "password": "Mật khẩu",
-  "keyPassphrase": "Passphrase của key (tùy chọn)",
+  "keyPassphrase": "Passphrase của khóa (tùy chọn)",
   "secretPlaceholder": {
     "edit": "Để trống nếu muốn giữ nguyên",
     "clone": "Để trống để dùng lại mật khẩu của bản gốc"
@@ -45,10 +45,10 @@
   "rangeNoPorts": "Không đủ cổng cục bộ trống tính từ cổng SOCKS này.",
   "addMany": "Thêm {{count}}",
   "hostKey": {
-    "label": "Host key đã tin cậy",
+    "label": "Khóa máy chủ đã tin cậy",
     "forget": "Quên",
-    "forgetHint": "Lần kết nối sau sẽ hỏi bạn xác nhận lại key của server.",
-    "forgotten": "Đã quên — lần kết nối sau sẽ hỏi bạn xác nhận key của server."
+    "forgetHint": "Lần kết nối sau sẽ hỏi bạn xác nhận lại khóa của máy chủ.",
+    "forgotten": "Đã quên — lần kết nối sau sẽ hỏi bạn xác nhận khóa của máy chủ."
   },
-  "runningNotice": "Tunnel này đang chạy. Lưu thay đổi về host, đăng nhập, jump hoặc cổng SOCKS sẽ kết nối lại ngay: terminal trên nó sẽ đóng (bấm Enter trong terminal để mở lại), tunnel jump qua nó sẽ tự kết nối lại. Đổi tên thì không kết nối lại."
+  "runningNotice": "Tunnel này đang chạy. Lưu thay đổi về máy chủ, đăng nhập, máy trung gian (jump) hoặc cổng SOCKS sẽ kết nối lại ngay: terminal trên nó sẽ đóng (bấm Enter trong terminal để mở lại), tunnel jump qua nó sẽ tự kết nối lại. Đổi tên thì không kết nối lại."
 }

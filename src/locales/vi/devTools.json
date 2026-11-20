@@ -23,7 +23,7 @@
   "fail": {
     "auth": "Sai mật khẩu",
     "unreachable": "Không tới được",
-    "hostKey": "Đổi host key"
+    "hostKey": "Đổi khóa máy chủ"
   },
-  "noTunnels": "Thêm hoặc import một tunnel trước."
+  "noTunnels": "Thêm hoặc nhập một tunnel trước."
 }

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { forgetKnownHost, listKnownHosts } from "../api";
 import type { KnownHostEntry } from "../types";
 import { Modal } from "./Modal";
+import { formatTimestamp } from "../format";
 
 interface Props {
   onClose: () => void;
@@ -72,7 +73,7 @@ export function KnownHostsPanel({ onClose, onForgotten }: Props) {
                   {entry.algorithm} · {entry.fingerprint}
                 </p>
                 <p className="text-[11px] text-muted">
-                  {t("trustedAt", { date: new Date(entry.trustedAt * 1000).toLocaleString() })}
+                  {t("trustedAt", { date: formatTimestamp(entry.trustedAt) })}
                 </p>
               </li>
             ))}

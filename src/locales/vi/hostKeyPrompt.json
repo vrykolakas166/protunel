@@ -4,11 +4,11 @@
   "reject": "Từ chối",
   "trustAndConnect": "Tin tưởng & Kết nối",
   "changed": {
-    "title": "Host key đã thay đổi",
-    "body": "{{name}} ({{host}}) đưa ra key khác với key bạn đã tin cậy ngày {{date}}, nên protunel đã từ chối kết nối.",
-    "trusted": "Key đã tin cậy",
-    "offered": "Key server đang đưa ra",
-    "warning": "Chuyện này bình thường nếu server vừa cài lại hoặc tạo lại SSH key. Nó cũng có thể là dấu hiệu có kẻ đang chặn kết nối. Nếu không rõ vì sao key đổi, hãy đối chiếu fingerprint mới với người quản trị server trước.",
-    "forget": "Quên key cũ & kết nối lại"
+    "title": "Khóa máy chủ đã thay đổi",
+    "body": "{{name}} ({{host}}) đưa ra khóa khác với khóa bạn đã tin cậy ngày {{date}}, nên protunel đã từ chối kết nối.",
+    "trusted": "Khóa đã tin cậy",
+    "offered": "Khóa máy chủ đang đưa ra",
+    "warning": "Chuyện này bình thường nếu máy chủ vừa cài lại hoặc tạo lại khóa SSH. Nó cũng có thể là dấu hiệu có kẻ đang chặn kết nối. Nếu không rõ vì sao khóa đổi, hãy đối chiếu fingerprint mới với người quản trị server trước.",
+    "forget": "Bỏ tin cậy khóa cũ và kết nối lại"
   }
 }

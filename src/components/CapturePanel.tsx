@@ -11,6 +11,7 @@ import {
 import type { CaptureConnection, CapturedProcess, RecentCapture, RuleAction } from "../types";
 import type { RouterRuntimeState } from "../hooks/useRouterEvents";
 import { Modal } from "./Modal";
+import { formatTimestamp } from "../format";
 
 const inputClass =
   "w-full rounded border border-border bg-bg px-2 py-1.5 text-sm text-text font-mono focus:border-accent focus:outline-none";
@@ -214,7 +215,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
                     {c.label || c.exePath}
                   </span>
                   <span className="shrink-0 text-muted">
-                    {new Date(c.startedAt * 1000).toLocaleTimeString()}
+                    {formatTimestamp(c.startedAt, "time")}
                   </span>
                   <button
                     onClick={() => stop(c.id)}
@@ -241,7 +242,7 @@ export function CapturePanel({ runtime, onClose }: Props) {
                   className="flex items-center gap-2 font-mono text-[11px]"
                 >
                   <span className="w-16 shrink-0 text-muted">
-                    {new Date(c.at * 1000).toLocaleTimeString()}
+                    {formatTimestamp(c.at, "time")}
                   </span>
                   <span className="w-16 shrink-0 text-muted">{t("log.pid", { pid: c.pid })}</span>
                   <span className="min-w-0 flex-1 truncate text-text">

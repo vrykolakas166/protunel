@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { HostKeyMismatch } from "../types";
 import { Modal } from "./Modal";
+import { formatTimestamp } from "../format";
 
 interface Props {
   mismatch: HostKeyMismatch;
@@ -57,7 +58,7 @@ export function HostKeyChangedDialog({ mismatch, tunnelName, onCancel, onForget 
           {t("changed.body", {
             name: tunnelName,
             host: mismatch.keyId,
-            date: new Date(mismatch.trustedAt * 1000).toLocaleDateString(),
+            date: formatTimestamp(mismatch.trustedAt, "date"),
           })}
         </p>
         {fingerprint(t("changed.trusted"), mismatch.knownFingerprint, mismatch.knownAlgorithm, "border-border text-muted")}

@@ -10,9 +10,9 @@
   },
   "hub": {
     "exportTitle": "Xuất",
-    "exportDescription": "Lưu tunnel, luật router và cài đặt ra file JSON — để sao lưu hoặc chuyển sang máy khác.",
+    "exportDescription": "Lưu tunnel, quy tắc router và cài đặt ra tệp JSON — để sao lưu hoặc chuyển sang máy khác.",
     "importTitle": "Nhập",
-    "importDescription": "Nạp file đã xuất trước đó. Bạn sẽ xem trước mọi thay đổi trước khi áp dụng."
+    "importDescription": "Mở tệp cấu hình đã xuất trước đó. Bạn sẽ xem trước mọi thay đổi trước khi áp dụng."
   },
   "export": {
     "heading": "Xuất cấu hình",
@@ -34,19 +34,19 @@
     "secretsOnNote": "Mật khẩu SSH và passphrase khóa được mã hóa bằng mật khẩu này. Không có cách nào khôi phục nếu bạn quên nó.",
     "secretsOffNote": "Đặt mật khẩu để mang theo cả mật khẩu SSH và passphrase khóa (được mã hóa). Để trống thì chúng chỉ nằm trong kho thông tin đăng nhập của máy này.",
     "passphrasePlaceholder": "Mật khẩu (không bắt buộc)",
-    "button": "Chọn file & xuất",
+    "button": "Chọn tệp & xuất",
     "doneWithSecrets": "Đã xuất — có kèm mật khẩu, đã mã hóa",
     "doneNoSecrets": "Đã xuất — không kèm mật khẩu",
     "simpleMode": "Mở ở chế độ Đơn giản",
-    "simpleModeDetail": "Dành cho QA, tester, PO chỉ cần vào trang nội bộ: người import file này chỉ thấy một công tắc Mạng nội bộ thay vì toàn bộ app."
+    "simpleModeDetail": "Dành cho QA, tester, PO chỉ cần vào trang nội bộ: người nhập tệp này chỉ thấy một công tắc Mạng nội bộ thay vì toàn bộ ứng dụng."
   },
   "import": {
     "heading": "Nhập cấu hình",
-    "changeFile": "Đổi file…",
+    "changeFile": "Đổi tệp…",
     "writtenBy": "Xuất bởi v{{version}} lúc {{date}}",
     "whatLabel": "Nội dung nhập",
     "tunnels": "Tunnel",
-    "tunnelsDetail": "{{count}} trong file",
+    "tunnelsDetail": "{{count}} trong tệp",
     "router": "Router",
     "routerDetail": "<replaces>Thay thế</replaces> {{current}} luật hiện có bằng {{incoming}}",
     "settings": "Cài đặt",
@@ -55,15 +55,15 @@
     "knownHostsDetail": "{{count}} — gộp lại; ưu tiên của bạn",
     "conflictWarning": "{{count}} tunnel nhập vào trùng tên với tunnel bạn đã có, nhưng là tunnel khác.",
     "conflictReplace": "Thay thế tunnel của tôi. Nếu bỏ chọn, chúng sẽ vào như bản sao riêng tên \"… (imported)\".",
-    "missingKeysWarning": "{{count}} tunnel dùng file private key không có trên máy này. File export chỉ chứa đường dẫn, không chứa key: hãy chép file key sang rồi sửa lại đường dẫn key của từng tunnel sau khi nhập.",
+    "missingKeysWarning": "{{count}} tunnel dùng tệp khóa riêng không có trên máy này. Tệp xuất chỉ chứa đường dẫn, không chứa khóa: hãy chép tệp khóa sang rồi sửa lại đường dẫn khóa của từng tunnel sau khi nhập.",
     "secrets": {
-      "title": "File này có chứa mật khẩu đã mã hóa",
+      "title": "Tệp này có chứa mật khẩu đã mã hóa",
       "description": "Nhập mật khẩu đã dùng lúc xuất để khôi phục mật khẩu SSH và passphrase khóa. Nếu không, các tunnel được nhập sẽ không kết nối được cho tới khi bạn nhập lại từng mật khẩu.",
       "placeholder": "Mật khẩu đã dùng lúc xuất",
       "skip": "Bỏ qua — nhập không kèm mật khẩu, tôi sẽ tự nhập lại",
       "wrong": "Sai mật khẩu — chưa có gì được nhập. Kiểm tra lại rồi thử lần nữa."
     },
-    "noSecretsNote": "File này không chứa mật khẩu nào — bạn cần nhập lại mật khẩu và passphrase khóa cho các tunnel đã nhập.",
+    "noSecretsNote": "Tệp này không chứa mật khẩu nào — bạn cần nhập lại mật khẩu và passphrase khóa cho các tunnel đã nhập.",
     "needPassphrase": "Nhập mật khẩu, hoặc chọn bỏ qua",
     "cancel": "Hủy",
     "importing": "Đang nhập…",
@@ -71,14 +71,14 @@
     "buttonWithSecrets": "Nhập kèm mật khẩu",
     "buttonWithoutSecrets": "Nhập không kèm mật khẩu",
     "simpleMode": "Chuyển sang chế độ Đơn giản",
-    "simpleModeDetail": "Người export file này đã thiết lập để chỉ dùng vào trang. Có thể đổi lại trong Cài đặt › Chung."
+    "simpleModeDetail": "Người xuất tệp này đã thiết lập để chỉ dùng vào trang. Có thể đổi lại trong Cài đặt › Chung."
   },
   "result": {
     "heading": "Đã nhập xong",
     "done": "Cấu hình của bạn đã được nhập.",
     "added": "tunnel mới",
     "updated": "tunnel cập nhật",
-    "rules": "luật router",
+    "rules": "quy tắc router",
     "secrets": "mật khẩu khôi phục",
     "hosts": "máy chủ đã biết",
     "noSecretsReminder": "Không có mật khẩu nào được khôi phục — hãy mở từng tunnel vừa nhập và nhập lại mật khẩu hoặc passphrase khóa trước khi kết nối.",

@@ -1,6 +1,6 @@
 {
   "title": "Cài đặt",
-  "themeLabel": "Theme",
+  "themeLabel": "Chủ đề",
   "languageLabel": "Ngôn ngữ",
   "language": {
     "en": "English",
@@ -20,34 +20,34 @@
   "upToDate": "Bạn đang dùng bản mới nhất.",
   "checkFailed": "Kiểm tra thất bại: {{error}}",
   "installingUpdate": "Đang cài đặt…",
-  "themeFixed": "Một theme",
+  "themeFixed": "Một chủ đề",
   "themeSystem": "Theo hệ thống",
   "themeSlotLight": "Hệ thống sáng",
   "themeSlotDark": "Hệ thống tối",
-  "themeSearch": "Tìm trong {{count}} theme…",
+  "themeSearch": "Tìm trong {{count}} chủ đề…",
   "themeFilter": {
     "all": "Tất cả",
     "dark": "Tối",
     "light": "Sáng"
   },
-  "themeNoMatch": "Không có theme phù hợp.",
+  "themeNoMatch": "Không có chủ đề phù hợp.",
   "hyprlandAutostart": "Hyprland bỏ qua mục autostart mà tuỳ chọn này ghi ra. Hãy thêm dòng sau vào ~/.config/hypr/hyprland.conf:",
   "updatedByPackageManager": "Cập nhật qua trình quản lý gói của hệ thống.",
   "preferences": {
     "title": "Giao diện",
-    "hint": "Thay đổi áp dụng ngay — rê chuột lên theme để xem trước trên cửa sổ."
+    "hint": "Thay đổi áp dụng ngay — rê chuột lên chủ đề để xem trước trên cửa sổ."
   },
   "themeSlotLive": "đang dùng",
-  "themeSlotLiveHint": "Hệ thống đang ở chế độ này, nên đây là theme đang hiển thị.",
+  "themeSlotLiveHint": "Hệ thống đang ở chế độ này, nên đây là chủ đề đang hiển thị.",
   "themeScheme": {
     "light": "sáng",
     "dark": "tối"
   },
-  "themeDormantHint": "Bạn đang chọn theme cho chế độ {{slot}}, nhưng hệ thống đang ở chế độ {{live}} — theme chọn ở đây chỉ hiện khi hệ thống chuyển.",
-  "themeDormantSaved": "Đã lưu {{name}} cho chế độ {{slot}}. Hệ thống đang ở chế độ {{live}} nên cửa sổ giữ theme hiện tại.",
+  "themeDormantHint": "Bạn đang chọn chủ đề cho chế độ {{slot}}, nhưng hệ thống đang ở chế độ {{live}} — chủ đề chọn ở đây chỉ hiện khi hệ thống chuyển.",
+  "themeDormantSaved": "Đã lưu {{name}} cho chế độ {{slot}}. Hệ thống đang ở chế độ {{live}} nên cửa sổ giữ chủ đề hiện tại.",
   "themeUseAlways": "Dùng ngay",
-  "terminalAppMouse": "Cho chương trình trên server dùng chuột trong terminal",
-  "terminalAppMouseHint": "Cho tmux (mouse on), vim, htop, mc. Khi bật, muốn bôi đen phải giữ Shift khi kéo. Tắt: kéo chuột luôn bôi đen và copy.",
+  "terminalAppMouse": "Cho chương trình trên máy chủ dùng chuột trong terminal",
+  "terminalAppMouseHint": "Cho tmux (mouse on), vim, htop, mc. Khi bật, muốn bôi đen phải giữ Shift khi kéo. Tắt: kéo chuột luôn bôi đen và sao chép.",
   "pages": {
     "general": {
       "title": "Chung",
@@ -63,7 +63,7 @@
     },
     "backup": {
       "title": "Sao lưu",
-      "description": "Chuyển tunnel, rule và cài đặt sang máy khác, hoặc giữ một bản sao."
+      "description": "Chuyển tunnel, quy tắc và cài đặt sang máy khác, hoặc giữ một bản sao."
     },
     "about": {
       "title": "Giới thiệu",
@@ -93,14 +93,14 @@
     "smart": "Gợi ý & thông báo"
   },
   "portRangeHint": "Dải cổng SOCKS cục bộ gợi ý khi thêm tunnel; cổng trống đầu tiên được dùng.",
-  "knownHostsHint": "Các server có host key bạn đã tin cậy. Key bị đổi sẽ được báo ngay trên tunnel.",
+  "knownHostsHint": "Các máy chủ có khóa bạn đã tin cậy. Khóa bị đổi sẽ được báo ngay trên tunnel.",
   "manageKnownHosts": "Quản lý known hosts…",
   "autoReconnectHint": "Thử lại với khoảng chờ tăng dần khi phiên SSH của tunnel bị rớt.",
   "portRange": "Dải cổng SOCKS",
   "terminalWebgl": "Vẽ bằng GPU",
   "terminalWebglHint": "Nhanh hơn khi output nhiều. Tắt để dùng cách hiển thị chữ của hệ thống, thường nét hơn trên màn hình DPI thường.",
   "knownHostsTitle": "Known hosts",
-  "tagline": "SSH tunnel, định tuyến SOCKS và terminal trong một app ở khay hệ thống.",
+  "tagline": "SSH tunnel, định tuyến SOCKS và terminal trong một ứng dụng ở khay hệ thống.",
   "updatesTitle": "Cập nhật protunel",
   "lastChecked": "Lần kiểm tra cuối: {{when}}",
   "neverChecked": "Chưa kiểm tra",
@@ -116,16 +116,16 @@
   "download": "Tải về",
   "autoUpdate": "Tự động tải bản cập nhật",
   "autoUpdateHint": "protunel kiểm tra vài giờ một lần và tải ngầm; bạn tự chọn lúc khởi động lại.",
-  "autoUpdateHintExit": "protunel kiểm tra vài giờ một lần và tải ngầm; bản đã tải được cài khi bạn thoát app, hoặc khởi động lại ngay.",
+  "autoUpdateHintExit": "protunel kiểm tra vài giờ một lần và tải ngầm; bản đã tải được cài khi bạn thoát ứng dụng, hoặc khởi động lại ngay.",
   "mode": {
     "title": "Giao diện",
     "simple": "Đơn giản",
     "full": "Đầy đủ",
     "simpleHint": "Một công tắc Mạng nội bộ; không sửa được tunnel ở chế độ này.",
-    "fullHint": "Đầy đủ tính năng: tunnel, rule router, terminal, capture."
+    "fullHint": "Đầy đủ tính năng: tunnel, quy tắc router, terminal, định tuyến ứng dụng."
   },
-  "terminalSuggestions": "Ghi nhớ lệnh và gợi ý",
-  "terminalSuggestionsHint": "Gợi ý khi gõ: phần còn lại của lệnh bạn đã chạy trên host này (→ để nhận, Ctrl+→ nhận một từ), các lệnh hay chạy khi mở host, và cách sửa sau lỗi thường gặp (Alt+Enter điền vào dòng lệnh, không tự chạy). Chỉ lưu trên máy này, không bao giờ xuất ra file. Bỏ qua các dòng bắt đầu bằng dấu cách hoặc có vẻ chứa mật khẩu.",
+  "terminalSuggestions": "Gợi ý lệnh",
+  "terminalSuggestionsHint": "Ghi nhớ lệnh bạn chạy trên từng máy chủ để gợi ý khi gõ: phần còn lại của lệnh đã chạy trước đó (→ để nhận, Ctrl+→ nhận một từ), các lệnh hay chạy khi mở máy chủ, và cách sửa sau lỗi thường gặp (Alt+Enter điền vào dòng lệnh, không tự chạy). Chỉ lưu trên máy này, không bao giờ xuất ra tệp. Bỏ qua các dòng bắt đầu bằng dấu cách hoặc có vẻ chứa mật khẩu.",
   "terminalLongCommand": "Báo khi lệnh chạy lâu xong",
   "terminalLongCommandHint": "Lệnh chạy ít nhất bấy nhiêu giây sẽ có thông báo khi xong, nếu lúc đó bạn đang không xem nó. Đặt 0 để tắt.",
   "terminalForget": "Quên các lệnh đã ghi nhớ",
