@@ -2,8 +2,10 @@
   "title": "Router proxy",
   "deletedTunnel": "(tunnel đã bị xóa)",
   "status": {
-    "running": "đang lắng nghe tại :{{port}}",
-    "stopped": "đã dừng"
+    "on": "Router đang bật",
+    "off": "Router đang tắt",
+    "onHint": "Ứng dụng trỏ vào địa chỉ này sẽ đi theo các quy tắc bên dưới",
+    "offHint": "Bật để định tuyến ứng dụng theo đích đến"
   },
   "stats": "↑ {{up}} ↓ {{down}} · {{count}} kết nối đang mở",
   "description": "Một cổng SOCKS5 cục bộ duy nhất, chọn tunnel theo từng đích đến. Các quy tắc được xét lần lượt từ trên xuống, quy tắc đang bật đầu tiên khớp sẽ thắng; kết nối không khớp quy tắc nào sẽ dùng hành động mặc định. Trỏ công cụ của bạn tới đây bằng <code>--socks5-hostname</code> để tên máy chủ được đưa vào cho các quy tắc xét.",
@@ -48,7 +50,10 @@
     "addTitle": "Thêm quy tắc",
     "anyPortPlaceholder": "cổng bất kỳ",
     "tunnelPlaceholder": "Chọn tunnel…",
-    "add": "Thêm"
+    "add": "Thêm",
+    "matchLabel": "Khớp theo",
+    "patternLabel": "Mẫu",
+    "sendLabel": "Gửi tới"
   },
   "decisionLog": {
     "title": "Quyết định gần đây",
@@ -69,5 +74,16 @@
     "firefoxHeading": "Firefox",
     "firefoxSteps": "Settings → Network Settings → Manual proxy configuration: SOCKS Host <code>127.0.0.1</code>, port <code>{{port}}</code>, SOCKS v5, và tick <code>Proxy DNS when using SOCKS v5</code>.",
     "failClosed": "Ứng dụng trỏ thẳng vào cổng SOCKS (các dòng bên dưới) sẽ mất mạng khi router tắt — giữ \"Chạy router\" luôn bật và bật khởi động cùng hệ thống trong Cài đặt."
+  },
+  "tabs": {
+    "rules": "Quy tắc",
+    "log": "Nhật ký",
+    "settings": "Cài đặt"
+  },
+  "changeDefault": "Đổi",
+  "about": "Router hoạt động thế nào",
+  "groups": {
+    "router": "Router",
+    "systemProxy": "Proxy hệ thống"
   }
 }

@@ -489,7 +489,8 @@ the feature stops applying.
 - `TourGuide` spotlights whatever carries the matching `data-tour="…"` attribute, so
   moving or renaming one silently drops a step back to a centred card. Steps that
   live inside a modal declare a `panel`, and `App.showTourPanel` opens exactly that
-  one — which is why measurement retries on `requestAnimationFrame`: the target does
+  one (`settings:<page>` and `router:<tab>` also pick the page or tab, since
+  `RouterPanel` shows Rules / Log / Settings one at a time) — which is why measurement retries on `requestAnimationFrame`: the target does
   not exist until the panel it lives in has mounted.
 
 ### Capabilities

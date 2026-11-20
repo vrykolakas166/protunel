@@ -9,7 +9,7 @@ import { HostKeyPrompt } from "./components/HostKeyPrompt";
 import { KnownHostsPanel } from "./components/KnownHostsPanel";
 import { LocalIps } from "./components/LocalIps";
 import { MessageBar } from "./components/MessageBar";
-import { RouterPanel } from "./components/RouterPanel";
+import { RouterPanel, type RouterTab } from "./components/RouterPanel";
 import { Sample1 } from "./components/Sample1";
 import { LanguageMenu } from "./components/LanguageMenu";
 import { PreferencesPanel } from "./components/PreferencesPanel";
@@ -68,7 +68,7 @@ interface Message {
  */
 type Panel =
   | { kind: "form"; form: FormState }
-  | { kind: "router" }
+  | { kind: "router"; tab?: RouterTab }
   | { kind: "capture" }
   | { kind: "preferences" }
   | { kind: "settings"; page: SettingsPage };
@@ -199,7 +199,8 @@ function App() {
     if (target === null) setPanel(null);
     else if (target === "add") setPanel({ kind: "form", form: { mode: "add" } });
     else if (target.startsWith("settings:")) setPanel({ kind: "settings", page: target.slice(9) as SettingsPage });
-    else setPanel({ kind: target as "router" | "capture" | "preferences" });
+    else if (target.startsWith("router:")) setPanel({ kind: "router", tab: target.slice(7) as RouterTab });
+    else setPanel({ kind: target as "capture" | "preferences" });
   }, []);
 
   const finishTour = async () => {
@@ -542,7 +543,9 @@ function App() {
         />
       )}
 
-      {panel?.kind === "router" && <RouterPanel tunnels={tunnels} runtime={router} onClose={closePanel} />}
+      {panel?.kind === "router" && (
+        <RouterPanel tunnels={tunnels} runtime={router} tab={panel.tab} onClose={closePanel} />
+      )}
       {panel?.kind === "capture" && <CapturePanel runtime={router} onClose={closePanel} />}
       {panel?.kind === "preferences" && settings && (
         <PreferencesPanel

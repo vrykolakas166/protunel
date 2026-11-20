@@ -2,8 +2,10 @@
   "title": "Proxy router",
   "deletedTunnel": "(deleted tunnel)",
   "status": {
-    "running": "listening on :{{port}}",
-    "stopped": "stopped"
+    "on": "Router on",
+    "off": "Router off",
+    "onHint": "Apps pointed at this address follow the rules below",
+    "offHint": "Turn on to route apps by destination"
   },
   "stats": "↑ {{up}} ↓ {{down}} · {{count}} open",
   "description": "One local SOCKS5 port that picks a tunnel per destination. Rules are evaluated top to bottom and the first enabled match wins; anything unmatched takes the default action. Point tools at it with <code>--socks5-hostname</code> so the hostname reaches the rules.",
@@ -48,7 +50,10 @@
     "addTitle": "Add rule",
     "anyPortPlaceholder": "any port",
     "tunnelPlaceholder": "Select tunnel…",
-    "add": "Add"
+    "add": "Add",
+    "matchLabel": "Match",
+    "patternLabel": "Pattern",
+    "sendLabel": "Send to"
   },
   "decisionLog": {
     "title": "Recent decisions",
@@ -69,5 +74,16 @@
     "firefoxHeading": "Firefox",
     "firefoxSteps": "Settings → Network Settings → Manual proxy configuration: SOCKS Host <code>127.0.0.1</code>, port <code>{{port}}</code>, SOCKS v5, and tick <code>Proxy DNS when using SOCKS v5</code>.",
     "failClosed": "Apps pointed at the SOCKS port directly (the lines below) lose the network while the router is off — keep \"Run the router\" on, and enable start-with-system in Settings."
+  },
+  "tabs": {
+    "rules": "Rules",
+    "log": "Log",
+    "settings": "Settings"
+  },
+  "changeDefault": "Change",
+  "about": "How the router works",
+  "groups": {
+    "router": "Router",
+    "systemProxy": "System proxy"
   }
 }

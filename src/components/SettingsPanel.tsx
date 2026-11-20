@@ -110,7 +110,7 @@ export function SettingsIcon({ name, size = 15 }: { name: SettingsPage | "settin
 
 // ── Building blocks (Windows 11 settings style: grouped cards of rows) ─────
 
-function Switch({
+export function Switch({
   checked,
   disabled,
   onChange,

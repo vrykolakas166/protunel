@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import type { RouterTab } from "./RouterPanel";
 import { useTranslation } from "react-i18next";
 import { isWindows } from "../platform";
 
@@ -6,7 +7,7 @@ import { isWindows } from "../platform";
 import type { SettingsPage } from "./SettingsPanel";
 
 /** `settings:<page>` opens Settings on that page. */
-export type TourPanel = "add" | "router" | "capture" | "preferences" | `settings:${SettingsPage}`;
+export type TourPanel = "add" | `router:${RouterTab}` | "capture" | "preferences" | `settings:${SettingsPage}`;
 
 interface StepDef {
   /** Key into the `tourGuide` locale namespace's `steps` object. */
@@ -62,23 +63,23 @@ const STEP_DEFS: StepDef[] = [
   {
     id: "router-enable",
     target: "router-enable",
-    panel: "router",
+    panel: "router:rules",
   },
   {
     id: "router-rules",
     target: "router-rules",
-    panel: "router",
+    panel: "router:rules",
   },
   {
     id: "router-proxy",
     windowsOnly: true,
     target: "router-proxy",
-    panel: "router",
+    panel: "router:settings",
   },
   {
     id: "router-log",
     target: "router-log",
-    panel: "router",
+    panel: "router:log",
   },
   {
     id: "capture",
