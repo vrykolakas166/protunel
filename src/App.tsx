@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
 import { AddTunnelForm } from "./components/AddTunnelForm";
@@ -15,6 +15,8 @@ import { LanguageMenu } from "./components/LanguageMenu";
 import { PreferencesPanel } from "./components/PreferencesPanel";
 import { SettingsIcon, SettingsPanel, type SettingsPage } from "./components/SettingsPanel";
 import { useUpdates } from "./hooks/useUpdates";
+import { useRestartToUpdate } from "./hooks/useRestartToUpdate";
+import { useTunnelSearch } from "./hooks/useTunnelSearch";
 import { ReleaseNotes } from "./components/ReleaseNotes";
 import { Modal } from "./components/Modal";
 import { SetupNotice } from "./components/SetupNotice";
@@ -41,7 +43,6 @@ import {
   debugWhatsNew,
   devToolsEnabled,
   forgetKnownHost,
-  installUpdate,
   takeWhatsNew,
   deleteTunnel,
   disconnectAll,
@@ -59,6 +60,17 @@ interface Message {
   text: string;
   isError: boolean;
 }
+
+/**
+ * The panels that replace each other: the add/edit form, Router, Capture,
+ * the theme drawer and Settings. Confirmations and prompts stack on top.
+ */
+type Panel =
+  | { kind: "form"; form: FormState }
+  | { kind: "router" }
+  | { kind: "capture" }
+  | { kind: "preferences" }
+  | { kind: "settings"; page: SettingsPage };
 
 type FormState =
   | { mode: "add" }
@@ -81,27 +93,22 @@ function App() {
   const { t } = useTranslation("app");
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [search, setSearch] = useState("");
-  const [showSearch, setShowSearch] = useState(false);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const [formState, setFormState] = useState<FormState | null>(null);
+  const search = useTunnelSearch(tunnels);
+  /** The one big panel open at a time (the tour relies on that). */
+  const [panel, setPanel] = useState<Panel | null>(null);
+  const closePanel = () => setPanel(null);
+  const formState = panel?.kind === "form" ? panel.form : null;
+  const setFormState = (form: FormState | null) => setPanel(form ? { kind: "form", form } : null);
+  /** Stacks on Settings (opened from its Backup page), so not a `panel`. */
   const [showKnownHosts, setShowKnownHosts] = useState(false);
-  const [showRouter, setShowRouter] = useState(false);
-  const [showCapture, setShowCapture] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("general");
   const { mismatches: hostKeyMismatches, dismiss: dismissMismatch } = useHostKeyMismatches();
   /** Tunnel whose changed host key is being reviewed. */
   const [reviewingKey, setReviewingKey] = useState<Tunnel | null>(null);
-  const [showPreferences, setShowPreferences] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Tunnel | null>(null);
   const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
   const updates = useUpdates();
-  /** Restart-to-update waiting on the user (tunnels are about to drop). */
-  const [confirmRestart, setConfirmRestart] = useState(false);
-  const [restarting, setRestarting] = useState(false);
   /** Release notes of the version this launch just updated to, shown once. */
   const [whatsNew, setWhatsNew] = useState<WhatsNew | null>(null);
   /** Settings › Developer tools exists (debug builds, PROTUNEL_DEVTOOLS=1). */
@@ -135,8 +142,6 @@ function App() {
     takeWhatsNew()
       .then((notes) => notes && setWhatsNew(notes))
       .catch(() => {});
-    // The tray's "Restart to update" lands here so the user can be asked.
-    const unlistenRestart = listen("update-restart-requested", () => setConfirmRestart(true));
     // The terminal window can add and edit hosts too.
     const unlisten = listen("tunnels-changed", () => {
       listTunnels().then(setTunnels).catch(() => {});
@@ -148,53 +153,16 @@ function App() {
     return () => {
       unlisten.then((f) => f());
       unlistenSettings.then((f) => f());
-      unlistenRestart.then((f) => f());
     };
   }, []);
 
-  /** Tunnels that a restart would drop (they come back after it). */
-  const liveTunnels = Object.values(statuses).filter((s) => s.status !== "disconnected" && s.status !== "error").length;
-
-  const restartToUpdate = async () => {
-    setConfirmRestart(false);
-    setRestarting(true);
-    try {
-      await installUpdate(); // only returns if it failed
-    } catch (err) {
-      setMessage({ text: String(err), isError: true });
-    }
-    setRestarting(false);
-  };
-
-  // Nothing running: no reason to ask. Otherwise say what will happen.
-  const requestRestart = () => (liveTunnels > 0 ? setConfirmRestart(true) : void restartToUpdate());
+  const restart = useRestartToUpdate(statuses, (text) => setMessage({ text, isError: true }));
 
   useEffect(() => {
     if (!message) return;
     const timer = setTimeout(() => setMessage(null), 5000);
     return () => clearTimeout(timer);
   }, [message]);
-
-  // Ctrl+F drops the floating search box in; Escape drops it back out and
-  // clears the filter, so a closed box never leaves the list silently
-  // filtered with no visible reason why.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        setShowSearch(true);
-      } else if (e.key === "Escape" && showSearch) {
-        setShowSearch(false);
-        setSearch("");
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [showSearch]);
-
-  useEffect(() => {
-    if (showSearch) searchInputRef.current?.focus();
-  }, [showSearch]);
 
   const refresh = async () => setTunnels(await listTunnels());
 
@@ -213,21 +181,15 @@ function App() {
     }
   };
 
-  const openSettings = (page: SettingsPage) => {
-    setSettingsPage(page);
-    setShowSettings(true);
-  };
+  const openSettings = (page: SettingsPage) => setPanel({ kind: "settings", page });
 
   // The tour drives the modals itself so it can point at things inside them.
   // Everything it opens is closed again when it moves on or ends.
-  const showTourPanel = useCallback((panel: TourPanel | null) => {
-    setShowRouter(panel === "router");
-    setShowCapture(panel === "capture");
-    const settingsTarget = panel?.startsWith("settings:") ? (panel.slice(9) as SettingsPage) : null;
-    if (settingsTarget) setSettingsPage(settingsTarget);
-    setShowSettings(settingsTarget !== null);
-    setShowPreferences(panel === "preferences");
-    setFormState(panel === "add" ? { mode: "add" } : null);
+  const showTourPanel = useCallback((target: TourPanel | null) => {
+    if (target === null) setPanel(null);
+    else if (target === "add") setPanel({ kind: "form", form: { mode: "add" } });
+    else if (target.startsWith("settings:")) setPanel({ kind: "settings", page: target.slice(9) as SettingsPage });
+    else setPanel({ kind: target as "router" | "capture" | "preferences" });
   }, []);
 
   const finishTour = async () => {
@@ -240,14 +202,6 @@ function App() {
       // again next launch.
     }
   };
-
-  const filteredTunnels = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return tunnels;
-    return tunnels.filter(
-      (tun) => tun.name.toLowerCase().includes(query) || tun.host.toLowerCase().includes(query),
-    );
-  }, [tunnels, search]);
 
   const handleToggle = async (tunnel: Tunnel) => {
     const status = statuses[tunnel.id]?.status ?? "disconnected";
@@ -388,7 +342,7 @@ function App() {
               </button>
               <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
               <button
-                onClick={() => setShowRouter(true)}
+                onClick={() => setPanel({ kind: "router" })}
                 data-tour="router"
                 title={
                   router.status === "running"
@@ -410,7 +364,7 @@ function App() {
               </button>
               {isWindows && (
                 <button
-                  onClick={() => setShowCapture(true)}
+                  onClick={() => setPanel({ kind: "capture" })}
                   data-tour="capture"
                   title={t("captureTooltip")}
                   className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
@@ -433,7 +387,7 @@ function App() {
           {/* At the right edge because the drawer slides out of that edge. The
               swatch is the live accent colour, so it follows a hover preview too. */}
           <button
-            onClick={() => setShowPreferences(true)}
+            onClick={() => setPanel({ kind: "preferences" })}
             data-tour="preferences"
             title={t("preferencesTooltip")}
             aria-label={t("preferences")}
@@ -460,8 +414,8 @@ function App() {
 
       <UpdateBanner
         updates={updates}
-        restarting={restarting}
-        onRestart={requestRestart}
+        restarting={restart.restarting}
+        onRestart={restart.request}
         onWhatsNew={() => openSettings("about")}
       />
 
@@ -481,13 +435,10 @@ function App() {
             total={tunnels.length}
             connected={tunnels.filter((tun) => statuses[tun.id]?.status === "connected").length}
             connecting={tunnels.filter((tun) => CONNECTING.includes(statuses[tun.id]?.status ?? "")).length}
-            searching={showSearch}
+            searching={search.open}
             onConnectAll={() => setPendingBulkAction("connect")}
             onDisconnectAll={() => setPendingBulkAction("disconnect")}
-            onSearch={() => {
-              if (showSearch) setSearch("");
-              setShowSearch(!showSearch);
-            }}
+            onSearch={search.toggle}
             onAdd={() => setFormState({ mode: "add" })}
           />
 
@@ -504,22 +455,19 @@ function App() {
               ]);
             }}
           >
-            {showSearch && (
+            {search.open && (
               <div className="search-drop-in absolute inset-x-0 bottom-4 z-10 mx-auto flex w-fit items-center gap-1.5 rounded-lg border border-border bg-surface p-1.5 shadow-lg">
                 <input
-                  ref={searchInputRef}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  ref={search.inputRef}
+                  value={search.query}
+                  onChange={(e) => search.setQuery(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && e.preventDefault()}
                   placeholder={t("searchPlaceholder")}
                   data-tour="search"
                   className="w-48 rounded border border-border bg-bg px-2 py-1.5 text-sm text-text placeholder:text-muted focus:border-accent focus:outline-none"
                 />
                 <button
-                  onClick={() => {
-                    setShowSearch(false);
-                    setSearch("");
-                  }}
+                  onClick={search.close}
                   aria-label={t("closeSearch")}
                   className="rounded p-1 text-muted hover:bg-surface-hover hover:text-text"
                 >
@@ -535,7 +483,7 @@ function App() {
               </div>
             )}
             <TunnelList
-              tunnels={filteredTunnels}
+              tunnels={search.filtered}
               statuses={statuses}
               stats={stats}
               throughput={throughput}
@@ -549,8 +497,8 @@ function App() {
               onReorder={handleReorder}
               hostKeyMismatches={hostKeyMismatches}
               onReviewHostKey={setReviewingKey}
-              searchQuery={search}
-              onClearSearch={() => setSearch("")}
+              searchQuery={search.query}
+              onClearSearch={() => search.setQuery("")}
             />
           </div>
         </>
@@ -573,29 +521,23 @@ function App() {
         />
       )}
 
-      {showRouter && (
-        <RouterPanel
-          tunnels={tunnels}
-          runtime={router}
-          onClose={() => setShowRouter(false)}
-        />
-      )}
-      {showCapture && <CapturePanel runtime={router} onClose={() => setShowCapture(false)} />}
-      {showPreferences && settings && (
+      {panel?.kind === "router" && <RouterPanel tunnels={tunnels} runtime={router} onClose={closePanel} />}
+      {panel?.kind === "capture" && <CapturePanel runtime={router} onClose={closePanel} />}
+      {panel?.kind === "preferences" && settings && (
         <PreferencesPanel
           settings={settings}
-          onClose={() => setShowPreferences(false)}
+          onClose={closePanel}
           onSettingsChange={setSettings}
         />
       )}
-      {showSettings && (
+      {panel?.kind === "settings" && (
         <SettingsPanel
-          page={settingsPage}
+          page={panel.page}
           updates={updates}
-          restarting={restarting}
-          onRestartToUpdate={requestRestart}
+          restarting={restart.restarting}
+          onRestartToUpdate={restart.request}
           tunnels={tunnels}
-          onClose={() => setShowSettings(false)}
+          onClose={closePanel}
           onSettingsChange={setSettings}
           onImported={() => {
             void refresh();
@@ -608,14 +550,14 @@ function App() {
                 tunnels={tunnels}
                 onError={(text) => setMessage({ text, isError: true })}
                 onShowWhatsNew={() => {
-                  setShowSettings(false);
+                  closePanel();
                   debugWhatsNew()
                     .then(setWhatsNew)
                     .catch((err) => setMessage({ text: String(err), isError: true }));
                 }}
                 onAskMode={() => {
                   if (!settings) return;
-                  setShowSettings(false);
+                  closePanel();
                   updateSettings({ ...settings, uiMode: null })
                     .then(setSettings)
                     .catch((err) => setMessage({ text: String(err), isError: true }));
@@ -625,14 +567,14 @@ function App() {
           }
         />
       )}
-      {confirmRestart && (
+      {restart.confirming && (
         <ConfirmDialog
           title={t("restartTitle", { version: updates?.version ?? "" })}
-          message={t("restartMessage", { count: liveTunnels })}
+          message={t("restartMessage", { count: restart.liveTunnels })}
           confirmLabel={t("restartToUpdate")}
           tone="accent"
-          onConfirm={() => void restartToUpdate()}
-          onCancel={() => setConfirmRestart(false)}
+          onConfirm={restart.confirm}
+          onCancel={restart.cancel}
         />
       )}
       {/* Only reached once a mode is chosen, so an update that adds modes asks first. */}
@@ -712,7 +654,7 @@ function App() {
           message={
             // While searching, say that hidden tunnels are included too:
             // the bulk actions never follow the filter.
-            search.trim()
+            search.query.trim()
               ? t(pendingBulkAction === "connect" ? "connectAllFiltered" : "disconnectAllFiltered", {
                   count: tunnels.length,
                 })
