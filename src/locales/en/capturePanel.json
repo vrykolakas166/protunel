@@ -25,5 +25,6 @@
     "heading": "Recent connections",
     "empty": "Nothing routed yet.",
     "pid": "pid {{pid}}"
-  }
+  },
+  "about": "How it works and caveats"
 }

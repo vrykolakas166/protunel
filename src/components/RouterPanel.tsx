@@ -397,7 +397,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
           </p>
           <div className="flex flex-wrap items-center gap-1.5">
             <select
-              className={`${selectClass} w-32`}
+              className={`${selectClass} w-auto max-w-full`}
               value={draft.kind}
               onChange={(e) => setDraft({ ...draft, kind: e.target.value as RuleKind })}
             >
@@ -409,7 +409,7 @@ export function RouterPanel({ tunnels, runtime, onClose }: Props) {
             </select>
 
             <input
-              className={`${inputClass} min-w-0 flex-1`}
+              className={`${inputClass} min-w-40 flex-1`}
               value={draft.pattern}
               placeholder={
                 draft.kind === "all"
@@ -533,15 +533,24 @@ function RuleTable({
             title={rule.enabled ? t("ruleTable.disableRule") : t("ruleTable.enableRule")}
             onChange={() => onToggle(rule)}
           />
-          <span className="w-24 shrink-0 truncate text-muted">{t(`ruleKind.${rule.kind}`)}</span>
-          <span className="min-w-0 flex-1 truncate">{rule.pattern || "*"}</span>
+          {/* The pattern is what you check a rule by: it keeps room, and the
+              side columns shrink first in a narrow window. */}
+          <span title={t(`ruleKind.${rule.kind}`)} className="w-24 min-w-0 shrink truncate text-muted">
+            {t(`ruleKind.${rule.kind}`)}
+          </span>
+          <span title={rule.pattern || "*"} className="min-w-32 flex-1 truncate">
+            {rule.pattern || "*"}
+          </span>
           <span className="w-16 shrink-0 text-muted">
             {rule.port ? `:${rule.port}` : t("ruleTable.anyPort")}
           </span>
           <span className={`w-16 shrink-0 ${ACTION_COLOR[rule.action]}`}>
             {t(`ruleAction.${rule.action}`)}
           </span>
-          <span className="w-32 shrink-0 truncate text-muted">
+          <span
+            title={rule.action === "tunnel" ? tunnelName(rule.targetTunnelId) : undefined}
+            className="w-32 min-w-0 shrink truncate text-muted"
+          >
             {rule.action === "tunnel" ? tunnelName(rule.targetTunnelId) : "—"}
           </span>
           <button
@@ -615,17 +624,20 @@ function DecisionLog({
             <span className="w-16 shrink-0 text-muted">
               {formatTimestamp(d.at, "time")}
             </span>
-            <span className="min-w-0 flex-1 truncate text-text">
+            <span title={`${d.host}:${d.port}`} className="min-w-32 flex-1 truncate text-text">
               {d.host}:{d.port}
             </span>
             <span className={`w-14 shrink-0 ${ACTION_COLOR[d.action]}`}>
               {t(`ruleAction.${d.action}`)}
             </span>
-            <span className="w-28 shrink-0 truncate text-muted">
+            <span
+              title={d.action === "tunnel" ? tunnelName(d.targetTunnelId) : undefined}
+              className="w-28 min-w-0 shrink truncate text-muted"
+            >
               {d.action === "tunnel" ? tunnelName(d.targetTunnelId) : "—"}
             </span>
             <span
-              className={`w-40 shrink-0 truncate ${
+              className={`w-40 min-w-0 shrink truncate ${
                 d.outcome === "ok" ? "text-muted" : "text-coral"
               }`}
               title={d.outcome}

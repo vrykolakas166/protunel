@@ -322,7 +322,8 @@ export function TunnelList({
 
   return (
     // `relative`: rows measure `offsetTop` against the list itself.
-    <ul ref={listRef} className="relative flex flex-1 flex-col gap-2 overflow-y-auto p-4">
+    // pb-16: the last row can scroll clear of the floating "?" tour button.
+    <ul ref={listRef} className="relative flex flex-1 flex-col gap-2 overflow-y-auto p-4 pb-16">
       {rows.map(({ tunnel, depth }) => {
         const children = childrenByParent.get(tunnel.id) ?? [];
         const hasChildren = children.length > 0;
@@ -373,7 +374,7 @@ export function TunnelList({
               marginLeft: depth > 0 ? depth * 20 : undefined,
               borderLeftColor: `color-mix(in srgb, var(--color-accent) ${treeTint}%, transparent)`,
             }}
-            className={`rounded-lg border border-l-2 border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${
+            className={`@container rounded-lg border border-l-2 border-border bg-surface p-3 transition-colors hover:bg-surface-hover ${
               dragId === tunnel.id
                 ? "relative z-10 shadow-lg ring-2 ring-accent"
                 : dragId && drag.current?.block.has(tunnel.id)
@@ -422,7 +423,10 @@ export function TunnelList({
                 </button>
               )}
 
-              <p className="min-w-0 flex-1 truncate font-display text-sm font-medium text-text">
+              <p
+                title={tunnel.name}
+                className="min-w-0 flex-1 truncate font-display text-sm font-medium text-text"
+              >
                 {tunnel.name}
                 {hasChildren && (
                   <span className="ml-1.5 text-[11px] font-normal text-muted">
@@ -453,7 +457,9 @@ export function TunnelList({
                 aria-expanded={expanded.has(tunnel.id)}
                 className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
               >
-                {expanded.has(tunnel.id) ? "▾" : "▸"} {t("forwards")}
+                {expanded.has(tunnel.id) ? "▾" : "▸"}
+                {/* A narrow row keeps the name readable: the label goes, the count stays. */}
+                <span className="hidden @md:inline"> {t("forwards")}</span>
                 {tunnel.forwards.length > 0 ? ` (${tunnel.forwards.length})` : ""}
               </button>
               <button
@@ -517,7 +523,10 @@ export function TunnelList({
                   status={status}
                 />
               </div>
-              <span className="shrink-0 truncate text-muted">
+              <span
+                title={`${tunnel.username}@${tunnel.host}:${tunnel.port}`}
+                className="min-w-0 max-w-[65%] truncate text-muted"
+              >
                 {tunnel.username}@{tunnel.host}:{tunnel.port}
                 {tunnel.jumpTunnelId && (
                   <>
@@ -537,7 +546,7 @@ export function TunnelList({
               </p>
             )}
             {status === "reconnecting" && (
-              <p className="mt-1.5 truncate text-[11px] text-amber">
+              <p title={runtime?.message ?? undefined} className="mt-1.5 truncate text-[11px] text-amber">
                 {t("reconnecting", { message: runtime?.message ?? "" })}
               </p>
             )}
@@ -555,7 +564,11 @@ export function TunnelList({
               </div>
             ) : (
               status === "error" &&
-              runtime?.message && <p className="mt-1.5 truncate text-[11px] text-coral">{runtime.message}</p>
+              runtime?.message && (
+                <p title={runtime.message} className="mt-1.5 truncate text-[11px] text-coral">
+                  {runtime.message}
+                </p>
+              )
             )}
 
             {expanded.has(tunnel.id) && (

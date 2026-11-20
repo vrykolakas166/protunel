@@ -118,11 +118,18 @@ export function CapturePanel({ runtime, onClose }: Props) {
       size="xl"
     >
       <div className="flex flex-col gap-4">
-        <p className="text-xs text-muted">{t("description")}</p>
-
-        <p className="rounded border border-amber/40 bg-amber/10 p-2 text-[11px] text-text">
-          {t("hookWarning")}
-        </p>
+        {/* Read once, then in the way: folded so the launch form comes first.
+            The router-off notice below stays out, it needs acting on. */}
+        <details className="group rounded border border-border bg-bg text-xs">
+          <summary className="flex cursor-pointer select-none items-center gap-1.5 px-3 py-2 font-medium text-muted hover:text-text">
+            <span className="transition-transform group-open:rotate-90">▸</span>
+            {t("about")}
+          </summary>
+          <div className="space-y-2 px-3 pb-3">
+            <p className="text-muted">{t("description")}</p>
+            <p className="rounded border border-amber/40 bg-amber/10 p-2 text-[11px] text-text">{t("hookWarning")}</p>
+          </div>
+        </details>
 
         {!running && (
           <p className="rounded border border-coral/40 bg-coral/10 p-2 text-xs text-text">

@@ -974,7 +974,7 @@ export function TerminalApp() {
                       ))}
                     </div>
                   )}
-                  <ul className="mx-auto mt-4 grid w-fit grid-cols-[auto_auto] items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+                  <ul className="mx-auto mt-4 grid w-fit grid-cols-[auto_auto] items-center gap-x-3 gap-y-1 text-[11px] text-muted [@media(max-height:520px)]:hidden">
                     {SHORTCUTS.map(([keys, label]) => (
                       <li key={keys} className="contents">
                         <span className="text-right">
