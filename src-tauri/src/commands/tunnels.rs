@@ -258,34 +258,6 @@ pub async fn add_port_forward(
 }
 
 #[tauri::command]
-pub async fn update_port_forward(
-    state: State<'_, AppState>,
-    id: Uuid,
-    input: PortForwardInput,
-) -> Result<PortForward, String> {
-    let existing = state
-        .db
-        .get_forward(id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "port forward not found".to_string())?;
-    let forward = PortForward {
-        id,
-        tunnel_id: existing.tunnel_id,
-        remote_host: input.remote_host,
-        remote_port: input.remote_port,
-        local_port: input.local_port,
-    };
-    state.db.update_forward(&forward).map_err(|e| e.to_string())?;
-
-    apply_forward_command(&state, forward.tunnel_id, |resp| ForwardCommand::Remove(id, resp)).await?;
-    let hot_forward = forward.clone();
-    apply_forward_command(&state, forward.tunnel_id, |resp| ForwardCommand::Add(hot_forward, resp))
-        .await?;
-
-    Ok(forward)
-}
-
-#[tauri::command]
 pub async fn delete_port_forward(state: State<'_, AppState>, id: Uuid) -> Result<(), String> {
     let existing = state.db.get_forward(id).map_err(|e| e.to_string())?;
     state.db.delete_forward(id).map_err(|e| e.to_string())?;

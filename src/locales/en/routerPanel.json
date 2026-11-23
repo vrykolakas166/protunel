@@ -15,8 +15,6 @@
   "copy": "copy",
   "copied": "copied",
   "defaultActionLabel": "When nothing matches",
-  "defaultTunnelLabel": "Default tunnel",
-  "defaultTunnelPlaceholder": "Select a tunnel…",
   "setSystemProxy": "Point the Windows system proxy here while running",
   "bypassListLabel": "Bypass list (semicolon-separated; these never reach the router)",
   "pacDescription": "Wired up with a PAC script, because Windows' plain <code>socks=</code> proxy setting means SOCKS4 and this listener speaks SOCKS5.",

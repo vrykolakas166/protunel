@@ -66,9 +66,6 @@ export const setTunnelsGroup = (ids: string[], group: string | null) =>
 export const addPortForward = (tunnelId: string, input: PortForwardInput) =>
   invoke<PortForward>("add_port_forward", { tunnelId, input });
 
-export const updatePortForward = (id: string, input: PortForwardInput) =>
-  invoke<PortForward>("update_port_forward", { id, input });
-
 export const deletePortForward = (id: string) => invoke<void>("delete_port_forward", { id });
 
 export const connectTunnel = (id: string) => invoke<void>("connect_tunnel", { id });

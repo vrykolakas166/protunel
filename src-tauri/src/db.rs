@@ -394,15 +394,6 @@ impl Db {
         Ok(())
     }
 
-    pub fn update_forward(&self, f: &PortForward) -> rusqlite::Result<()> {
-        let conn = self.conn.lock().unwrap();
-        conn.execute(
-            "UPDATE port_forwards SET remote_host=?2, remote_port=?3, local_port=?4 WHERE id=?1",
-            params![f.id.to_string(), f.remote_host, f.remote_port, f.local_port],
-        )?;
-        Ok(())
-    }
-
     pub fn delete_forward(&self, id: Uuid) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute("DELETE FROM port_forwards WHERE id = ?1", params![id.to_string()])?;

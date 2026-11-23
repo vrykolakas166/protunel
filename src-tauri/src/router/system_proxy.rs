@@ -152,7 +152,7 @@ mod platform {
             let data = serde_json::to_string_pretty(&backup).map_err(|e| e.to_string())?;
             // Written before any mutation: if this fails we have not touched the
             // registry yet, and there is nothing to recover.
-            std::fs::write(&path, data)
+            crate::settings::write_atomic(&path, data.as_bytes())
                 .map_err(|e| format!("cannot write system proxy backup: {e}"))?;
         }
 

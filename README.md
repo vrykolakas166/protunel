@@ -49,7 +49,7 @@ Get the latest build from the [Releases page](https://github.com/vrykolakas166/p
 
 - Separate window with tabs and drag-to-split panes.
 - Broadcast typing to many servers at once.
-- Watch many servers in one tab: tile evenly, sync scroll, new-output dots and output/silence alerts.
+- Watch many servers in one tab: tile evenly, sync scroll, new-output markers and output/silence alerts.
 - File panel (SFTP) for the server of the shell you are in: browse, edit, upload and download.
 - Reuses the tunnel's live session.
 
@@ -217,9 +217,9 @@ The panel also has a rule test box and a decision log of recent connections. The
 
 ### DNS
 
-Hostnames are not resolved locally before SSH. The name goes down the tunnel and the server resolves it (`ssh -D` behavior), so internal names work and DNS does not leak. Use `--socks5-hostname`, not `--socks5`.
+Hostnames are still sent unresolved to the SSH server. The name goes down the tunnel and the server resolves it (`ssh -D` behavior), so internal names work. Use `--socks5-hostname`, not `--socks5`.
 
-IP and CIDR rules need an address. The "Resolve hostnames locally so IP/CIDR rules can match" setting (default on) does one lookup per connection, for matching only.
+The router is the one place that resolves locally. IP and CIDR rules need an address, so with the "Resolve hostnames locally so IP/CIDR rules can match" setting on (default), the router does one lookup per connection, only when it reaches such a rule, and only to match it. The connection itself still carries the name. With the setting off, CIDR rules never match hostnames. That lookup goes to your local DNS, so it can reveal the name there.
 
 ## Process capture
 
@@ -237,7 +237,7 @@ A terminal opens a PTY channel on the tunnel's existing session, connecting it a
 - Broadcast: type into every pane of a tab at once, with per-pane opt-out. Multi-line pastes to several servers ask first. It pauses while a pane is zoomed.
 - Several servers in one tab: pick hosts in the sidebar's select mode (or Ctrl/Shift+click), or right-click a jump host for "open with its children", and they open as one tiled tab with broadcast off.
 - Layout menu: tile evenly (Ctrl+Shift+G) or equalize splits, each with a 5 s Undo, and sync scroll, so scrolling one pane scrolls the others to the same place.
-- Watching: a pane you are not looking at gets a dot when new output starts after a quiet spell. Right-click a pane header to be notified on output or after 30 s of silence. Notifications name the host, never the output.
+- Watching: a pane you are not looking at gets a hollow ring when new output starts after a quiet spell. Right-click a pane header to be notified on output or after 30 s of silence; a fired alert shows as an amber bell. Notifications name the host, never the output.
 - Optional dimming of unfocused panes (Settings › Terminal).
 - xterm.js with WebGL rendering. Mouse apps (htop, mc, vim) work.
 - Echo latency and throughput are shown in the footer.

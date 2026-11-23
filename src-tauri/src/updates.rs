@@ -304,7 +304,9 @@ fn save_whats_new(app: &AppHandle, update: &Update) {
 fn write_whats_new(app: &AppHandle, whats_new: &WhatsNew) {
     let Some(path) = data_file(app, "whats_new.json") else { return };
     if let Ok(json) = serde_json::to_string(whats_new) {
-        let _ = std::fs::write(path, json);
+        if let Err(e) = crate::settings::write_atomic(&path, json.as_bytes()) {
+            eprintln!("cannot write whats_new.json: {e}");
+        }
     }
 }
 
@@ -312,7 +314,10 @@ fn write_whats_new(app: &AppHandle, whats_new: &WhatsNew) {
 fn save_resume(app: &AppHandle) {
     let running = app.state::<AppState>().running_ids();
     if let Some(path) = data_file(app, "resume.json") {
-        let _ = std::fs::write(path, serde_json::to_string(&running).unwrap_or_default());
+        let json = serde_json::to_string(&running).unwrap_or_default();
+        if let Err(e) = crate::settings::write_atomic(&path, json.as_bytes()) {
+            eprintln!("cannot write resume.json: {e}");
+        }
     }
 }
 

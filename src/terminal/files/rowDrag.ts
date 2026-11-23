@@ -64,9 +64,9 @@ type LeaveHandler = (info: LeaveInfo) => boolean | void;
 const leaveHandlers = new Set<LeaveHandler>();
 /**
  * Called once when the pointer leaves the window during a row drag, with the
- * dragged rows. A later step registers the OS drag-out here (return true when
- * it takes over); the in-app drag ends either way, so nothing is left behind.
- * Nothing registers it yet.
+ * dragged rows. `FilePanel` registers the OS drag-out here on Windows (return
+ * true when it takes over); the in-app drag ends either way, so nothing is
+ * left behind. Elsewhere nothing registers it.
  */
 export function onRowDragLeaveWindow(handler: LeaveHandler): () => void {
   leaveHandlers.add(handler);

@@ -92,8 +92,6 @@ const DETAILS_MIN = 880;
 const COLUMNS_MIN = 600;
 
 export interface FilePanelHandle {
-  /** Resolves false when the user keeps the panel (unsaved edits → Cancel). */
-  requestClose: () => Promise<boolean>;
   /** Path of the file open in the editor with unsaved changes, else null. */
   unsaved: () => string | null;
   /** Saves that file; false when it could not (conflict, lost session…). */
@@ -655,7 +653,6 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   };
 
   useImperativeHandle(ref, () => ({
-    requestClose: settleDirty,
     unsaved: () => (viewing && viewRef.current?.dirty() ? viewing : null),
     saveUnsaved: async () => (await viewRef.current?.save()) ?? true,
     focus: () => {

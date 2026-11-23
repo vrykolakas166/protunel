@@ -156,7 +156,6 @@ pub fn run() {
             commands::reorder_tunnels,
             commands::set_tunnels_group,
             commands::add_port_forward,
-            commands::update_port_forward,
             commands::delete_port_forward,
             commands::connect_tunnel,
             commands::disconnect_tunnel,

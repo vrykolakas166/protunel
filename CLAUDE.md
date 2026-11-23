@@ -22,7 +22,7 @@ to the `pacman-repo` prerelease (never "latest": the updater reads releases/late
 bun install
 bun run tauri dev        # Vite on :5420 + Rust app, both hot-reloaded
 bun run tauri build      # installers under src-tauri/target/release/bundle/
-bun run bump 0.3.3       # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
+bun run bump 0.3.3       # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock, packaging/arch/PKGBUILD
 ```
 
 Verification (no linter; tests cover the router's rule matcher, SFTP path helpers and a few pure
@@ -213,8 +213,12 @@ Any rule or config mutation must end in `router::apply_change` (or `start`) so t
 compiled snapshot and the live listener stay in step with the database.
 
 **DNS**: neither `ssh/socks.rs` nor the router calls `resolve_dns()`. Hostnames go
-to the SSH server unresolved, which is what makes rule matching and internal-only
-names work. Re-adding a local resolve would break both.
+to the SSH server unresolved, which is what makes internal-only names work.
+The one exception is the router's rule matcher (`rules.rs` `match_target`): when
+`resolve_for_ip_rules` is on (default) and an IP/CIDR rule is reached, the
+hostname is resolved locally once per connection (`resolve_first`) only to test
+that rule; the connection still carries the name. With it off, CIDR rules never
+match hostname targets. Never use the local result as the connect target.
 
 ### Terminal (`src-tauri/src/ssh/terminal.rs`, `src/terminal/`)
 
