@@ -1,8 +1,9 @@
 # Handover: drag files from the file panel to Windows Explorer
 
-For Claude Code / Codex working on a **Windows** machine. The rest of the
-batch is being done on Linux in parallel; this part needs Windows to build,
-run and test.
+For Claude Code / Codex working on a **Windows** machine. All remaining work
+of this batch now continues on Windows, not only drag-out. Do it in the order
+under "Remaining work, in order" at the end of this file; this first part
+details step 3, drag-out.
 
 ## Read first
 
@@ -38,7 +39,7 @@ browser upload fields…).
 - The app stays responsive while gigabytes copy.
 
 Linux is **out of scope**. The user decided Linux gets a "Download to
-folder…" button instead; that is done on the Linux side. On non-Windows
+folder…" button instead (step 2 below). On non-Windows
 builds this feature must not exist: the command returns `"unsupported"`, and
 the UI never starts an OS drag (`src/platform.ts` `isWindows`).
 
@@ -166,7 +167,7 @@ behind `#[cfg(windows)]`. Add the `windows` crate features it needs under
 
 ### Frontend
 
-- **Prerequisite.** The Linux side is adding in-app row drag: drag rows from
+- **Prerequisite.** Step 1 adds in-app row drag: drag rows from
   one panel to another panel, or to a folder row. If that has landed when you
   pull, hook into it. If not, add a minimal pointer drag on rows: start after
   a 4 px move, with a small ghost label "N items", following
@@ -226,9 +227,9 @@ Run the verification commands in `CLAUDE.md`. Have Codex review the diff
 - The README file panel section mentions it (Windows only).
 - No change in behaviour on Linux.
 
-## Context: other decisions in this batch (do not redo)
+## Decisions already taken (do not reopen)
 
-- **Server → server in the app** (Linux side):
+- **Server → server in the app**:
   - Dragging between panels of different servers always **copies**; the
     original is never deleted (no cross-server move in this version).
   - Within one server, a drop moves; Ctrl copies.
@@ -242,3 +243,57 @@ Run the verification commands in `CLAUDE.md`. Have Codex review the diff
     protunel never handles passwords or keys for this.
 - Guide tours and "What's new" are updated once at the end of the batch, not
   per feature.
+
+## Remaining work, in order
+
+Each step: tests for pure helpers in `tests/`, the verification commands from
+`CLAUDE.md`, a read-only Codex review of the diff, then hand over to the user
+to test. Commit only when the user asks.
+
+1. **Server → server in the app (all platforms).**
+   - Pointer drag of selected rows. Start it after a 4 px move; show a ghost
+     label "N items". Never use HTML5 drag-and-drop. Drop targets:
+     - another panel's list, which means its current folder;
+     - a folder row, in any panel including the source panel.
+   - The drop zone names the action: "Copy to user@B → /path" or "Move to …".
+   - Same tunnel: a drop moves (`sftp::rename`); Ctrl copies (`cp -a -n`).
+     Use the existing `files_paste`.
+   - Different tunnel: always a copy, never a move. Also let Copy in A, then
+     Paste in B, work. The module-level `clipboard` in `FilePanel.tsx` is
+     limited to one tunnel today (`canPaste`). Keep Cut limited to the same
+     tunnel.
+   - Transfer, chosen automatically with no prompt:
+     - **Direct.** Run a probe on A over `exec`:
+       `ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=yes -p PORT user@B true`.
+       Use B's host, port and user as protunel knows them, and pass every
+       argument through `sftp::quote`. Cache the result per A→B pair for the
+       session. When the probe passes, run the copy on A:
+       `rsync -a --ignore-existing --info=progress2` when A has rsync (parse
+       its progress), otherwise `scp -rp` (no progress). Cancel kills the
+       remote process and closes the channel. After scp is stopped, remove
+       its partial target.
+     - **Relay.** When the probe fails, Rust reads from A and writes to B with
+       the existing part-file and rename scheme. Progress and Cancel work.
+       Existing names are skipped, with Overwrite offered in the queue.
+       - The queue row shows "via this computer · speed".
+       - Show a hint, "Faster: let A log in to B", with a button. The button
+         types `ssh-copy-id -p PORT user@B` into A's shell. If A has no key
+         yet, prefix it with `ssh-keygen -t ed25519`. The button must **not
+         press Enter**: use `terminalWrite` to that pane only.
+       - protunel never sees passwords or keys for this.
+   - Queue rows show "A → B" and which route the copy took. New directions
+     go into `sftp::Direction` and `src/types.ts`.
+2. **"Download to folder…"** next to Download. A Rust-side folder dialog
+   (like `files_pick_upload`); remember the last folder chosen. This is the
+   only drag-out substitute on Linux.
+3. **Drag-out to Explorer (Windows):** this document, above.
+4. **End of batch, once:** update both guided tours (`TourGuide` main window,
+   `TerminalTour`) and "What's new". Cover:
+   - groups;
+   - Ctrl+click on a group header collapses or expands every group;
+   - WinSCP import (Settings › Backup);
+   - the file panel: header folder icon `data-tour="term-files"`,
+     Ctrl+Shift+O, one per shell, snap/resize/maximize, server-to-server
+     copy, drag-out.
+5. **Known gap, ask the user:** closing a pane whose file panel has an
+   unsaved editor draft discards the draft without a prompt.
