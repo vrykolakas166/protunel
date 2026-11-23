@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use russh::client::{self, AuthResult};
 use russh::keys::agent::client::{AgentClient, AgentStream};
 use russh::keys::agent::AgentIdentity;
-use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
 use tokio::net::{TcpListener, TcpStream};
@@ -69,7 +69,14 @@ pub struct SshHandler {
 impl client::Handler for SshHandler {
     type Error = russh::Error;
 
-    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool, Self::Error> {
+    async fn check_server_key(
+        &mut self,
+        server_key: &PublicKeyOrCertificate,
+    ) -> Result<bool, Self::Error> {
+        // TOFU and direct copies pin raw host keys. Keep certificate trust disabled.
+        let PublicKeyOrCertificate::PublicKey { key: server_public_key, .. } = server_key else {
+            return Ok(false);
+        };
         let key_id = format!("{}:{}", self.host, self.port);
         let openssh_key = server_public_key.to_openssh().unwrap_or_default();
 
@@ -206,7 +213,9 @@ fn is_fatal(error: &str) -> bool {
         "Unknown server key",
         "Wrong server signature",
         "tunnel cannot jump through itself",
-        "No common key exchange algorithm",
+        // russh: "No common {kind:?} algorithm - ours: …" for Kex, Key,
+        // Cipher, Mac or Compression: none of them improves on a retry.
+        "No common ",
     ];
     FATAL.iter().any(|f| error.contains(f))
 }

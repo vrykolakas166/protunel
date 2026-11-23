@@ -29,7 +29,7 @@ uuid = { version = "1.24.0", features = ["v4", "serde"] }
 tokio = { version = "1.53.1", features = ["full"] }
 tokio-util = "0.7.19"
 thiserror = "2.0.19"
-russh = { version = "0.62.4", default-features = false, features = ["ring", "flate2", "rsa"] }
+russh = { version = "0.65.4", default-features = false, features = ["ring", "flate2", "rsa"] }
 fast-socks5 = "1.0.0"
 log = "0.4.33"
 anyhow = "1.0.104"
@@ -42,16 +42,14 @@ tauri-plugin-clipboard-manager = "2.3.2"
 regex = "1.13.1"
 ipnet = "2.12.1"
 tauri-plugin-dialog = "2"
-# Config-export encryption. All of these were already in Cargo.lock as
-# transitive dependencies, so promoting them costs no new downloads. `argon2` is
-# pinned exactly: a silent bump of the KDF would make existing export files
-# undecryptable.
+# Config-export encryption. Keep the Argon2 parameters in config_io.rs compatible
+# with existing exports when upgrading this dependency.
 aes-gcm = "0.11.0"
-argon2 = "=0.6.0-rc.8"
+argon2 = "=0.6.0"
 base64 = "0.22.1"
 rand = "0.9.5"
 zeroize = { version = "1.9.0", features = ["derive"] }
-russh-sftp = "4"
+russh-sftp = "4.0.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"

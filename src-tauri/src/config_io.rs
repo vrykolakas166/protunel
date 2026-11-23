@@ -81,11 +81,15 @@ fn random_bytes(len: usize) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-/// Argon2id, default parameters, into a 32-byte AES key. The derived key is
-/// zeroized by the caller once the cipher has been built.
+/// Derive a 32-byte AES key using the original export format's Argon2id parameters.
+/// The caller zeroizes the derived key once the cipher has been built.
 fn derive_key(passphrase: &str, salt: &[u8]) -> Result<[u8; 32], String> {
+    use argon2::{Algorithm, Argon2, Params, Version};
+
     let mut key = [0u8; 32];
-    argon2::Argon2::default()
+    let params = Params::new(19 * 1024, 2, 1, Some(key.len()))
+        .map_err(|e| format!("key derivation failed: {e}"))?;
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
         .hash_password_into(passphrase.as_bytes(), salt, &mut key)
         .map_err(|e| format!("key derivation failed: {e}"))?;
     Ok(key)
@@ -606,6 +610,17 @@ mod tests {
         let sealed = seal(b"{\"a\":\"secret\"}", "correct horse").unwrap();
         let opened = open(&sealed, "correct horse").unwrap();
         assert_eq!(opened, b"{\"a\":\"secret\"}");
+    }
+
+    #[test]
+    fn opens_export_with_original_argon2_parameters() {
+        let sealed = SealedSecrets {
+            kdf: "argon2id".into(),
+            salt: "MDEyMzQ1Njc4OWFiY2RlZg==".into(),
+            nonce: "MDEyMzQ1Njc4OWFi".into(),
+            ciphertext: "i6H7RECXEBOWTIATU2mL1ORprVjl/jF5qm2zNEoW".into(),
+        };
+        assert_eq!(open(&sealed, "legacy-test").unwrap(), b"legacy secrets");
     }
 
     #[test]
