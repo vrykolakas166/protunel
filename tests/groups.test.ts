@@ -1,5 +1,5 @@
-import { expect, test } from "bun:test";
-import { canonicalGroup, groupNames, groupSections, hasGroups } from "../src/groups";
+import { describe, expect, test } from "bun:test";
+import { canonicalGroup, groupNames, groupSections, hasGroups, toggleSections } from "../src/groups";
 
 const t = (name: string, group?: string | null) => ({ name, group: group ?? null });
 
@@ -57,4 +57,16 @@ test("host tree: collapsed groups hide rows; a search ignores that and drops emp
 
 test("host tree without groups has no sections", () => {
   expect(hostTree([host("a", null)], "", new Set(), new Set()).sections).toBeNull();
+});
+
+describe("toggleSections", () => {
+  test("flips one section", () => {
+    expect([...toggleSections(new Set(["a"]), "A")]).toEqual([]);
+    expect([...toggleSections(new Set(), null)]).toEqual([""]);
+  });
+  test("with all, every section follows the clicked one", () => {
+    const all = ["A", "B", null];
+    expect([...toggleSections(new Set(["b"]), "A", all)].sort()).toEqual(["", "a", "b"]);
+    expect([...toggleSections(new Set(["a", "b"]), "A", all)]).toEqual([]);
+  });
 });

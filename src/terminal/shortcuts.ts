@@ -10,6 +10,7 @@ export type AppShortcut =
   | { kind: "zoom" }
   | { kind: "broadcast" }
   | { kind: "tile" }
+  | { kind: "files" }
   | { kind: "focusPane"; dir: Direction };
 
 const ARROWS: Record<string, Direction> = {
@@ -52,6 +53,8 @@ export function matchShortcut(e: KeyboardEvent): AppShortcut | null {
         return { kind: "broadcast" };
       case "g":
         return { kind: "tile" };
+      case "o":
+        return { kind: "files" };
     }
   }
   if (key === "tab") return { kind: "cycleTab", delta: e.shiftKey ? -1 : 1 };

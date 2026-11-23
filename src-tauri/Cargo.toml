@@ -51,6 +51,7 @@ argon2 = "=0.6.0-rc.8"
 base64 = "0.22.1"
 rand = "0.9.5"
 zeroize = { version = "1.9.0", features = ["derive"] }
+russh-sftp = "4"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"

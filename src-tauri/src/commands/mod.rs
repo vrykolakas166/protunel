@@ -15,6 +15,7 @@ mod dev_tools;
 mod router_rules;
 mod app_settings;
 mod process_capture;
+mod files;
 
 pub use tunnels::*;
 pub use connection::*;
@@ -25,6 +26,7 @@ pub use dev_tools::*;
 pub use router_rules::*;
 pub use app_settings::*;
 pub use process_capture::*;
+pub use files::*;
 
 /// Rebuilds the tray and tells every window to reload its tunnel list. Call
 /// after any change to the set of tunnels or their names/hosts.

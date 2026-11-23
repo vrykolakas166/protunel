@@ -67,6 +67,7 @@ pub fn run() {
             let db = db::Db::open(&data_dir.join("protunel.db"))?;
             app.manage(AppState::new(&data_dir, db));
             app.manage(updates::Updates::default());
+            app.manage(ssh::sftp::Files::default());
             tray::setup(app.handle())?;
             if let Some(main) = app.get_webview_window("main") {
                 commands::harden_webview(&main);
@@ -199,6 +200,27 @@ pub fn run() {
             commands::terminal_write_many,
             commands::terminal_resize,
             commands::terminal_close,
+            commands::files_home,
+            commands::files_list,
+            commands::files_properties,
+            commands::files_dir_size,
+            commands::files_create,
+            commands::files_rename,
+            commands::files_count,
+            commands::files_delete,
+            commands::files_paste,
+            commands::files_read_text,
+            commands::files_read_image,
+            commands::files_write_text,
+            commands::files_upload,
+            commands::files_pick_upload,
+            commands::files_download,
+            commands::files_open_local,
+            commands::files_transfers,
+            commands::files_cancel_transfer,
+            commands::files_clear_transfers,
+            commands::files_reveal,
+            commands::files_save_draft,
             config_io::export_config,
             config_io::pick_import_file,
             config_io::preview_import,

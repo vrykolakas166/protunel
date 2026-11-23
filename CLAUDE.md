@@ -25,7 +25,7 @@ bun run tauri build      # installers under src-tauri/target/release/bundle/
 bun run bump 0.3.3       # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock
 ```
 
-Verification (no linter; tests cover the router's rule matcher and a few pure
+Verification (no linter; tests cover the router's rule matcher, SFTP path helpers and a few pure
 frontend helpers in `tests/`):
 
 ```sh
@@ -123,7 +123,7 @@ A command touches four places and all four must agree:
 
 1. `src-tauri/src/commands/<subject>.rs` (tunnels, connection, host_keys,
    terminal_window, router_rules, app_settings, app_update, process_capture,
-   dev_tools; re-exported by `commands/mod.rs`, so it is still
+   dev_tools, files; re-exported by `commands/mod.rs`, so it is still
    `commands::name`) — `#[tauri::command]` fn; one that can fail returns
    `Result<T, String>` (plain getters return `T`)
 2. `src-tauri/src/lib.rs` — register in `invoke_handler![...]`
@@ -331,6 +331,63 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   one the save button shows a dot and "Save changes" writes the open linked
   tabs back (a closed one leaves the workspace). Local only: never
   add it to config export — commands can carry secrets.
+
+### File panel (`src-tauri/src/ssh/sftp.rs`, `commands/files.rs`, `src/terminal/files/`)
+
+SFTP for one shell at a time, in a non-modal panel over the terminal window
+(header folder icon, toolbar button, Ctrl+Shift+O). No side-by-side view and
+no dropping files on a shell — only on the panel, which names the target.
+
+- Backend: an `sftp` subsystem channel on the tunnel's live session, cached
+  per tunnel in `sftp::Files` (managed state) and reused only while it belongs
+  to that same `client::Handle` (a reconnect gets a fresh one); `settle`
+  drops it after an error on a dead session. Commands never connect: no
+  session → `"not-connected"`. Error codes the UI translates are bare words
+  (`files.err.*`). Server-side copy and folder size are `exec` (`cp -a`, `du
+  -sk`) with `sftp::quote` (POSIX single quotes); SFTP has no copy.
+- Bytes stay Rust↔disk: transfers are Rust jobs (`start_upload` /
+  `start_download`, 3 at a time, `file-transfer` events, `files_transfers`
+  seeds a reload) writing `*.protunel-part` and renaming when complete;
+  downloads go to Downloads and never overwrite (`name (1).ext`); uploads skip
+  an existing name unless asked to overwrite. Only text the user opens (≤2 MB,
+  or the last 1 MB) and images (≤10 MB) reach the webview.
+- Saving edits (`write_text`) refuses with `"conflict"` when size/mtime moved
+  since it was read; it writes a temp file with the original's mode/owner and
+  posix-renames it, falling back to an in-place write when that would change
+  the file (symlink, owner it can't set, no posix-rename).
+- Delete walks the tree over SFTP, never following symlinks; the confirmation
+  names host + paths, counts (`files_count`) and asks for the name typed at
+  ≥100 items. Cut = rename; a name clash is skipped, never overwritten
+  (copy into the same folder makes "name (copy)").
+- Panels: one per shell (up to `MAX_FILE_PANELS`, the least recently used
+  gives way), each owned by the pane that opened it; Ctrl+Shift+O in a shell
+  opens or focuses that shell's panel. `filesOpen` (opening order) is also the
+  DOM order and never changes — moving a node blurs what has focus in it —
+  while `filesStack` gives the z-order (the last touched is on top, and takes
+  OS drops). Hidden, not closed, while its pane is in another tab or zoomed
+  away; closed with the pane (unsaved edits are lost then). Rendered outside
+  `PaneLayer` (fixed, role="dialog", no aria-modal), so moving one never
+  re-renders a terminal. Geometry (`files/geometry.ts`, pure,
+  `tests/filePanel.test.ts`): snapped to a corner of its pane (follows splits,
+  zoom, resizes), free (fractions of the window) or maximized (header button
+  or double-click); 16 px engage / 24 px release; drag by transform,
+  committed on release; grips on all edges and corners, a snap survives only
+  a grip away from its corner; default 460×320, min 360×280, max the window.
+  Layout by panel width: <600 name+size only, ≥880 details sidebar.
+- The virtual list re-reads its scroll position and height on every mount
+  (it unmounts while a file is open, and behind narrow details) and on every
+  resize (a hidden tab comes back from size 0): a stale `scrollTop` draws the
+  rows off screen and the folder looks empty.
+- Keys: a panel keeps its keys — window shortcuts other than Ctrl+Shift+O
+  are ignored while focus is inside `[data-file-panel]` (its value is the
+  owner pane id); Ctrl+Shift+O there goes back to that shell. Esc unwinds one layer (dialog, name bar, editor,
+  details, filter, selection) and closes last. Window focus does not yank
+  focus back to the shell when the panel had it.
+- Start folder: the pane's last panel folder, else `PaneHandle.cwd()` (OSC 7
+  when the shell reports it, else a `user@host:path$` prompt on the cursor
+  line; `files/paths.ts`), validated by listing it, else the login folder.
+- Editor: CodeMirror 6, `import("./editor")` on first use, colours from the
+  theme's CSS variables.
 
 ### Simple mode (`settings.ui_mode`, `access.rs`, `SimpleHome`)
 
@@ -567,7 +624,7 @@ src-tauri/src/
   commands/          every #[tauri::command], one file per subject; the IPC surface
   tunnel.rs          AppState: running tunnels, statuses, router state
   ssh/               per-tunnel supervisor, SOCKS5 + local forwards, TOFU,
-                     terminal PTY channels
+                     terminal PTY channels, SFTP (file panel)
   router/            rule matcher, listener, Windows system proxy, PAC
   capture/           process launch + hook-DLL injection
   db.rs              SQLite: tunnels, forwards, router rules

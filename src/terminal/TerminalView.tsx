@@ -18,6 +18,7 @@ import { SmartSession, type Chip } from "./smartSession";
 import { SuggestionChip, TabHint } from "./SuggestionChip";
 import { OutputClock } from "./paneWatch";
 import type { ITheme } from "@xterm/xterm";
+import { cwdFromOsc7, cwdFromPrompt } from "./files/paths";
 
 export type SessionPhase = "connecting" | "open" | "closed";
 
@@ -30,6 +31,12 @@ export interface PaneHandle {
    * (vim, htop), which has no history.
    */
   scrollFromBottom: (fromBottom: number) => void;
+  /**
+   * The shell's directory, for the file panel: what the shell last reported
+   * by OSC 7, else read off a `user@host:path$` prompt on the cursor line.
+   * May start with `~`. Null when unknown; the panel validates it over SFTP.
+   */
+  cwd: () => string | null;
 }
 
 /** Keys with which xterm scrolls its own history (with Shift). */
@@ -498,8 +505,21 @@ export function TerminalView({
     };
     container.addEventListener("wheel", onWheel, { capture: true, passive: true });
     container.addEventListener("pointerdown", onPointerDown, true);
+    // OSC 7 (file://host/path): shells with integration report every cd.
+    let reportedCwd: string | null = null;
+    const osc7 = term.parser.registerOscHandler(7, (data) => {
+      reportedCwd = cwdFromOsc7(data) ?? reportedCwd;
+      return true;
+    });
     callbacks.current.onHandle({
       focus: () => term.focus(),
+      cwd: () => {
+        if (reportedCwd) return reportedCwd;
+        const buffer = term.buffer.active;
+        if (buffer.type === "alternate") return null;
+        const line = buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true) ?? "";
+        return cwdFromPrompt(line);
+      },
       scrollFromBottom: (lines) => {
         const buffer = term.buffer.active;
         if (buffer.type === "alternate") return;
@@ -605,6 +625,7 @@ export function TerminalView({
       endScrollbarDrag();
       cancelAnimationFrame(intentFrame);
       callbacks.current.onHandle(null);
+      osc7.dispose();
       window.clearTimeout(resizeTimer);
       if (terminalId) void terminalClose(terminalId);
       gateHandlers.forEach((handler) => handler.dispose());

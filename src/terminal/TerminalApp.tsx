@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   addTunnel,
   getSettings,
@@ -21,7 +22,7 @@ import { useTheme } from "../themes";
 import { useTunnelEvents } from "../hooks/useTunnelEvents";
 import type { Settings, Tunnel, TunnelInput, Workspace } from "../types";
 import { HostTree, hostTree, subtreeIds, type HostRow, type HostSection } from "./HostTree";
-import { loadCollapsedGroups, saveCollapsedGroups, sectionKey } from "../groups";
+import { loadCollapsedGroups, saveCollapsedGroups, toggleSections } from "../groups";
 import {
   MAX_PANES,
   computeLayout,
@@ -55,6 +56,10 @@ import type { PaneHandle, SessionInfo } from "./TerminalView";
 import { mayNotify, type WatchMode } from "./paneWatch";
 import { markTerminalTourSeen, onTerminalTourRequest, shouldShowTerminalTour, TerminalTour } from "./TerminalTour";
 import { useDragDrop } from "./useDragDrop";
+import { FilePanel, type FilePanelHandle, type PaneFiles } from "./files/FilePanel";
+import { DEFAULT_SIZE, maximizedBox, paneBox, place, type Box, type Placement, type Size } from "./files/geometry";
+import { TransferList } from "./files/TransferList";
+import { isActive, overallProgress, useTransfers } from "./files/useTransfers";
 
 const SHORTCUTS = [
   ["Ctrl+Shift+K", "kbSearch"],
@@ -68,6 +73,7 @@ const SHORTCUTS = [
   ["Ctrl+Shift+B", "kbBroadcast"],
   ["Ctrl+Shift+G", "kbTile"],
   ["Ctrl+Shift+W", "kbClosePane"],
+  ["Ctrl+Shift+O", "kbFiles"],
   ["Ctrl+Shift+C", "kbCopy"],
   ["Ctrl+Shift+V", "kbPaste"],
 ] as const;
@@ -142,6 +148,86 @@ function pruneTabs(tabs: Tab[], byId: Record<string, Tunnel>): Tab[] {
     }
   }
   return next;
+}
+
+interface FilesGeometry {
+  placement: Placement;
+  size: Size;
+  maximized?: boolean;
+}
+/**
+ * A new panel's geometry: the last size used, snapped to its own shell's
+ * corner (the last snapped corner) — never another panel's free spot,
+ * which would stack it exactly on top of that one.
+ */
+function firstGeometry(last: FilesGeometry): FilesGeometry {
+  return {
+    placement: last.placement.kind === "snap" ? last.placement : { kind: "snap", corner: "br" },
+    size: last.size,
+  };
+}
+
+/** Open file panels at once; opening one more closes the oldest. */
+const MAX_FILE_PANELS = 8;
+const FILES_GEOMETRY_KEY = "protunel.files.geometry";
+/** The file panel's last place and size, for a pane that has none yet. */
+function loadFilesGeometry(): FilesGeometry {
+  try {
+    const raw = localStorage.getItem(FILES_GEOMETRY_KEY);
+    const geo = raw ? (JSON.parse(raw) as FilesGeometry) : null;
+    // 760×520 was the first default, found too big: take the new one.
+    if (geo?.placement?.kind && geo.size?.w > 0 && geo.size?.h > 0) {
+      return geo.size.w === 760 && geo.size.h === 520 ? { ...geo, size: DEFAULT_SIZE } : geo;
+    }
+  } catch {
+    // Unreadable or blocked: the default.
+  }
+  return { placement: { kind: "snap", corner: "br" }, size: DEFAULT_SIZE };
+}
+function saveFilesGeometry(geo: FilesGeometry) {
+  try {
+    localStorage.setItem(FILES_GEOMETRY_KEY, JSON.stringify(geo));
+  } catch {
+    // Only a convenience.
+  }
+}
+
+/** Footer readout of transfers while the file panel is closed. */
+function TransfersChip({
+  transfers,
+  open,
+  onToggle,
+  list,
+}: {
+  transfers: import("../types").FileTransfer[];
+  open: boolean;
+  onToggle: () => void;
+  list: React.ReactNode;
+}) {
+  const { t } = useTranslation("terminal");
+  const running = transfers.filter(isActive);
+  const progress = overallProgress(transfers);
+  const failed = transfers.some((x) => x.state === "failed");
+  return (
+    <>
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        title={t("files.queue.title")}
+        className={`flex shrink-0 items-center gap-1 rounded px-1.5 font-sans hover:bg-surface-hover ${
+          running.length > 0 ? "text-accent" : failed ? "text-coral" : "text-muted hover:text-text"
+        }`}
+      >
+        <span aria-hidden="true">⇅</span>
+        {running.length > 0 ? `${running.length} · ${Math.round((progress ?? 0) * 100)}%` : t("files.queue.title")}
+      </button>
+      {open && (
+        <div className="absolute bottom-full left-0 z-40 mb-1 w-[26rem] max-w-[calc(100vw-2rem)] overflow-hidden whitespace-normal rounded-md border border-border bg-surface font-sans shadow-xl">
+          {list}
+        </div>
+      )}
+    </>
+  );
 }
 
 export function TerminalApp() {
@@ -337,6 +423,144 @@ export function TerminalApp() {
     refocus();
   };
 
+  // ---- File panel: one per window, bound to the pane that opened it ------
+  const { transfers, clearFinished } = useTransfers();
+  /** Open file panels by pane id, in opening order (also their DOM order,
+   * which never changes: moving a node would blur what has focus in it). */
+  const [filesOpen, setFilesOpen] = useState<string[]>([]);
+  /** The same panels bottom to top: the last one touched is on top. */
+  const [filesStack, setFilesStack] = useState<string[]>([]);
+  const filesRefs = useRef(new Map<string, FilePanelHandle>());
+  /** Pane id → the folder its panel showed last (session only). */
+  const filesMemory = useRef(new Map<string, PaneFiles>());
+  /** Pane id → where its panel sat; new panes start from the last one used. */
+  const [filesGeometry, setFilesGeometry] = useState<Record<string, FilesGeometry>>({});
+  const [areaBox, setAreaBox] = useState<Box | null>(null);
+  const [windowBox, setWindowBox] = useState<Box>(() => ({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }));
+  const [dropHover, setDropHover] = useState<{ x: number; y: number; paneId: string } | null>(null);
+  const [footerQueue, setFooterQueue] = useState(false);
+
+  useEffect(() => {
+    const el = paneAreaRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setAreaBox({ x: r.left, y: r.top, w: r.width, h: r.height });
+      setWindowBox({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
+
+  /** Where a pane's first panel opens: the last place used, read once. */
+  const lastFilesGeometry = useRef<FilesGeometry | null>(null);
+  lastFilesGeometry.current ??= loadFilesGeometry();
+
+  /** Every open panel with its owner pane and box; hidden (not closed) while
+   * its pane is in another tab or zoomed away. */
+  const panels = filesOpen.flatMap((paneId) => {
+    const tab = tabs.find((x) => findPane(x.root, paneId));
+    const node = tab ? findPane(tab.root, paneId) : null;
+    const tunnel = node ? byId[node.tunnelId] : undefined;
+    if (!tab || !tunnel || !areaBox) return [];
+    const rect =
+      tab.zoomed === paneId ? { x: 0, y: 0, w: 1, h: 1 } : computeLayout(tab.root).panes.find((pane) => pane.id === paneId)?.rect;
+    if (!rect) return [];
+    const owner = paneBox(areaBox, rect);
+    const geo = filesGeometry[paneId] ?? firstGeometry(lastFilesGeometry.current!);
+    const box = geo.maximized ? maximizedBox(windowBox) : place(geo.placement, geo.size, owner, windowBox);
+    const shown = tab.key === activeKey && (tab.zoomed === null || tab.zoomed === paneId);
+    const z = 40 + Math.max(0, filesStack.indexOf(paneId));
+    return [{ paneId, tab, tunnel, owner, geo, box, shown, z }];
+  });
+  const filesPanes = useMemo(() => new Set(filesOpen), [filesOpen]);
+  /** Shown panels, top first: what a drop hits. */
+  const dropTargets = useRef<{ paneId: string; box: Box }[]>([]);
+  dropTargets.current = panels.filter((x) => x.shown).sort((a, b) => b.z - a.z);
+
+  // A panel goes when its pane does (closed, or every tab dropped on hide).
+  useEffect(() => {
+    const alive = filesOpen.filter((id) => tabs.some((tab) => findPane(tab.root, id)));
+    if (alive.length !== filesOpen.length) {
+      setFilesOpen(alive);
+      setFilesStack((prev) => prev.filter((id) => alive.includes(id)));
+    }
+  }, [filesOpen, tabs]);
+
+  const raiseFiles = (paneId: string) =>
+    setFilesStack((prev) => (prev[prev.length - 1] === paneId ? prev : [...prev.filter((id) => id !== paneId), paneId]));
+
+  /** Each shell gets its own panel; asking again focuses the one it has. */
+  const openFiles = (paneId: string) => {
+    if (filesOpen.includes(paneId)) {
+      raiseFiles(paneId);
+      filesRefs.current.get(paneId)?.focus();
+      return;
+    }
+    // Its own geometry from the start: one it shared with "the last used"
+    // would move whenever another panel moved.
+    setFilesGeometry((prev) => (prev[paneId] ? prev : { ...prev, [paneId]: firstGeometry(lastFilesGeometry.current!) }));
+    // At the limit the panel used longest ago gives way.
+    const evict = filesOpen.length >= MAX_FILE_PANELS ? filesStack[0] : null;
+    setFilesOpen((prev) => [...prev.filter((id) => id !== evict), paneId]);
+    setFilesStack((prev) => [...prev.filter((id) => id !== evict), paneId]);
+  };
+
+  const closeFiles = (paneId: string) => {
+    setFilesOpen((prev) => prev.filter((id) => id !== paneId));
+    setFilesStack((prev) => prev.filter((id) => id !== paneId));
+    filesRefs.current.delete(paneId);
+    const tab = tabs.find((x) => findPane(x.root, paneId));
+    if (tab && tab.key === activeKey) focusPane(tab.key, paneId);
+  };
+
+  const focusFilesOwner = (paneId: string) => {
+    const tab = tabs.find((x) => findPane(x.root, paneId));
+    if (tab) {
+      setActiveKey(tab.key);
+      focusPane(tab.key, paneId);
+    }
+  };
+
+  const setGeometry = (paneId: string, geo: FilesGeometry) => {
+    setFilesGeometry((prev) => ({ ...prev, [paneId]: geo }));
+    lastFilesGeometry.current = geo;
+    saveFilesGeometry(geo);
+  };
+
+  // Files dragged in from the OS: only a drop on the panel uploads (never on
+  // a shell — too easy to mistake where they would go).
+  useEffect(() => {
+    const unlisten = getCurrentWebview().onDragDropEvent((event) => {
+      const p = event.payload;
+      if (p.type === "leave") {
+        setDropHover(null);
+        return;
+      }
+      const ratio = window.devicePixelRatio || 1;
+      const x = p.position.x / ratio;
+      const y = p.position.y / ratio;
+      const hit = dropTargets.current.find(
+        ({ box }) => x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h,
+      );
+      if (p.type === "drop") {
+        setDropHover(null);
+        if (hit) filesRefs.current.get(hit.paneId)?.drop(p.paths, x, y);
+      } else {
+        setDropHover(hit ? { x, y, paneId: hit.paneId } : null);
+      }
+    });
+    return () => {
+      void unlisten.then((f) => f());
+    };
+  }, []);
+
   const forgetPanes = (ids: string[]) => {
     for (const id of ids) {
       terminalIds.current.delete(id);
@@ -455,12 +679,10 @@ export function TerminalApp() {
     ]);
   };
 
-  const toggleSection = (name: string | null) =>
+  /** `all` (Ctrl+click on a header): every group section follows the clicked one. */
+  const toggleSection = (name: string | null, all: boolean) =>
     setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      const key = sectionKey(name);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      const next = toggleSections(prev, name, all ? sections?.map((sec) => sec.name) : undefined);
       saveCollapsedGroups(COLLAPSED_GROUPS_KEY, next);
       return next;
     });
@@ -923,6 +1145,9 @@ export function TerminalApp() {
     if (!shortcut) return;
     // A dialog owns the keyboard while it is open.
     if (tourOpen || pendingPaste || adding || naming || hostKeyQueue.length > 0) return;
+    // The file panel keeps its keys; only its own toggle reaches the window.
+    const inPanel = (e.target as HTMLElement | null)?.closest?.("[data-file-panel]");
+    if (inPanel && shortcut.kind !== "files") return;
     e.preventDefault();
     e.stopPropagation();
     const index = tabs.findIndex((tab) => tab.key === activeKey);
@@ -960,6 +1185,13 @@ export function TerminalApp() {
       case "tile":
         // A held key would tile, undo, tile… and land wherever it was let go.
         if (activeTab && !e.repeat) tileTab(activeTab.key);
+        break;
+      case "files":
+        // Opens the focused shell's files; pressed again, it moves the
+        // keyboard between the panel and its shell.
+        if (e.repeat) break;
+        if (inPanel) focusFilesOwner((inPanel as HTMLElement).dataset.filePanel ?? "");
+        else if (activeTab) openFiles(activeTab.focused);
         break;
       case "focusPane":
         if (activeTab && !activeTab.zoomed) {
@@ -1015,7 +1247,11 @@ export function TerminalApp() {
       if (e.ctrlKey) e.preventDefault(); // page zoom
     };
     // Coming back to the window (Alt+Tab, reopening it) resumes typing.
-    const onWindowFocus = () => refocus();
+    const onWindowFocus = () => {
+      // The browser gives focus back to the file panel by itself.
+      if (document.activeElement?.closest("[data-file-panel]")) return;
+      refocus();
+    };
 
     window.addEventListener("mousedown", onMouseDown, true);
     window.addEventListener("keydown", onKeyDown);
@@ -1370,6 +1606,19 @@ export function TerminalApp() {
               )}
             </button>
             <button
+              data-tour="term-files"
+              onClick={() => activeTab && openFiles(activeTab.focused)}
+              disabled={!activeTab}
+              title={`${t("files.open")} (Ctrl+Shift+O)`}
+              aria-label={t("files.open")}
+              aria-pressed={!!activeTab && filesPanes.has(activeTab.focused)}
+              className={`rounded p-1.5 hover:bg-surface-hover disabled:opacity-40 ${
+                activeTab && filesPanes.has(activeTab.focused) ? "text-accent" : "text-muted hover:text-text"
+              }`}
+            >
+              {icons.files}
+            </button>
+            <button
               data-tour="term-broadcast"
               onClick={() => activeTab && toggleBroadcast(activeTab.key)}
               disabled={!activeTab}
@@ -1445,6 +1694,8 @@ export function TerminalApp() {
               if (handle) paneHandles.current.set(paneId, handle);
               else paneHandles.current.delete(paneId);
             }}
+            filesPanes={filesPanes}
+            onOpenFiles={(_tabKey, paneId) => openFiles(paneId)}
           />
           {layoutUndo && layoutUndo.tabKey === activeKey && (
             <div
@@ -1562,7 +1813,15 @@ export function TerminalApp() {
         {/* One line at any width: lower-priority readouts drop out as the
             footer narrows (container queries), the host truncates last. */}
         <footer data-tour="term-footer" className="@container h-7 shrink-0 border-t border-border bg-surface px-3 font-mono text-[11px] text-muted">
-          <div className="flex h-full items-center gap-4 whitespace-nowrap">
+          <div className="relative flex h-full items-center gap-4 whitespace-nowrap">
+            {!panels.some((x) => x.shown) && transfers.length > 0 && (
+              <TransfersChip
+                transfers={transfers}
+                open={footerQueue}
+                onToggle={() => setFooterQueue((v) => !v)}
+                list={<TransferList transfers={transfers} byId={byId} onClear={clearFinished} />}
+              />
+            )}
             {activeTab?.broadcast && (
               <span className="flex shrink-0 items-center gap-1 font-sans font-medium text-amber">
                 {icons.broadcast}
@@ -1630,6 +1889,38 @@ export function TerminalApp() {
           </div>
         </footer>
       </section>
+
+      {panels.map(({ paneId, tunnel, owner, geo, box, shown, z }) => (
+        <div key={paneId} hidden={!shown} inert={!shown}>
+          <FilePanel
+            ref={(handle) => {
+              if (handle) filesRefs.current.set(paneId, handle);
+              else filesRefs.current.delete(paneId);
+            }}
+            paneId={paneId}
+            z={z}
+            onRaise={() => raiseFiles(paneId)}
+            maximized={!!geo.maximized}
+            onToggleMaximize={() => setGeometry(paneId, { ...geo, maximized: !geo.maximized })}
+            tunnel={tunnel}
+            target={infos[paneId]?.target ?? `${tunnel.username}@${tunnel.host}:${tunnel.port}`}
+            box={box}
+            owner={owner}
+            bounds={windowBox}
+            placement={geo.placement}
+            onPlacement={(placement, size) => setGeometry(paneId, { placement, size, maximized: false })}
+            memory={filesMemory.current.get(paneId)}
+            onMemory={(m) => filesMemory.current.set(paneId, m)}
+            shellDir={() => paneHandles.current.get(paneId)?.cwd() ?? null}
+            transfers={transfers}
+            byId={byId}
+            onClearTransfers={clearFinished}
+            dropHover={dropHover?.paneId === paneId ? dropHover : null}
+            onClose={() => closeFiles(paneId)}
+            onFocusShell={() => focusFilesOwner(paneId)}
+          />
+        </div>
+      ))}
 
       {drag && (
         // Follows the cursor while dragging; never a drop target itself.

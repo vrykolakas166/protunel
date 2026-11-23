@@ -70,6 +70,21 @@ export function hasGroups(tunnels: Pick<Tunnel, "group">[]): boolean {
 /** Stable key for a section's collapsed state ("" for the ungrouped one). */
 export const sectionKey = (name: string | null) => (name ?? "").toLowerCase();
 
+/**
+ * Flips one section, or with `all` (Ctrl+click) sets every section in `all`
+ * to the state the clicked one flips to.
+ */
+export function toggleSections(collapsed: Set<string>, name: string | null, all?: (string | null)[]): Set<string> {
+  const key = sectionKey(name);
+  const collapse = !collapsed.has(key);
+  const next = new Set(collapsed);
+  for (const k of all ? all.map(sectionKey) : [key]) {
+    if (collapse) next.add(k);
+    else next.delete(k);
+  }
+  return next;
+}
+
 /** Collapsed sections, remembered per window; storage may be unavailable. */
 export function loadCollapsedGroups(storageKey: string): Set<string> {
   try {

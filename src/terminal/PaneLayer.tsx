@@ -34,6 +34,12 @@ const PREVIEW_INSET: Record<DropSide, string> = {
 };
 
 export const icons = {
+  // A folder: the file panel.
+  files: (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" />
+    </svg>
+  ),
   // Stacked panes: a saved set of tabs.
   workspace: (
     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
@@ -166,6 +172,9 @@ interface Props {
   onSilence: (paneId: string) => void;
   onUserScroll: (tabKey: string, paneId: string, fromBottom: number) => void;
   onHandle: (paneId: string, handle: PaneHandle | null) => void;
+  /** Panes with an open file panel: framed while it is open. */
+  filesPanes: Set<string>;
+  onOpenFiles: (tabKey: string, paneId: string) => void;
 }
 
 /**
@@ -205,6 +214,8 @@ export function PaneLayer({
   onSilence,
   onUserScroll,
   onHandle,
+  filesPanes,
+  onOpenFiles,
 }: Props) {
   const { t } = useTranslation("terminal");
   const areaRef = useRef<HTMLDivElement>(null);
@@ -352,6 +363,13 @@ export function PaneLayer({
                 {icons.broadcast}
               </IconButton>
             )}
+            <IconButton
+              label={`${t("files.open")} (Ctrl+Shift+O)`}
+              onClick={() => onOpenFiles(tab.key, id)}
+              active={filesPanes.has(id)}
+            >
+              {icons.files}
+            </IconButton>
             {multi && (
               <IconButton
                 label={tab.zoomed === id ? t("unzoom") : t("zoom")}
@@ -392,6 +410,10 @@ export function PaneLayer({
           />
           {dimmed && <div className="pointer-events-none absolute inset-0 bg-bg/15" />}
           {frame && <div className="pointer-events-none absolute inset-0" style={{ boxShadow: frame }} />}
+          {filesPanes.has(id) && (
+            // The file panel works on this pane's server.
+            <div className="pointer-events-none absolute inset-0.5 rounded-sm border border-dashed border-accent/70" />
+          )}
         </div>
         {preview && (
           // Where the dropped thing will land: the half it is about to take.

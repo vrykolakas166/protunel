@@ -402,3 +402,73 @@ export interface WinscpOutcome {
   failed: { name: string; error: string }[];
   groups: string[];
 }
+
+// File panel (SFTP on a tunnel's live session; `ssh/sftp.rs`).
+
+export type FileKind = "dir" | "file" | "symlink" | "other";
+
+export interface FileEntry {
+  name: string;
+  kind: FileKind;
+  /** A symlink pointing at a folder: opens like one. */
+  linkDir: boolean;
+  size: number;
+  /** Unix seconds. */
+  mtime: number | null;
+  /** Permission bits, e.g. 0o644. */
+  mode: number | null;
+  uid: number | null;
+  gid: number | null;
+}
+
+export interface FileListing {
+  /** Canonical: symlinks and `..` resolved. */
+  path: string;
+  entries: FileEntry[];
+}
+
+export interface FileProperties extends FileEntry {
+  path: string;
+  owner: string | null;
+  group: string | null;
+  linkTarget: string | null;
+  atime: number | null;
+}
+
+export interface FileCount {
+  files: number;
+  dirs: number;
+  /** Counting stopped early: there are more. */
+  more: boolean;
+}
+
+export interface PasteOutcome {
+  done: string[];
+  skipped: string[];
+}
+
+export type FileContent =
+  | { kind: "text"; text: string; size: number; mtime: number | null; tail: boolean }
+  | { kind: "binary"; size: number }
+  | { kind: "tooLarge"; size: number };
+
+export interface SavedFile {
+  size: number;
+  mtime: number | null;
+}
+
+export type TransferState = "queued" | "running" | "done" | "skipped" | "failed" | "cancelled";
+
+export interface FileTransfer {
+  id: string;
+  tunnelId: string;
+  direction: "upload" | "download";
+  name: string;
+  remotePath: string;
+  localPath: string;
+  done: number;
+  total: number;
+  state: TransferState;
+  error: string | null;
+  openWhenDone: boolean;
+}

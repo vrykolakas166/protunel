@@ -36,8 +36,8 @@
     "none": "Ungrouped",
     "rename": "Rename group…",
     "ungroup": "Ungroup hosts…",
-    "expand": "Show this group",
-    "collapse": "Hide this group",
+    "expand": "Show this group (Ctrl+click: all groups)",
+    "collapse": "Hide this group (Ctrl+click: all groups)",
     "count": "{{connected}}/{{total}}",
     "menu": "{{name}} group actions"
   }

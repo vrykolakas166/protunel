@@ -23,6 +23,7 @@ import {
   hasGroups,
   loadCollapsedGroups,
   saveCollapsedGroups,
+  toggleSections,
   sectionKey,
 } from "../groups";
 
@@ -102,12 +103,10 @@ export function TunnelList({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   /** Collapsed group sections (`sectionKey`), remembered in this window. */
   const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedGroups(COLLAPSED_GROUPS_KEY));
-  const toggleSection = (name: string | null) =>
+  /** Ctrl+click on a header passes `all`: every section follows. */
+  const toggleSection = (name: string | null, all?: (string | null)[]) =>
     setCollapsedSections((current) => {
-      const next = new Set(current);
-      const key = sectionKey(name);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      const next = toggleSections(current, name, all);
       saveCollapsedGroups(COLLAPSED_GROUPS_KEY, next);
       return next;
     });
@@ -404,7 +403,7 @@ export function TunnelList({
         className="group/header -mb-1 mt-1 flex items-center gap-1.5 px-1 first:mt-0"
       >
         <button
-          onClick={() => toggleSection(entry.name)}
+          onClick={(e) => toggleSection(entry.name, e.ctrlKey || e.metaKey ? sections.map((sec) => sec.name) : undefined)}
           aria-expanded={!entry.collapsed}
           title={entry.collapsed ? t("group.expand") : t("group.collapse")}
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded py-0.5 text-left text-xs font-semibold text-muted hover:text-text"

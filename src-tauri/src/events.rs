@@ -23,6 +23,9 @@ pub struct StatusEvent {
 
 pub const STATUS_EVENT: &str = "tunnel-status";
 
+/// A file transfer queued, progressed or finished (`ssh::sftp::Transfer`).
+pub const FILE_TRANSFER_EVENT: &str = "file-transfer";
+
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostKeyPending {

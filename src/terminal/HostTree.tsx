@@ -157,7 +157,8 @@ interface Props {
   /** Group headers (`hostTree`); null draws the plain tree. */
   sections: HostSection[] | null;
   connectedCount: (ids: string[]) => number;
-  onToggleSection: (name: string | null) => void;
+  /** `all`: Ctrl+click, every section follows. */
+  onToggleSection: (name: string | null, all: boolean) => void;
   onSectionMenu: (e: ReactMouseEvent, section: HostSection) => void;
 }
 
@@ -305,7 +306,7 @@ export function HostTree({
         className="group/header mt-1.5 flex items-center gap-1 first:mt-0"
       >
         <button
-          onClick={() => onToggleSection(section.name)}
+          onClick={(e) => onToggleSection(section.name, e.ctrlKey || e.metaKey)}
           aria-expanded={!section.collapsed}
           title={section.collapsed ? t("group.expand") : t("group.collapse")}
           className="flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] font-semibold text-muted hover:text-text"

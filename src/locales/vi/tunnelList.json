@@ -36,8 +36,8 @@
     "none": "Không nhóm",
     "rename": "Đổi tên nhóm…",
     "ungroup": "Bỏ nhóm các máy chủ…",
-    "expand": "Hiện nhóm này",
-    "collapse": "Ẩn nhóm này",
+    "expand": "Hiện nhóm này (Ctrl+click: mọi nhóm)",
+    "collapse": "Ẩn nhóm này (Ctrl+click: mọi nhóm)",
     "count": "{{connected}}/{{total}}",
     "menu": "Thao tác với nhóm {{name}}"
   }

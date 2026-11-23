@@ -50,6 +50,7 @@ Get the latest build from the [Releases page](https://github.com/vrykolakas166/p
 - Separate window with tabs and drag-to-split panes.
 - Broadcast typing to many servers at once.
 - Watch many servers in one tab: tile evenly, sync scroll, new-output dots and output/silence alerts.
+- File panel (SFTP) for the server of the shell you are in: browse, edit, upload and download.
 - Reuses the tunnel's live session.
 
 ### Security
@@ -252,10 +253,32 @@ A terminal opens a PTY channel on the tunnel's existing session, connecting it a
 | Ctrl+Shift+G | Tile panes evenly (press again to undo) |
 | Ctrl+Shift+B | Toggle broadcast |
 | Ctrl+Shift+W | Close pane |
+| Ctrl+Shift+O | File panel of this shell (again: back to the shell) |
 | Ctrl+Shift+K | Find host |
 | Ctrl+Tab, Ctrl+1 to Ctrl+9 | Switch tab |
 
 Shortcuts stay off plain Ctrl+letter, which belongs to the shell.
+
+### File panel
+
+The folder icon on a pane's header (or the toolbar, or Ctrl+Shift+O) opens the files of that shell's server over SFTP on the same session. It opens in the shell's folder when the prompt shows it (`user@host:/path$`) or the shell reports it (OSC 7), otherwise in the login folder.
+
+- A floating panel per shell: keep typing in the shell while it is open. Drag its header anywhere, or let it snap to a corner of its shell; resize from any edge or corner; maximize with its button or a double-click on the header. Each panel stays bound to the shell that opened it, and its header shows `user@host` so files never go to the wrong server.
+- Create, rename, delete, copy/cut/paste (on the same server), properties, and a filter. Deleting a folder says how many files go; large deletes ask for the name. Servers have no trash.
+- Text files up to 2 MB open in an editor (Ctrl+S saves; if someone changed the file meanwhile you are asked before overwriting). Bigger logs: view the last 1 MB. Images preview up to 10 MB. Anything else: download, or open a temporary copy with the system app.
+- Upload: drop files or folders from your file manager onto the panel (it shows where they will land), or use the upload button. Existing names are skipped unless you choose Overwrite.
+- Download goes to your Downloads folder and never overwrites a local file. Transfers keep running when the panel is closed (see the footer).
+- You act as the SSH user: no sudo.
+
+| Keys (in the panel) | Action |
+| --- | --- |
+| Enter / Backspace | Open / up one folder |
+| F2, Del | Rename, delete |
+| Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste |
+| Ctrl+Shift+N | New folder |
+| Alt+Enter | Properties |
+| Ctrl+L, Ctrl+F | Type a path, filter |
+| Esc | Step back; closes the panel last |
 
 ## Export and import
 

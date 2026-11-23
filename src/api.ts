@@ -6,6 +6,13 @@ import type {
   ImportResult,
   ImportSections,
   ExportSections,
+  FileContent,
+  FileCount,
+  FileListing,
+  FileProperties,
+  FileTransfer,
+  PasteOutcome,
+  SavedFile,
   HostKeyMismatch,
   UpdateSnapshot,
   WhatsNew,
@@ -202,3 +209,45 @@ export const terminalResize = (id: string, cols: number, rows: number) =>
   invoke<void>("terminal_resize", { id, cols, rows });
 
 export const terminalClose = (id: string) => invoke<void>("terminal_close", { id });
+
+// File panel: SFTP on the pane's tunnel session. Errors that the UI
+// translates are bare codes: "not-connected", "no-such-file",
+// "permission-denied", "exists", "conflict", "timeout", "too-large".
+export const filesHome = (tunnelId: string) => invoke<string>("files_home", { tunnelId });
+export const filesList = (tunnelId: string, path: string) => invoke<FileListing>("files_list", { tunnelId, path });
+export const filesProperties = (tunnelId: string, path: string) =>
+  invoke<FileProperties>("files_properties", { tunnelId, path });
+export const filesDirSize = (tunnelId: string, path: string) => invoke<number>("files_dir_size", { tunnelId, path });
+export const filesCreate = (tunnelId: string, path: string, dir: boolean) =>
+  invoke<void>("files_create", { tunnelId, path, dir });
+export const filesRename = (tunnelId: string, from: string, to: string) =>
+  invoke<void>("files_rename", { tunnelId, from, to });
+export const filesCount = (tunnelId: string, paths: string[]) => invoke<FileCount>("files_count", { tunnelId, paths });
+export const filesDelete = (tunnelId: string, paths: string[]) => invoke<void>("files_delete", { tunnelId, paths });
+export const filesPaste = (tunnelId: string, sources: string[], destDir: string, cut: boolean) =>
+  invoke<PasteOutcome>("files_paste", { tunnelId, sources, destDir, cut });
+export const filesReadText = (tunnelId: string, path: string, tail: boolean) =>
+  invoke<FileContent>("files_read_text", { tunnelId, path, tail });
+export const filesReadImage = (tunnelId: string, path: string) =>
+  invoke<ArrayBuffer>("files_read_image", { tunnelId, path });
+export const filesWriteText = (
+  tunnelId: string,
+  path: string,
+  text: string,
+  expectSize: number,
+  expectMtime: number | null,
+  force: boolean,
+) => invoke<SavedFile>("files_write_text", { tunnelId, path, text, expectSize, expectMtime, force });
+export const filesUpload = (tunnelId: string, localPaths: string[], remoteDir: string, overwrite: boolean) =>
+  invoke<string[]>("files_upload", { tunnelId, localPaths, remoteDir, overwrite });
+export const filesPickUpload = (tunnelId: string, remoteDir: string) =>
+  invoke<string[]>("files_pick_upload", { tunnelId, remoteDir });
+export const filesDownload = (tunnelId: string, remotePaths: string[]) =>
+  invoke<string[]>("files_download", { tunnelId, remotePaths });
+export const filesOpenLocal = (tunnelId: string, remotePath: string) =>
+  invoke<string>("files_open_local", { tunnelId, remotePath });
+export const filesTransfers = () => invoke<FileTransfer[]>("files_transfers");
+export const filesCancelTransfer = (id: string) => invoke<void>("files_cancel_transfer", { id });
+export const filesClearTransfers = () => invoke<void>("files_clear_transfers");
+export const filesReveal = (id: string) => invoke<void>("files_reveal", { id });
+export const filesSaveDraft = (name: string, text: string) => invoke<string | null>("files_save_draft", { name, text });
