@@ -14,7 +14,7 @@ interface Props {
   initial?: Tunnel | null;
   suggestedPort?: number;
   tunnels: Tunnel[];
-  /** SOCKS toggle for a brand-new tunnel; hosts added for the terminal start without one. */
+  /** SOCKS toggle for a brand-new tunnel. Off by default: the Router reaches tunnels without it. */
   defaultSocksEnabled?: boolean;
   onSubmit: (input: TunnelInput, secret?: string) => Promise<void>;
   /**
@@ -40,7 +40,7 @@ export function AddTunnelForm({
   initial,
   suggestedPort,
   tunnels,
-  defaultSocksEnabled = true,
+  defaultSocksEnabled = false,
   onSubmit,
   onSubmitMany,
   onHostKeyForgotten,
@@ -286,30 +286,6 @@ export function AddTunnelForm({
           </div>
         )}
 
-        <div data-tour="add-socks">
-          <label className="flex items-center gap-2 text-sm text-text">
-            <input
-              type="checkbox"
-              checked={socksEnabled}
-              onChange={(e) => setSocksEnabled(e.target.checked)}
-            />
-            {t("enableSocks")}
-          </label>
-        </div>
-
-        {socksEnabled && (
-          <div>
-            <label className={labelClass}>{t("localSocksPort")}</label>
-            <input
-              type="number"
-              className={monoInputClass}
-              value={localSocksPort}
-              onChange={(e) => setLocalSocksPort(Number(e.target.value))}
-              required
-            />
-          </div>
-        )}
-
         <div data-tour="add-jump">
           <label className={labelClass}>{t("connectVia")}</label>
           <select
@@ -334,6 +310,31 @@ export function AddTunnelForm({
           />
           {t("connectOnStartup")}
         </label>
+
+        <div data-tour="add-socks">
+          <label className="flex items-center gap-2 text-sm text-text">
+            <input
+              type="checkbox"
+              checked={socksEnabled}
+              onChange={(e) => setSocksEnabled(e.target.checked)}
+            />
+            {t("enableSocks")}
+          </label>
+          <p className="mt-0.5 pl-6 text-xs text-muted">{t("enableSocksHint")}</p>
+        </div>
+
+        {socksEnabled && (
+          <div>
+            <label className={labelClass}>{t("localSocksPort")}</label>
+            <input
+              type="number"
+              className={monoInputClass}
+              value={localSocksPort}
+              onChange={(e) => setLocalSocksPort(Number(e.target.value))}
+              required
+            />
+          </div>
+        )}
 
         {savedKeyId && (hostKey || hostKeyForgotten) && (
           <div className="rounded-lg border border-border bg-bg px-2.5 py-2">

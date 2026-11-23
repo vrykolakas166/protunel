@@ -31,6 +31,7 @@
     "hide": "Ẩn mật khẩu"
   },
   "enableSocks": "Bật proxy SOCKS5 cục bộ",
+  "enableSocksHint": "Chỉ cần khi trỏ thẳng một ứng dụng vào tunnel này. Router không cần.",
   "localSocksPort": "Cổng SOCKS cục bộ",
   "connectVia": "Kết nối qua",
   "directConnection": "Kết nối trực tiếp",

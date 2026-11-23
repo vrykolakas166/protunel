@@ -31,6 +31,7 @@
     "hide": "Hide password"
   },
   "enableSocks": "Enable local SOCKS5 proxy",
+  "enableSocksHint": "Only for pointing an app straight at this tunnel. The Router doesn't need it.",
   "localSocksPort": "Local SOCKS port",
   "connectVia": "Connect via",
   "directConnection": "Direct connection",
