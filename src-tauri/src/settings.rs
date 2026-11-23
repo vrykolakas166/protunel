@@ -71,6 +71,9 @@ pub struct Settings {
     /// of sight, raises a desktop notification. 0 turns it off.
     #[serde(default = "default_long_command_secs")]
     pub terminal_long_command_secs: u32,
+    /// The folder last picked by the file panel's "Download to folder…".
+    #[serde(default)]
+    pub files_download_dir: Option<String>,
     /// In a tab with several panes, the ones without focus are dimmed a
     /// little. Off by default: it makes watched panes harder to read.
     #[serde(default)]
@@ -131,6 +134,7 @@ impl Default for Settings {
             ui_mode: None,
             terminal_suggestions: true,
             terminal_long_command_secs: default_long_command_secs(),
+            files_download_dir: None,
             terminal_dim_inactive: false,
         }
     }

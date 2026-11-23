@@ -11,6 +11,7 @@ import type {
   FileListing,
   FileProperties,
   FileTransfer,
+  CopyAcross,
   PasteOutcome,
   SavedFile,
   HostKeyMismatch,
@@ -210,6 +211,12 @@ export const terminalResize = (id: string, cols: number, rows: number) =>
 
 export const terminalClose = (id: string) => invoke<void>("terminal_close", { id });
 
+/** Tells Rust whether an editor holds unsaved changes (the close button then asks the page). */
+export const terminalSetUnsaved = (unsaved: boolean) => invoke<void>("terminal_set_unsaved", { unsaved });
+
+/** Hides the terminal window and closes its shells, after the page asked about unsaved edits. */
+export const terminalWindowHide = () => invoke<void>("terminal_window_hide");
+
 // File panel: SFTP on the pane's tunnel session. Errors that the UI
 // translates are bare codes: "not-connected", "no-such-file",
 // "permission-denied", "exists", "conflict", "timeout", "too-large".
@@ -226,6 +233,13 @@ export const filesCount = (tunnelId: string, paths: string[]) => invoke<FileCoun
 export const filesDelete = (tunnelId: string, paths: string[]) => invoke<void>("files_delete", { tunnelId, paths });
 export const filesPaste = (tunnelId: string, sources: string[], destDir: string, cut: boolean) =>
   invoke<PasteOutcome>("files_paste", { tunnelId, sources, destDir, cut });
+export const filesCopyAcross = (
+  fromTunnelId: string,
+  sources: string[],
+  toTunnelId: string,
+  destDir: string,
+  overwrite: boolean,
+) => invoke<CopyAcross>("files_copy_across", { fromTunnelId, sources, toTunnelId, destDir, overwrite });
 export const filesReadText = (tunnelId: string, path: string, tail: boolean) =>
   invoke<FileContent>("files_read_text", { tunnelId, path, tail });
 export const filesReadImage = (tunnelId: string, path: string) =>
@@ -244,6 +258,10 @@ export const filesPickUpload = (tunnelId: string, remoteDir: string) =>
   invoke<string[]>("files_pick_upload", { tunnelId, remoteDir });
 export const filesDownload = (tunnelId: string, remotePaths: string[]) =>
   invoke<string[]>("files_download", { tunnelId, remotePaths });
+/** Windows only: an OS drag of remote rows to Explorer (OLE virtual files); elsewhere "unsupported". */
+export const filesDragOut = (tunnelId: string, paths: string[]) => invoke<void>("files_drag_out", { tunnelId, paths });
+export const filesPickDownload = (tunnelId: string, remotePaths: string[]) =>
+  invoke<string[]>("files_pick_download", { tunnelId, remotePaths });
 export const filesOpenLocal = (tunnelId: string, remotePath: string) =>
   invoke<string>("files_open_local", { tunnelId, remotePath });
 export const filesTransfers = () => invoke<FileTransfer[]>("files_transfers");

@@ -108,5 +108,9 @@ pub const UPDATE_RESTART_REQUESTED_EVENT: &str = "update-restart-requested";
 /// drops every tab (its shells are closed) so reopening starts clean.
 pub const TERMINAL_HIDDEN_EVENT: &str = "terminal-hidden";
 
+/// The terminal window's close button was pressed while an editor holds
+/// unsaved changes: the window stays open and the page asks first.
+pub const TERMINAL_CLOSE_REQUESTED_EVENT: &str = "terminal-close-requested";
+
 /// "Forget remembered commands" ran; the terminal window drops its copy.
 pub const TERMINAL_MEMORY_CLEARED_EVENT: &str = "terminal-memory-cleared";

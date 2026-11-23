@@ -3,6 +3,8 @@ pub mod forward;
 pub mod known_hosts;
 pub mod pipe;
 pub mod socks;
+#[cfg(windows)]
+pub mod drag_out;
 pub mod sftp;
 pub mod terminal;
 

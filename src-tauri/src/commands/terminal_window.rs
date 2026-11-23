@@ -18,6 +18,38 @@ const TERMINAL_KEEP_HIDDEN: std::time::Duration = std::time::Duration::from_secs
 /// still the latest thing that happened to the window.
 static TERMINAL_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// The terminal page reports an editor with unsaved changes. While set, the
+/// window's close button asks the page first (`TERMINAL_CLOSE_REQUESTED_EVENT`)
+/// instead of hiding at once; unset (the default), closing is immediate as
+/// before, so a page that is not running can never trap the window open.
+static TERMINAL_UNSAVED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn terminal_has_unsaved() -> bool {
+    TERMINAL_UNSAVED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Hides the terminal window and closes its shells (the close button's job).
+pub fn hide_terminal_window(app: &AppHandle) {
+    TERMINAL_UNSAVED.store(false, std::sync::atomic::Ordering::SeqCst);
+    if let Some(window) = app.get_webview_window(TERMINAL_WINDOW) {
+        let _ = window.hide();
+        let _ = window.emit_to(TERMINAL_WINDOW, crate::events::TERMINAL_HIDDEN_EVENT, ());
+    }
+    app.state::<AppState>().terminals.close_all();
+    schedule_terminal_teardown(app);
+}
+
+#[tauri::command]
+pub fn terminal_set_unsaved(unsaved: bool) {
+    TERMINAL_UNSAVED.store(unsaved, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// The page asked about unsaved edits and the answer was "close anyway".
+#[tauri::command]
+pub fn terminal_window_hide(app: AppHandle) {
+    hide_terminal_window(&app);
+}
+
 /// Destroys the hidden terminal window after `TERMINAL_KEEP_HIDDEN`, unless
 /// it was reopened in the meantime.
 pub fn schedule_terminal_teardown(app: &AppHandle) {

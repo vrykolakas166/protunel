@@ -264,10 +264,12 @@ Shortcuts stay off plain Ctrl+letter, which belongs to the shell.
 The folder icon on a pane's header (or the toolbar, or Ctrl+Shift+O) opens the files of that shell's server over SFTP on the same session. It opens in the shell's folder when the prompt shows it (`user@host:/path$`) or the shell reports it (OSC 7), otherwise in the login folder.
 
 - A floating panel per shell: keep typing in the shell while it is open. Drag its header anywhere, or let it snap to a corner of its shell; resize from any edge or corner; maximize with its button or a double-click on the header. Each panel stays bound to the shell that opened it, and its header shows `user@host` so files never go to the wrong server.
-- Create, rename, delete, copy/cut/paste (on the same server), properties, and a filter. Deleting a folder says how many files go; large deletes ask for the name. Servers have no trash.
+- Create, rename, delete, copy/cut/paste, properties, and a filter. Deleting a folder says how many files go; large deletes ask for the name. Servers have no trash.
 - Text files up to 2 MB open in an editor (Ctrl+S saves; if someone changed the file meanwhile you are asked before overwriting). Bigger logs: view the last 1 MB. Images preview up to 10 MB. Anything else: download, or open a temporary copy with the system app.
 - Upload: drop files or folders from your file manager onto the panel (it shows where they will land), or use the upload button. Existing names are skipped unless you choose Overwrite.
-- Download goes to your Downloads folder and never overwrites a local file. Transfers keep running when the panel is closed (see the footer).
+- Download goes to your Downloads folder and never overwrites a local file; "Download to folder…" (the arrow next to Download, or the right-click menu) asks where and remembers the folder. Transfers keep running when the panel is closed (see the footer).
+- Drag rows between panels or onto a folder row. On the same server a drop moves (hold Ctrl to copy). Onto another server it always copies, and Copy in one panel then Paste in another does the same. The copy goes straight from server A to server B when A can log in to B with a key (rsync, or scp); otherwise it passes through this computer, and the panel offers to type `ssh-copy-id` into A's shell (you press Enter) so the next copy is direct.
+- Windows: drag rows out of the window onto Explorer, the Desktop or any app that takes files. The copy starts at the drop, shows in Explorer's progress dialog and in the panel's queue, and can be cancelled from either.
 - You act as the SSH user: no sudo.
 
 | Keys (in the panel) | Action |

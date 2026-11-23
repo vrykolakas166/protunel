@@ -54,6 +54,11 @@ impl KnownHosts {
         entries.get(key_id).map(|known| known.openssh_key == openssh_key)
     }
 
+    pub fn openssh_key(&self, key_id: &str) -> Option<String> {
+        let entries = self.entries.lock().unwrap();
+        entries.get(key_id).map(|known| known.openssh_key.clone())
+    }
+
     pub fn trust(&self, key_id: &str, openssh_key: &str, fingerprint: &str, algorithm: &str) {
         let mut entries = self.entries.lock().unwrap();
         entries.insert(

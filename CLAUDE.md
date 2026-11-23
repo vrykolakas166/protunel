@@ -244,7 +244,8 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   (`excluded`), the amber frame live reception.
 - Watching several servers (all session-only, never in workspaces):
   `paneWatch.ts` (pure, `tests/paneLayout.test.ts`) times output per pane —
-  output after ≥5 s of quiet is a "burst", which puts an accent dot on a
+  output after ≥5 s of quiet is a "burst", which puts an accent ring (a ring,
+  because the solid accent dot means "connected") on a
   pane you are not looking at (focused pane of the front window, and
   on-screen broadcast panes, never get one); opt-in watches per pane (header
   right-click, the layout menu, the footer chip) notify on output or after
@@ -321,13 +322,21 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   xterm's own replies (`isTerminalReport`) are not typing.
 - Long commands (`settings.terminal_long_command_secs`, 0 = off) ending while
   the pane is hidden or the window unfocused raise `terminal_notify` and an
-  amber dot on the tab.
+  amber bell on the tab (also for a fired watch). Header/tab markers keep one
+  meaning each: the solid dot before a name is the connection phase (amber
+  pulse = connecting), a hollow accent ring is new output, a static amber
+  bell / amber eye is an alert. The workspace glyph is a bookmark ribbon,
+  never panes (that is the layout menu's four tiles); tabs carry no
+  workspace badge since their title is the workspace's name.
 - `terminal_memory.json` (`settings::TerminalMemory`, `src/terminal/memory.ts`)
   holds commands per host and workspaces (named sets of layout trees, revived
   with fresh pane ids by `layout.ts` `reviveLayout`; `last-session` is saved on
   `terminal-hidden` and offered as "Restore last session", naming user@host
   when it was one shell). A tab opened from (or added to) a workspace carries
-  `Tab.workspaceId`; when the linked tabs' `layoutShape` differs from the saved
+  `Tab.workspaceId`, is titled with the workspace's name ("name 2/3" when it
+  has several tabs; the hosts are the tooltip), and opening that workspace
+  again only shows its open tab, never a second copy of its shells;
+  when the linked tabs' `layoutShape` differs from the saved
   one the save button shows a dot and "Save changes" writes the open linked
   tabs back (a closed one leaves the workspace). Local only: never
   add it to config export — commands can carry secrets.
@@ -365,7 +374,18 @@ no dropping files on a shell — only on the panel, which names the target.
   DOM order and never changes — moving a node blurs what has focus in it —
   while `filesStack` gives the z-order (the last touched is on top, and takes
   OS drops). Hidden, not closed, while its pane is in another tab or zoomed
-  away; closed with the pane (unsaved edits are lost then). Rendered outside
+  away; closed with the pane. Unsaved editor changes are never dropped
+  silently: closing the pane or its tab, the LRU eviction at `MAX_FILE_PANELS`
+  and the terminal window's close button first ask (Cancel / Discard / Save
+  and close, naming user@host and file; a failed save keeps everything).
+  `FileView` reports dirty up through `FilePanel` `onUnsaved`; `TerminalApp`
+  probes `FilePanelHandle.unsaved()` (`files/unsaved.ts`, pure) in
+  `guardUnsaved`. The window close is deferred to the page only while
+  `terminal_set_unsaved(true)` is set (Rust `TERMINAL_UNSAVED`): the Rust
+  handler then emits `terminal-close-requested` instead of hiding, and the
+  page calls `terminal_window_hide` (same hide, `terminal-hidden`, close_all
+  and teardown as before via `hide_terminal_window`). Host deletion still
+  removes panes without asking. Rendered outside
   `PaneLayer` (fixed, role="dialog", no aria-modal), so moving one never
   re-renders a terminal. Geometry (`files/geometry.ts`, pure,
   `tests/filePanel.test.ts`): snapped to a corner of its pane (follows splits,
@@ -388,6 +408,53 @@ no dropping files on a shell — only on the panel, which names the target.
   line; `files/paths.ts`), validated by listing it, else the login folder.
 - Editor: CodeMirror 6, `import("./editor")` on first use, colours from the
   theme's CSS variables.
+- Row drag (`files/rowDrag.ts` state + gesture, `files/dropLogic.ts` pure,
+  `tests/rowDrop.test.ts`): pointer drag after 4 px, never HTML5 DnD;
+  module-level state because every panel is a drop receiver
+  (`registerRowReceiver`). Same tunnel: a drop moves (`files_paste`), Ctrl
+  copies. Ctrl+click toggles on release, so a Ctrl-drag never changes the
+  selection. Different tunnel: always a copy (`files_copy_across`), also
+  for Copy in A → Paste in B; Cut never crosses servers.
+- Server-to-server copy (`ssh/copy_across.rs`): probe on A
+  (`ssh -o BatchMode=yes … true`, every arg through `quote`). B's identity
+  is **pinned**: protunel's trusted key for B goes into a temp 0600
+  known_hosts on A used with `HostKeyAlias`, so A's own DNS, ssh config or
+  known_hosts can never send the data to another machine; no trusted key →
+  relay. Keep the options to what old OpenSSH accepts (no
+  `KnownHostsCommand`): an unknown option fails every probe. Success is
+  cached per A→B (and A's session), failure only 60 s so `ssh-copy-id`
+  takes effect; a direct copy ending with ssh's 255 drops the cache.
+  Direct = rsync when both A and B have it (progress2 parsed,
+  `--ignore-times` on Overwrite), else `scp -p` for a single file only
+  (scp -r follows symlinks; folders go by relay), staged on B. Both run
+  under a `sh` watchdog that kills the copy on a `cancel` line or stdin EOF
+  (a lost client); the stage is removed only once exit is confirmed. Relay
+  = SFTP A → part file on B → rename, keeping mode and mtime. All routes
+  skip an existing top-level name unless Overwrite. A relay returns
+  `key_hint` (none when user/host hold whitespace or control chars), which
+  the panel types into the shell it resolved when the hint appeared
+  (`terminalWrite`, that pane only, never Enter). protunel never handles
+  keys or passwords for this.
+- Download to folder…: Rust folder dialog, last folder in
+  `settings.files_download_dir` (re-read after the dialog, then
+  `settings-changed`). The Linux substitute for drag-out.
+- Drag-out (Windows only, `ssh/drag_out.rs`; `files_drag_out` returns
+  `"unsupported"` elsewhere and the UI never calls it): leaving the window
+  during a row drag (`onRowDragLeaveWindow`) lists the rows recursively
+  (no symlinks, ≤20 000 entries, relative names ≤259 UTF-16 units, made
+  Windows-safe and unique per folder case-insensitively) and starts
+  `DoDragDrop` on the UI thread only if the button stayed down the whole
+  time (polled; a release during listing aborts). OLE
+  virtual files: `FileGroupDescriptorW` + `FileContents` as one `IStream`
+  per file, copy-only. The data object lives on its own MTA thread so
+  Explorer's blocking `IStream::Read` never runs on the UI thread, and
+  `IDataObjectAsyncCapability` lets `DoDragDrop` return at drop; once
+  `StartOperation` ran, only `EndOperation` decides the outcome (queue rows
+  stay Running until then; bytes read are progress, not success). Each file
+  is read lazily (first `GetData`) into a bounded channel (32 × 256 KiB).
+  Cancel in protunel → next `Read` returns `E_ABORT`; Explorer releasing the
+  stream cancels the reader and closes the SFTP handle. Queue rows are
+  `Direction::DragOut`, shown as "Explorer".
 
 ### Simple mode (`settings.ui_mode`, `access.rs`, `SimpleHome`)
 

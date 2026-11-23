@@ -53,6 +53,14 @@
   "pasteConfirmTitle": "Paste into several shells?",
   "pasteConfirmMessage": "This pastes {{lines}} lines into {{targets}} panes at once. Each line may run as a command.",
   "pasteConfirm": "Paste to all",
+  "unsavedClose": {
+    "title": "Unsaved changes",
+    "message": "These files have changes that are not saved. Closing now discards them.",
+    "cancel": "Cancel",
+    "discard": "Discard and close",
+    "save": "Save and close",
+    "saveFailed": "Could not save, so nothing was closed."
+  },
   "dragPaneHint": "Drag to move this pane: onto another pane's edge, another tab, or the tab bar",
   "dropNewTab": "New tab",
   "expand": "Expand",
@@ -108,7 +116,7 @@
     "addTab": "Add to workspace “{{name}}”",
     "removeTab": "Remove from “{{name}}”",
     "inWorkspace": "In workspace “{{name}}”",
-    "changedHint": "Changed since “{{name}}” was saved: click to save",
+    "changedHint": "Unsaved changes in “{{name}}”: click for save options",
     "savedHint": "Workspace “{{name}}”, no unsaved changes",
     "restoreOne": "Restore last session · {{target}}"
   },
@@ -195,6 +203,7 @@
     "upload": "Upload",
     "uploadHint": "Upload files here (or drop them on this panel)",
     "download": "Download",
+    "downloadTo": "Download to folder…",
     "downloadHint": "Download to your Downloads folder",
     "openLocal": "Open with system app",
     "openingLocal": "Opening {{name}}…",
@@ -313,7 +322,14 @@
       "cancelled": "Cancelled",
       "cancel": "Cancel",
       "overwrite": "Overwrite",
-      "reveal": "Show in folder"
+      "reveal": "Show in folder",
+      "copied": "Copied",
+      "explorer": "Explorer",
+      "dragged": "Dragged out",
+      "routeRsync": "direct · rsync",
+      "routeScp": "direct · scp",
+      "routeRelay": "via this computer",
+      "routeRelaySpeed": "via this computer · {{speed}}/s"
     },
     "err": {
       "not-connected": "{{where}} is not connected: reconnect the shell first.",
@@ -325,7 +341,25 @@
       "too-large": "Too big to open here."
     },
     "maximize": "Maximize (double-click the header)",
-    "restore": "Restore size (double-click the header)"
+    "restore": "Restore size (double-click the header)",
+    "dropCopy": "Copy to {{where}} → {{path}}",
+    "dropMove": "Move to {{where}} → {{path}}",
+    "dragLabel_one": "{{count}} item",
+    "dragLabel_other": "{{count}} items",
+    "copying": "Copying…",
+    "dragOut": {
+      "preparing": "Preparing…",
+      "tooMany": "Too many items to drag (use Download)",
+      "pathTooLong": "Path too long for Windows: {{path}}"
+    },
+    "relay": {
+      "hint": "Faster: let {{from}} log in to {{to}}",
+      "type": "Type it in the shell",
+      "typeTitle": "Types the command in {{from}}'s shell without pressing Enter",
+      "copy": "Copy command",
+      "dismiss": "Dismiss",
+      "typed": "Typed. Press Enter in the shell to run it."
+    }
   },
   "kbFiles": "files of the shell"
 }

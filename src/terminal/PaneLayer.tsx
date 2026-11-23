@@ -40,11 +40,20 @@ export const icons = {
       <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h3l1.5 1.5h4.5A1.5 1.5 0 0 1 14 6v5.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 11.5Z" />
     </svg>
   ),
-  // Stacked panes: a saved set of tabs.
+  // A bookmark ribbon: a workspace is a named set of tabs kept to reopen
+  // later. Never draw panes here: that is what the layout menu (four tiles)
+  // and tiling change, and two boxes read as "copy".
   workspace: (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
-      <rect x="2" y="4.5" width="9.5" height="8" rx="1.5" />
-      <path d="M4.5 4.5V3.5A1.5 1.5 0 0 1 6 2h6.5A1.5 1.5 0 0 1 14 3.5V9a1.5 1.5 0 0 1-1.5 1.5h-1" />
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 2.5H12V13.5L8 10.5L4 13.5Z" />
+    </svg>
+  ),
+  // A bell: a watch fired or a long command finished (static, unlike the
+  // pulsing amber "connecting" dot).
+  bell: (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1 1H3Z" />
+      <path d="M6.5 14h3" />
     </svg>
   ),
   restore: (
@@ -56,6 +65,18 @@ export const icons = {
     <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path
         d="M2 6V2H6M10 2H14V6M14 10V14H10M6 14H2V10"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  // Brackets pointing in: back to the whole layout (zoom's counterpart).
+  unzoom: (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M6 2V6H2M14 6H10V2M10 14V10H14M2 10H6V14"
         stroke="currentColor"
         strokeWidth="1.4"
         strokeLinecap="round"
@@ -329,7 +350,8 @@ export function PaneLayer({
                 role="status"
                 title={t("watch.newOutput")}
                 aria-label={t("watch.newOutput")}
-                className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                // A ring, unlike the solid connection dot before the name.
+                className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-accent"
               />
             )}
             {(watch || isAlerted) && (
@@ -343,7 +365,8 @@ export function PaneLayer({
                 onClick={(e) => onPaneMenu(e, tab.key, id)}
                 active={isAlerted}
               >
-                <span className={isAlerted ? "animate-pulse" : ""}>{icons.watch}</span>
+                {/* Steady amber once fired: pulsing amber means "connecting". */}
+                {icons.watch}
               </IconButton>
             )}
             {stale && (
@@ -376,7 +399,7 @@ export function PaneLayer({
                 onClick={() => onToggleZoom(tab.key, id)}
                 active={tab.zoomed === id}
               >
-                {icons.zoom}
+                {tab.zoomed === id ? icons.unzoom : icons.zoom}
               </IconButton>
             )}
             <IconButton label={t("closePane")} onClick={() => onClosePane(tab.key, id)}>

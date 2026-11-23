@@ -62,6 +62,10 @@
       "title": "Quản lý tunnel và port forward",
       "body": "Dùng công tắc để kết nối tunnel hoặc mở mục Forward trên dòng tương ứng để thêm port forward trong lúc tunnel đang chạy. Các tunnel phụ thuộc nằm bên dưới tunnel trung gian."
     },
+    "groups": {
+      "title": "Sắp xếp máy chủ theo nhóm",
+      "body": "Đặt nhóm cho tunnel trong biểu mẫu sửa và danh sách sẽ hiện các mục có tên, cả ở đây lẫn trong cây máy chủ của terminal. Bấm tiêu đề mục để thu gọn, hoặc Ctrl+bấm để thu gọn hay mở rộng tất cả nhóm cùng lúc."
+    },
     "bulk": {
       "title": "Tìm kiếm và kết nối hàng loạt",
       "body": "Nhấn Ctrl+F để lọc theo tên hoặc máy chủ. Các nút kết nối và ngắt kết nối áp dụng cho toàn bộ danh sách, kể cả tunnel bị bộ lọc ẩn."
@@ -122,6 +126,10 @@
       "title": "Xuất hoặc nhập cấu hình",
       "body": "Chọn Xuất để tạo tệp cấu hình và đặt passphrase nếu muốn kèm thông tin xác thực đã mã hóa. Chọn Nhập để xem trước các thay đổi rồi xác nhận."
     },
+    "settings-winscp": {
+      "title": "Nhập từ WinSCP",
+      "body": "Ngay trên trang Sao lưu, chọn nhập từ WinSCP để đọc tệp WinSCP.ini. Xem trước các phiên, chọn những phiên cần dùng; chúng sẽ thành máy chủ với thư mục là nhóm. Mật khẩu được lưu thẳng vào kho thông tin xác thực."
+    },
     "settings-hosts": {
       "title": "Xem máy chủ đã tin cậy",
       "body": "Mở danh sách máy chủ đã tin cậy trong mục Sao lưu để xem dấu vân tay SSH đã lưu. Xóa khóa cũ tại đây nếu bạn đã sẵn sàng xác minh khóa mới trong lần kết nối tiếp theo."
@@ -132,7 +140,7 @@
     },
     "term-hosts": {
       "title": "Mở máy chủ",
-      "body": "Chọn máy chủ đã lưu ở thanh bên để mở shell hoặc bấm + cạnh Máy chủ để thêm mới. Mở rộng máy chủ trung gian để xem các máy chủ kết nối qua nó, hoặc nhấn Ctrl+Shift+S để hiện thanh bên."
+      "body": "Chọn máy chủ đã lưu ở thanh bên để mở shell hoặc bấm + cạnh Máy chủ để thêm mới. Máy chủ có nhóm nằm trong các mục thu gọn được (Ctrl+bấm tiêu đề để đổi tất cả). Mở rộng máy chủ trung gian để xem các máy chủ kết nối qua nó, hoặc nhấn Ctrl+Shift+S để hiện thanh bên."
     },
     "term-select": {
       "title": "Mở nhiều máy chủ cùng lúc",
@@ -149,6 +157,18 @@
     "term-header": {
       "title": "Di chuyển, phóng to và theo dõi khung",
       "body": "Trong tab đã chia khung, kéo thanh tiêu đề để di chuyển khung, bấm nút phóng to hoặc dùng nút tham gia khi đang gõ đồng thời. Bấm chuột phải vào thanh tiêu đề để bật báo khi có output hoặc khi im lặng 30 giây; chấm màu nhấn báo khung có output mới."
+    },
+    "term-files": {
+      "title": "Duyệt tệp trên máy chủ",
+      "body": "Nút thư mục, hoặc Ctrl+Shift+O, mở bảng tệp cho shell đang chọn. Mỗi shell có bảng riêng: kéo để gắn vào góc khung, kéo cạnh để đổi kích thước, bấm đúp thanh tiêu đề để phóng to. Dùng Tải về thư mục… để lưu tệp vào nơi bạn chọn."
+    },
+    "term-files-copy": {
+      "title": "Sao chép giữa các máy chủ",
+      "body": "Kéo các dòng từ bảng này sang bảng khác hoặc vào một thư mục. Trên cùng máy chủ thì di chuyển, giữ Ctrl để sao chép. Sang máy chủ khác luôn là sao chép: trực tiếp nếu nguồn đăng nhập được vào đích, nếu không thì đi qua máy này, kèm gợi ý chạy ssh-copy-id để nhanh hơn."
+    },
+    "term-files-out": {
+      "title": "Kéo tệp ra Explorer",
+      "body": "Kéo các dòng từ bảng tệp thẳng vào cửa sổ Explorer hoặc ra màn hình nền để tải xuống tại đó."
     },
     "term-layout": {
       "title": "Sắp xếp khung và cuộn đồng bộ",

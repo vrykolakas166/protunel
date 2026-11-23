@@ -7,6 +7,8 @@ import {
   getSettings,
   listTunnels,
   terminalNotify,
+  terminalSetUnsaved,
+  terminalWindowHide,
   terminalWrite,
   terminalWriteMany,
   updateSettings,
@@ -57,6 +59,7 @@ import { mayNotify, type WatchMode } from "./paneWatch";
 import { markTerminalTourSeen, onTerminalTourRequest, shouldShowTerminalTour, TerminalTour } from "./TerminalTour";
 import { useDragDrop } from "./useDragDrop";
 import { FilePanel, type FilePanelHandle, type PaneFiles } from "./files/FilePanel";
+import { collectUnsaved, describeUnsaved, type Unsaved } from "./files/unsaved";
 import { DEFAULT_SIZE, maximizedBox, paneBox, place, type Box, type Placement, type Size } from "./files/geometry";
 import { TransferList } from "./files/TransferList";
 import { isActive, overallProgress, useTransfers } from "./files/useTransfers";
@@ -84,6 +87,13 @@ function Kbd({ children }: { children: string }) {
       {children}
     </kbd>
   );
+}
+
+interface PendingUnsaved {
+  items: Unsaved[];
+  /** A save was tried and did not go through (conflict, lost session…). */
+  failed: boolean;
+  resolve: (ok: boolean) => void;
 }
 
 interface PendingPaste {
@@ -252,6 +262,7 @@ export function TerminalApp() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
+  const [pendingUnsaved, setPendingUnsaved] = useState<PendingUnsaved | null>(null);
   const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden);
   /** Panes whose long command finished out of sight; their tab shows a dot. */
   const [attention, setAttention] = useState<Set<string>>(new Set());
@@ -400,7 +411,7 @@ export function TerminalApp() {
     setTabs((prev) => prev.map((tab) => (tab.key === key ? fn(tab) : tab)));
 
   const refocus = () => setFocusSignal((n) => n + 1);
-  const tourOpen = loaded && showTour && !pendingPaste && !adding && !naming && hostKeyQueue.length === 0;
+  const tourOpen = loaded && showTour && !pendingPaste && !pendingUnsaved && !adding && !naming && hostKeyQueue.length === 0;
   const wasTourOpen = useRef(false);
   useLayoutEffect(() => {
     if (wasTourOpen.current && !showTour && activeTab) {
@@ -431,6 +442,20 @@ export function TerminalApp() {
   /** The same panels bottom to top: the last one touched is on top. */
   const [filesStack, setFilesStack] = useState<string[]>([]);
   const filesRefs = useRef(new Map<string, FilePanelHandle>());
+  /** Panes whose file panel holds an editor with unsaved changes. */
+  const [dirtyPanes, setDirtyPanes] = useState<Set<string>>(() => new Set());
+  const unsavedFlag = dirtyPanes.size > 0;
+  // Rust asks the page before hiding the window only while this is set.
+  useEffect(() => {
+    void terminalSetUnsaved(unsavedFlag).catch(() => {});
+  }, [unsavedFlag]);
+  /** Actions that run after the confirmation, from the latest render. */
+  const later = useRef<{
+    closeTab: (key: string) => void;
+    closePane: (tabKey: string, paneId: string) => void;
+    openFiles: (paneId: string) => void;
+    windowClose: () => void;
+  }>(null as never);
   /** Pane id → the folder its panel showed last (session only). */
   const filesMemory = useRef(new Map<string, PaneFiles>());
   /** Pane id → where its panel sat; new panes start from the last one used. */
@@ -498,6 +523,16 @@ export function TerminalApp() {
 
   /** Each shell gets its own panel; asking again focuses the one it has. */
   const openFiles = (paneId: string) => {
+    // At the limit the panel used longest ago gives way: its edits would go.
+    const gives = filesOpen.length >= MAX_FILE_PANELS && !filesOpen.includes(paneId) ? filesStack[0] : undefined;
+    if (gives && unsavedAmong([gives]).length > 0) {
+      guardUnsaved([gives], () => later.current.openFiles(paneId));
+      return;
+    }
+    openFilesNow(paneId);
+  };
+
+  const openFilesNow = (paneId: string) => {
     if (filesOpen.includes(paneId)) {
       raiseFiles(paneId);
       filesRefs.current.get(paneId)?.focus();
@@ -510,6 +545,31 @@ export function TerminalApp() {
     const evict = filesOpen.length >= MAX_FILE_PANELS ? filesStack[0] : null;
     setFilesOpen((prev) => [...prev.filter((id) => id !== evict), paneId]);
     setFilesStack((prev) => [...prev.filter((id) => id !== evict), paneId]);
+  };
+
+  /** The terminal id of a live shell on `tunnelId`: the preferred pane's if it
+   * is on that tunnel, else any pane of this window on it; null when none. */
+  const shellFor = (tunnelId: string, preferPaneId?: string): string | null => {
+    const ids = tabs.flatMap((tab) => paneIds(tab.root));
+    const ordered = preferPaneId ? [preferPaneId, ...ids] : ids;
+    for (const id of ordered) {
+      const tab = tabs.find((x) => findPane(x.root, id));
+      const node = tab ? findPane(tab.root, id) : null;
+      const term = terminalIds.current.get(id);
+      if (node && node.tunnelId === tunnelId && term) return term;
+    }
+    return null;
+  };
+
+  /** `termId` is still a live shell, and its pane is still on `tunnelId`. */
+  const shellAlive = (termId: string, tunnelId: string): boolean => {
+    for (const [paneId, term] of terminalIds.current) {
+      if (term !== termId) continue;
+      const tab = tabs.find((x) => findPane(x.root, paneId));
+      const node = tab ? findPane(tab.root, paneId) : null;
+      return !!node && node.tunnelId === tunnelId;
+    }
+    return false;
   };
 
   const closeFiles = (paneId: string) => {
@@ -720,8 +780,16 @@ export function TerminalApp() {
       .map((root) => reviveLayout(root, (id) => !!byId[id]))
       .reduce((n, root) => n + (root ? paneIds(root).length : 0), 0);
 
-  /** Opens a workspace's tabs after the open ones, each pane a new shell. */
+  /** Opens a workspace's tabs after the open ones, each pane a new shell.
+   * Already open: shows its tab instead (the active one if it is linked,
+   * else the first) — never a second copy of the same shells. */
   const openWorkspace = (workspace: Workspace) => {
+    const open = tabs.filter((tab) => tab.workspaceId === workspace.id);
+    if (open.length > 0) {
+      setActiveKey(open.some((tab) => tab.key === activeKey) ? activeKey : open[0].key);
+      refocus();
+      return;
+    }
     const added = workspace.tabs
       .map((root) => reviveLayout(root, (id) => !!byId[id]))
       .filter((root) => root !== null)
@@ -851,7 +919,54 @@ export function TerminalApp() {
     refocus();
   };
 
+  /** Unsaved editors among `ids`, with their file paths. */
+  const unsavedAmong = (ids: string[]) => collectUnsaved(ids, (id) => filesRefs.current.get(id)?.unsaved() ?? null);
+
+  /** user@host of the shell a pane belongs to. */
+  const whereOf = (paneId: string): string => {
+    const node = tabsRef.current.map((tab) => findPane(tab.root, paneId)).find(Boolean);
+    const tunnel = node ? byId[node.tunnelId] : undefined;
+    return tunnel ? `${tunnel.username}@${tunnel.host}` : paneId;
+  };
+
+  /** Runs `proceed` now when none of `ids` has unsaved edits, else after the
+   * user chose Save or Discard; Cancel (or a failed save) keeps everything. */
+  const guardUnsaved = (ids: string[], proceed: () => void) => {
+    const items = unsavedAmong(ids);
+    if (items.length === 0) {
+      proceed();
+      return;
+    }
+    if (pendingUnsaved) return;
+    void new Promise<boolean>((resolve) => setPendingUnsaved({ items, failed: false, resolve })).then((ok) => {
+      if (ok) proceed();
+      else refocus();
+    });
+  };
+
+  const saveAllUnsaved = async (pending: PendingUnsaved) => {
+    for (const item of pending.items) {
+      const ok = (await filesRefs.current.get(item.paneId)?.saveUnsaved()) ?? true;
+      if (!ok) {
+        // Show the panel that could not save: it carries the conflict banner.
+        const tab = tabsRef.current.find((x) => findPane(x.root, item.paneId));
+        if (tab) setActiveKey(tab.key);
+        raiseFiles(item.paneId);
+        setPendingUnsaved({ ...pending, failed: true });
+        return;
+      }
+    }
+    setPendingUnsaved(null);
+    pending.resolve(true);
+  };
+
   const closeTab = (key: string) => {
+    const tab = tabs.find((x) => x.key === key);
+    if (!tab) return;
+    guardUnsaved(paneIds(tab.root), () => later.current.closeTab(key));
+  };
+
+  const closeTabNow = (key: string) => {
     const tab = tabs.find((x) => x.key === key);
     if (tab) forgetPanes(paneIds(tab.root));
     const index = tabs.findIndex((x) => x.key === key);
@@ -869,6 +984,16 @@ export function TerminalApp() {
       closeTab(tabKey);
       return;
     }
+    guardUnsaved([paneId], () => later.current.closePane(tabKey, paneId));
+  };
+
+  const closePaneNow = (tabKey: string, paneId: string) => {
+    const tab = tabs.find((x) => x.key === tabKey);
+    if (!tab) return;
+    if (paneIds(tab.root).length === 1) {
+      closeTabNow(tabKey);
+      return;
+    }
     forgetPanes([paneId]);
     const { panes } = computeLayout(tab.root);
     // Focus moves to the pane that visually takes the closed one's place.
@@ -882,6 +1007,17 @@ export function TerminalApp() {
     );
     refocus();
   };
+
+  /** The window's close button, pressed while an editor has unsaved changes. */
+  const windowClose = () =>
+    guardUnsaved(tabsRef.current.flatMap((tab) => paneIds(tab.root)), () => void terminalWindowHide());
+
+  later.current = { closeTab: closeTabNow, closePane: closePaneNow, openFiles: openFilesNow, windowClose };
+
+  useEffect(() => {
+    const unlisten = listen("terminal-close-requested", () => later.current.windowClose());
+    return () => void unlisten.then((f) => f());
+  }, []);
 
   const toggleBroadcast = (tabKey: string) => {
     setBroadcastHint(false);
@@ -1144,7 +1280,7 @@ export function TerminalApp() {
     const shortcut = matchShortcut(e);
     if (!shortcut) return;
     // A dialog owns the keyboard while it is open.
-    if (tourOpen || pendingPaste || adding || naming || hostKeyQueue.length > 0) return;
+    if (tourOpen || pendingPaste || pendingUnsaved || adding || naming || hostKeyQueue.length > 0) return;
     // The file panel keeps its keys; only its own toggle reaches the window.
     const inPanel = (e.target as HTMLElement | null)?.closest?.("[data-file-panel]");
     if (inPanel && shortcut.kind !== "files") return;
@@ -1320,11 +1456,20 @@ export function TerminalApp() {
     return counts;
   }, [tabs]);
 
-  const tabTitle = (tab: Tab) => {
+  /** What the tab's panes are: the focused host, "+N" for the others. */
+  const tabHosts = (tab: Tab) => {
     const pane = findPane(tab.root, tab.focused);
     const name = pane ? (byId[pane.tunnelId]?.name ?? "") : "";
     const count = paneIds(tab.root).length;
     return count > 1 ? `${name} +${count - 1}` : name;
+  };
+  /** A workspace's tabs carry its name ("name 2/3" when it has several);
+   * other tabs are named after their hosts. */
+  const tabTitle = (tab: Tab) => {
+    const workspace = workspaceOf(tab);
+    if (!workspace) return tabHosts(tab);
+    const linked = linkedTabs(workspace);
+    return linked.length > 1 ? `${workspace.name} ${linked.indexOf(tab) + 1}/${linked.length}` : workspace.name;
   };
 
   const tabTarget = drag?.target?.kind === "tab" ? drag.target : null;
@@ -1524,27 +1669,44 @@ export function TerminalApp() {
                     />
                   )}
                   <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PHASE_DOT[phase]}`} />
-                  {workspaceOf(tab) && (
-                    <span className="shrink-0 text-muted" title={t("workspace.inWorkspace", { name: workspaceOf(tab)!.name })}>
-                      {icons.workspace}
-                    </span>
-                  )}
-                  <span className="truncate">{label}</span>
+                  {/* No workspace badge: the title is the workspace's name. */}
+                  <span
+                    className="truncate"
+                    title={
+                      workspaceOf(tab)
+                        ? `${t("workspace.inWorkspace", { name: workspaceOf(tab)!.name })} · ${tabHosts(tab)}`
+                        : undefined
+                    }
+                  >
+                    {label}
+                  </span>
                   {offScreen.some((id) => attention.has(id) || alerted.has(id)) ? (
+                    // A static bell, not an amber pulse: a pulsing amber dot
+                    // before the name means "connecting".
                     <span
+                      role="status"
                       title={offScreen.some((id) => alerted.has(id)) ? t("watch.firedTab") : t("smart.finishedHere")}
-                      className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber"
-                    />
+                      aria-label={offScreen.some((id) => alerted.has(id)) ? t("watch.firedTab") : t("smart.finishedHere")}
+                      className="shrink-0 text-amber"
+                    >
+                      {icons.bell}
+                    </span>
                   ) : (
                     offScreen.some((id) => unread.has(id)) && (
                       <span
                         title={t("watch.newOutputTab", { count: offScreen.filter((id) => unread.has(id)).length })}
-                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+                        // A ring, not a dot: the solid accent dot before the
+                        // name already means "connected".
+                        className="h-2 w-2 shrink-0 rounded-full border-[1.5px] border-accent"
                       />
                     )
                   )}
                   {tab.broadcast && (
-                    <span className="shrink-0 text-amber" title={tab.zoomed ? t("broadcastPaused") : t("broadcastOn")}>
+                    // Dimmed while a zoom pauses it: hidden panes take no keys.
+                    <span
+                      className={`shrink-0 text-amber ${tab.zoomed ? "opacity-40" : ""}`}
+                      title={tab.zoomed ? t("broadcastPaused") : t("broadcastOn")}
+                    >
                       {icons.broadcast}
                     </span>
                   )}
@@ -1912,12 +2074,23 @@ export function TerminalApp() {
             memory={filesMemory.current.get(paneId)}
             onMemory={(m) => filesMemory.current.set(paneId, m)}
             shellDir={() => paneHandles.current.get(paneId)?.cwd() ?? null}
+            shellFor={shellFor}
+            shellAlive={shellAlive}
             transfers={transfers}
             byId={byId}
             onClearTransfers={clearFinished}
             dropHover={dropHover?.paneId === paneId ? dropHover : null}
             onClose={() => closeFiles(paneId)}
             onFocusShell={() => focusFilesOwner(paneId)}
+            onUnsaved={(dirty) =>
+              setDirtyPanes((prev) => {
+                if (prev.has(paneId) === dirty) return prev;
+                const next = new Set(prev);
+                if (dirty) next.add(paneId);
+                else next.delete(paneId);
+                return next;
+              })
+            }
           />
         </div>
       ))}
@@ -2007,6 +2180,55 @@ export function TerminalApp() {
             refocus();
           }}
         />
+      )}
+      {pendingUnsaved && (
+        <Modal
+          title={<h2 className="font-display text-base font-semibold text-text">{t("unsavedClose.title")}</h2>}
+          onClose={() => {
+            pendingUnsaved.resolve(false);
+            setPendingUnsaved(null);
+          }}
+          size="sm"
+          borderClassName="border-coral/40"
+          dismissible={false}
+        >
+          <p className="text-sm text-muted">{t("unsavedClose.message")}</p>
+          <ul className="mt-2 list-disc pl-5 text-sm text-text">
+            {describeUnsaved(pendingUnsaved.items, whereOf).map((line) => (
+              <li key={line} className="break-all">
+                {line}
+              </li>
+            ))}
+          </ul>
+          {pendingUnsaved.failed && <p className="mt-2 text-sm text-coral">{t("unsavedClose.saveFailed")}</p>}
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => {
+                pendingUnsaved.resolve(false);
+                setPendingUnsaved(null);
+              }}
+              className="rounded px-3 py-1.5 text-xs text-muted hover:bg-surface-hover"
+            >
+              {t("unsavedClose.cancel")}
+            </button>
+            <button
+              onClick={() => {
+                pendingUnsaved.resolve(true);
+                setPendingUnsaved(null);
+              }}
+              className="rounded px-3 py-1.5 text-xs text-coral hover:bg-coral/10"
+            >
+              {t("unsavedClose.discard")}
+            </button>
+            <button
+              autoFocus
+              onClick={() => void saveAllUnsaved(pendingUnsaved)}
+              className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-on-accent"
+            >
+              {t("unsavedClose.save")}
+            </button>
+          </div>
+        </Modal>
       )}
       {tourOpen && <TerminalTour hasTab={tabs.length > 0} onFinish={closeTour} />}
       {hostKeyQueue[0] && <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />}

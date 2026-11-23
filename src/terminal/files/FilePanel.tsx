@@ -11,17 +11,22 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import {
+  filesCopyAcross,
   filesCount,
   filesCreate,
   filesDelete,
   filesDownload,
+  filesDragOut,
+  filesPickDownload,
   filesHome,
   filesList,
   filesOpenLocal,
@@ -29,10 +34,12 @@ import {
   filesPickUpload,
   filesRename,
   filesUpload,
+  terminalWrite,
 } from "../../api";
 import { openMenu, type MenuEntry } from "../../contextMenu";
 import { formatBytes, formatTimestamp } from "../../format";
-import type { FileCount, FileEntry, FileTransfer, Tunnel } from "../../types";
+import type { CopyAcross, FileCount, FileEntry, FileTransfer, Tunnel } from "../../types";
+import { dropDirFor, dropLabelKey, type DropPlan } from "./dropLogic";
 import { FileDetails } from "./FileDetails";
 import { FileView, type FileViewHandle } from "./FileView";
 import {
@@ -64,6 +71,17 @@ import {
   viewKind,
   type SortKey,
 } from "./paths";
+import {
+  beginRowDrag,
+  cancelRowDragFrom,
+  getRowDrag,
+  onRowDragLeaveWindow,
+  registerRowReceiver,
+  rowReceiver,
+  subscribeRowDrag,
+  type RowDragPayload,
+} from "./rowDrag";
+import { isWindows } from "../../platform";
 import { TransferList } from "./TransferList";
 import { isActive, overallProgress } from "./useTransfers";
 
@@ -76,6 +94,10 @@ const COLUMNS_MIN = 600;
 export interface FilePanelHandle {
   /** Resolves false when the user keeps the panel (unsaved edits → Cancel). */
   requestClose: () => Promise<boolean>;
+  /** Path of the file open in the editor with unsaved changes, else null. */
+  unsaved: () => string | null;
+  /** Saves that file; false when it could not (conflict, lost session…). */
+  saveUnsaved: () => Promise<boolean>;
   focus: () => void;
   /** Local paths dropped from the OS at window point (x, y). */
   drop: (paths: string[], x: number, y: number) => void;
@@ -106,6 +128,10 @@ interface Props {
   onMemory: (memory: PaneFiles) => void;
   /** The shell's directory if known: absolute, or `~…`. */
   shellDir: () => string | null;
+  /** A live shell (terminal id) on `tunnelId`, the preferred pane first; null when none. */
+  shellFor: (tunnelId: string, preferPaneId?: string) => string | null;
+  /** The terminal id is still a live shell on that tunnel. */
+  shellAlive: (termId: string, tunnelId: string) => boolean;
   transfers: FileTransfer[];
   byId: Record<string, Tunnel>;
   onClearTransfers: () => void;
@@ -113,6 +139,8 @@ interface Props {
   dropHover: { x: number; y: number } | null;
   onClose: () => void;
   onFocusShell: () => void;
+  /** The editor gained or lost unsaved changes (false when the panel goes). */
+  onUnsaved?: (dirty: boolean) => void;
 }
 
 type NameBar = { kind: "file" | "dir" } | { kind: "rename"; from: string };
@@ -121,7 +149,26 @@ type Confirm =
   | { kind: "dirty"; resolve: (choice: "save" | "discard" | "cancel") => void };
 
 /** Copied/cut paths; outlives the panel so reopening can still paste. */
-let clipboard: { tunnelId: string; paths: string[]; cut: boolean } | null = null;
+type Clip = { tunnelId: string; paneId: string; paths: string[]; cut: boolean };
+let clipboardValue: Clip | null = null;
+const clipListeners = new Set<() => void>();
+const subscribeClipboard = (l: () => void) => {
+  clipListeners.add(l);
+  return () => void clipListeners.delete(l);
+};
+const getClipboard = () => clipboardValue;
+const setClipboard = (next: Clip | null) => {
+  clipboardValue = next;
+  clipListeners.forEach((l) => l());
+};
+
+/** After a relayed server-to-server copy: the way to make it direct next time. */
+interface RelayHint {
+  fromTunnelId: string;
+  /** The shell the rows came from, resolved when the hint was made. */
+  termId: string | null;
+  command: string;
+}
 
 export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(props, ref) {
   const {
@@ -140,6 +187,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     memory,
     onMemory,
     shellDir,
+    shellFor,
+    shellAlive,
     transfers,
     byId,
     onClearTransfers,
@@ -180,8 +229,11 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const [queueOpen, setQueueOpen] = useState(false);
   const [scrollTop, setScrollTop] = useState(0);
   const [listHeight, setListHeight] = useState(300);
-  const [, bumpClipboard] = useState(0);
+  const clipboard = useSyncExternalStore(subscribeClipboard, getClipboard);
   const [dropDir, setDropDir] = useState<string | null>(null);
+  const [relayHint, setRelayHint] = useState<RelayHint | null>(null);
+  const rowDrag = useSyncExternalStore(subscribeRowDrag, getRowDrag);
+  const rowHover = rowDrag?.hover && rowDrag.hover.paneId === paneId ? rowDrag.hover : null;
   /** Snap preview while dragging the header. */
   const [snapPreview, setSnapPreview] = useState<Corner | null>(null);
   const [moving, setMoving] = useState(false);
@@ -287,10 +339,14 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   useEffect(() => {
     let changed = false;
     for (const x of transfers) {
-      if (x.tunnelId !== tunnelId || x.direction !== "upload" || x.state !== "done") continue;
+      if (x.state !== "done") continue;
+      const uploadedHere = x.direction === "upload" && x.tunnelId === tunnelId;
+      const copiedHere = x.direction === "copy" && x.destTunnelId === tunnelId;
+      if (!uploadedHere && !copiedHere) continue;
       if (seenDone.current.has(x.id)) continue;
       seenDone.current.add(x.id);
-      if (path && parentPath(x.remotePath) === path) changed = true;
+      // An upload's remotePath is the new file; a copy's localPath is the folder.
+      if (path && (copiedHere ? x.localPath === path : parentPath(x.remotePath) === path)) changed = true;
     }
     if (changed) refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -321,6 +377,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     listObserver.current = observer;
   }, []);
   useEffect(() => () => listObserver.current?.disconnect(), []);
+  // A gesture started in this panel must not outlive it.
+  useEffect(() => () => cancelRowDragFrom(paneId), [paneId]);
 
   // Clamped: a shorter list (filter, reload) can leave a stale position.
   const top = Math.min(scrollTop, Math.max(0, visible.length * ROW - listHeight));
@@ -368,6 +426,15 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
       .catch((e) => setNotice(errorText(e)));
   };
 
+  const downloadTo = (paths = targets()) => {
+    if (paths.length === 0) return;
+    void filesPickDownload(tunnelId, paths)
+      .then((ids) => {
+        if (ids.length > 0) setQueueOpen(true);
+      })
+      .catch((e) => setNotice(errorText(e)));
+  };
+
   const openLocal = (p: string) => {
     void filesOpenLocal(tunnelId, p).catch((e) => setNotice(errorText(e)));
     setNotice(t("files.openingLocal", { name: baseName(p) }));
@@ -383,32 +450,123 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const copyToClipboard = (cut: boolean) => {
     const paths = targets();
     if (paths.length === 0) return;
-    clipboard = { tunnelId, paths, cut };
-    bumpClipboard((n) => n + 1);
+    setClipboard({ tunnelId, paneId, paths, cut });
     setNotice(t(cut ? "files.cutCount" : "files.copiedCount", { count: paths.length }));
   };
 
-  const canPaste = clipboard !== null && clipboard.tunnelId === tunnelId;
-  const paste = async () => {
-    if (!path || !clipboard || clipboard.tunnelId !== tunnelId) return;
-    const clip = clipboard;
+  // Cut stays on one server; a copy can be pasted on any other server.
+  const canPaste = clipboard !== null && (clipboard.tunnelId === tunnelId || !clipboard.cut);
+
+  /** Server-to-server copy into `dir`; the queue shows progress, and a relayed one offers the key hint. */
+  const copyAcross = async (from: string, fromPaneId: string, paths: string[], dir: string) => {
+    setNotice(t("files.copying"));
+    try {
+      const out: CopyAcross = await filesCopyAcross(from, paths, tunnelId, dir, false);
+      setNotice(null);
+      setQueueOpen(true);
+      setRelayHint(out.route === "relay" && out.keyHint ? { fromTunnelId: from, termId: shellFor(from, fromPaneId), command: out.keyHint } : null);
+    } catch (e) {
+      setNotice(errorText(e));
+    }
+  };
+
+  /** Same-server copy or move (`files_paste`) into `dir`. */
+  const pasteHere = async (paths: string[], dir: string, cut: boolean) => {
     setNotice(t("files.pasting"));
     try {
-      const out = await filesPaste(tunnelId, clip.paths, path, clip.cut);
-      if (clip.cut) {
-        clipboard = null;
-        bumpClipboard((n) => n + 1);
-      }
+      const out = await filesPaste(tunnelId, paths, dir, cut);
       setNotice(
         out.skipped.length > 0
           ? t("files.pasteSkipped", { count: out.skipped.length, names: out.skipped.map(baseName).join(", ") })
           : null,
       );
-      void load(path, { select: out.done.map(baseName) });
+      if (path) void load(path, { select: dir === path ? out.done.map(baseName) : [] });
+      return true;
     } catch (e) {
       setNotice(errorText(e));
       refresh();
+      return false;
     }
+  };
+
+  const paste = async () => {
+    // Re-read the store: this panel's render may predate another panel's Copy/Cut.
+    const clip = getClipboard();
+    if (!path || !clip || !(clip.tunnelId === tunnelId || !clip.cut)) return;
+    if (clip.tunnelId !== tunnelId) return void (await copyAcross(clip.tunnelId, clip.paneId, clip.paths, path));
+    if ((await pasteHere(clip.paths, path, clip.cut)) && clip.cut && getClipboard() === clip) {
+      setClipboard(null);
+    }
+  };
+
+  // ---- rows dragged between panels --------------------------------------------
+
+  /** The folder a row drop at window point (x, y) goes to: a folder row, else the open folder. */
+  const rowDropDir = (x: number, y: number): string | null => {
+    if (!path || viewing || error) return null;
+    const name = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-file-row]")?.dataset.fileRow;
+    return dropDirFor(path, name ? entries.find((e) => e.name === name) : undefined);
+  };
+  const receiveRows = async (payload: RowDragPayload, dir: string, plan: DropPlan) => {
+    if (plan.kind === "across") return void (await copyAcross(payload.tunnelId, payload.paneId, payload.paths, dir));
+    if (plan.kind === "none") return;
+    const ok = await pasteHere(payload.paths, dir, plan.kind === "move");
+    // A move empties the source folder; another panel may be showing it.
+    if (ok && plan.kind === "move" && payload.paneId !== paneId) rowReceiver(payload.paneId)?.refresh();
+  };
+  const receiverApi = useRef({ rowDropDir, receiveRows, refresh });
+  receiverApi.current = { rowDropDir, receiveRows, refresh };
+  useEffect(
+    () =>
+      registerRowReceiver(paneId, {
+        tunnelId,
+        resolve: (x, y) => receiverApi.current.rowDropDir(x, y),
+        drop: (payload, dir, plan) => void receiverApi.current.receiveRows(payload, dir, plan),
+        refresh: () => receiverApi.current.refresh(),
+      }),
+    [paneId, tunnelId],
+  );
+
+  // ---- rows dragged out of the window (Windows: Explorer, virtual files) -----
+
+  /** Paths being listed before the OS drag starts; their rows show it. */
+  const [preparing, setPreparing] = useState<string[] | null>(null);
+  const dragOutApi = useRef({ errorText, t });
+  dragOutApi.current = { errorText, t };
+  useEffect(() => {
+    if (!isWindows) return;
+    return onRowDragLeaveWindow(({ payload }) => {
+      if (payload.paneId !== paneId) return;
+      const { errorText: errText, t: tr } = dragOutApi.current;
+      setPreparing(payload.paths);
+      setNotice(tr("files.dragOut.preparing"));
+      // Resolves once the OS drag has started, or at once if the button was released while listing.
+      filesDragOut(payload.tunnelId, payload.paths)
+        .then(() => setNotice(null))
+        .catch((e) => {
+          const code = String(e);
+          if (code === "too-many") setNotice(tr("files.dragOut.tooMany"));
+          else if (code.startsWith("path-too-long:")) setNotice(tr("files.dragOut.pathTooLong", { path: code.slice("path-too-long:".length) }));
+          else setNotice(errText(e));
+        })
+        .finally(() => setPreparing(null));
+      return true;
+    });
+  }, [paneId]);
+
+  // The hint is bound to the shell resolved when it was made; it is typed only
+  // while that same shell is alive and still on that tunnel.
+  const hintShellAlive = !!relayHint?.termId && shellAlive(relayHint.termId, relayHint.fromTunnelId);
+  const typeRelayHint = () => {
+    if (!relayHint?.termId || !shellAlive(relayHint.termId, relayHint.fromTunnelId)) return;
+    // No newline: the user reads the command and presses Enter in that shell.
+    terminalWrite(relayHint.termId, relayHint.command).then(
+      () => {
+        setRelayHint(null);
+        setNotice(t("files.relay.typed"));
+      },
+      (e) => setNotice(errorText(e)),
+    );
   };
 
   const askDelete = (paths = targets()) => {
@@ -498,6 +656,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   useImperativeHandle(ref, () => ({
     requestClose: settleDirty,
+    unsaved: () => (viewing && viewRef.current?.dirty() ? viewing : null),
+    saveUnsaved: async () => (await viewRef.current?.save()) ?? true,
     focus: () => {
       if (rootRef.current?.contains(document.activeElement)) return;
       if (viewing) rootRef.current?.querySelector<HTMLElement>(".cm-content")?.focus();
@@ -641,10 +801,11 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     const items: MenuEntry[] = [
       { label: isDirLike(entry) ? t("files.menu.openFolder") : t("files.menu.open"), action: () => open(entry), enabled: !many },
       { label: t("files.download"), action: () => download(paths) },
+      { label: t("files.downloadTo"), action: () => downloadTo(paths) },
       { label: t("files.openLocal"), action: () => openLocal(full), enabled: !many && !isDirLike(entry) },
       "separator",
-      { label: t("files.menu.copy"), action: () => ((clipboard = { tunnelId, paths, cut: false }), bumpClipboard((n) => n + 1)) },
-      { label: t("files.menu.cut"), action: () => ((clipboard = { tunnelId, paths, cut: true }), bumpClipboard((n) => n + 1)) },
+      { label: t("files.menu.copy"), action: () => setClipboard({ tunnelId, paneId, paths, cut: false }) },
+      { label: t("files.menu.cut"), action: () => setClipboard({ tunnelId, paneId, paths, cut: true }) },
       { label: t("files.menu.paste"), action: () => void paste(), enabled: canPaste },
       "separator",
       { label: t("files.menu.rename"), action: () => setNameBar({ kind: "rename", from: entry.name, value: entry.name }), enabled: !many },
@@ -928,6 +1089,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
             onDownload={() => download([viewing])}
             onOpenLocal={() => openLocal(viewing)}
             onSaved={() => setNotice(t("files.view.saved"))}
+            onDirty={props.onUnsaved}
             errorText={errorText}
           />
         ) : (
@@ -1024,6 +1186,17 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
                   <path d="M8 3v8M4.5 7.5L8 11l3.5-3.5M3 13h10" />
                 </svg>
               </button>
+              <button
+                onClick={() => downloadTo()}
+                disabled={!current && selected.size === 0}
+                className={iconButton}
+                title={t("files.downloadTo")}
+                aria-label={t("files.downloadTo")}
+              >
+                <svg width="9" height="13" viewBox="0 0 10 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 6l3 3 3-3" />
+                </svg>
+              </button>
               <input
                 ref={filterRef}
                 value={filter}
@@ -1093,6 +1266,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
                     ref={attachList}
                     tabIndex={0}
                     role="listbox"
+                    data-file-drop=""
                     aria-multiselectable="true"
                     aria-label={t("files.listLabel", { path: path ?? "" })}
                     aria-activedescendant={current ? `file-row-${cursor}` : undefined}
@@ -1120,7 +1294,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
                           const isSelected = selected.has(entry.name);
                           const isCursor = index === cursor;
                           const cut = clipboard?.cut && clipboard.tunnelId === tunnelId && path && clipboard.paths.includes(joinPath(path, entry.name));
-                          const dropping = dropDir !== null && path !== null && dropDir === joinPath(path, entry.name);
+                          const hoverDir = rowHover?.dir ?? dropDir;
+                          const dropping = hoverDir !== null && path !== null && hoverDir === joinPath(path, entry.name);
                           return (
                             <div
                               key={entry.name}
@@ -1128,8 +1303,24 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
                               role="option"
                               aria-selected={isSelected}
                               data-file-row={entry.name}
+                              onPointerDown={(e) => {
+                                if (e.button !== 0 || e.shiftKey || !path) return;
+                                // The rows that travel: the selection when this row is in it.
+                                const names = isSelected ? [...selected] : [entry.name];
+                                beginRowDrag(e, { paneId, tunnelId, dir: path, paths: pathsOf(names) }, () => {
+                                  if (e.ctrlKey || e.metaKey) selectAt(index, "toggle");
+                                  else if (isSelected && selected.size > 1) selectAt(index, "only");
+                                });
+                              }}
                               onMouseDown={(e) => {
                                 if (e.button !== 0) return;
+                                // Ctrl/Meta: toggled on release without a drag (onPlainClick), so a Ctrl-drag never changes the selection.
+                                if ((e.ctrlKey || e.metaKey) && !e.shiftKey) return;
+                                // Pressing inside a multi-selection keeps it: it may be about to be dragged.
+                                if (isSelected && selected.size > 1 && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                                  setCursor(index);
+                                  return;
+                                }
                                 selectAt(index, e.shiftKey ? "range" : e.ctrlKey || e.metaKey ? "toggle" : "only");
                               }}
                               onDoubleClick={() => open(entry)}
@@ -1140,7 +1331,9 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
                                   : isSelected
                                     ? "bg-accent/15 text-text"
                                     : "text-text hover:bg-surface-hover"
-                              } ${isCursor ? "shadow-[inset_2px_0_0_var(--color-accent)]" : ""} ${cut ? "opacity-50" : ""}`}
+                              } ${isCursor ? "shadow-[inset_2px_0_0_var(--color-accent)]" : ""} ${
+                                cut || (preparing && path && preparing.includes(joinPath(path, entry.name))) ? "opacity-50" : ""
+                              }`}
                               style={{ top: index * ROW, height: ROW }}
                             >
                               <span className="flex min-w-0 flex-1 items-center gap-2">
@@ -1209,13 +1402,56 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
 
 
-        {dropDir && (
+        {relayHint && (
+          <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border bg-amber/10 px-2.5 py-1.5 text-[11px]">
+            <span className="min-w-0 flex-1 text-text">
+              {t("files.relay.hint", {
+                from: byId[relayHint.fromTunnelId] ? `${byId[relayHint.fromTunnelId].username}@${byId[relayHint.fromTunnelId].host}` : "",
+                to: where,
+              })}
+              <code className="ml-2 break-all font-mono text-muted">{relayHint.command}</code>
+            </span>
+            {hintShellAlive && (
+              <button onClick={typeRelayHint} title={t("files.relay.typeTitle", { from: byId[relayHint.fromTunnelId]?.host ?? "" })} className="shrink-0 rounded bg-accent px-2 py-0.5 font-medium text-on-accent">
+                {t("files.relay.type")}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                void writeText(relayHint.command).catch(() => {});
+                setNotice(t("files.pathCopied"));
+              }}
+              className="shrink-0 rounded px-1.5 py-0.5 text-muted hover:bg-surface-hover hover:text-text"
+            >
+              {t("files.relay.copy")}
+            </button>
+            <button onClick={() => setRelayHint(null)} aria-label={t("files.relay.dismiss")} className="shrink-0 rounded px-1.5 py-0.5 text-muted hover:bg-surface-hover hover:text-text">
+              ×
+            </button>
+          </div>
+        )}
+
+        {(rowHover || dropDir) && (
           <div className="pointer-events-none absolute inset-0 z-30 flex items-end justify-center bg-accent/10 p-3 ring-2 ring-inset ring-accent">
             <span className="max-w-full truncate rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-on-accent shadow-lg">
-              {t("files.dropTo", { where, path: dropDir })}
+              {rowHover
+                ? t(dropLabelKey(rowHover.plan) ?? "files.dropCopy", { where, path: rowHover.dir })
+                : t("files.dropTo", { where, path: dropDir })}
             </span>
           </div>
         )}
+
+        {rowDrag &&
+          rowDrag.payload.paneId === paneId &&
+          createPortal(
+            <div
+              className="pointer-events-none fixed z-[80] rounded-md border border-border bg-surface px-2 py-1 text-xs text-text shadow-xl"
+              style={{ left: rowDrag.x + 12, top: rowDrag.y + 10 }}
+            >
+              {t("files.dragLabel", { count: rowDrag.payload.paths.length })}
+            </div>,
+            document.body,
+          )}
 
         {confirm && (
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-4">

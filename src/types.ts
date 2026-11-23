@@ -275,6 +275,8 @@ export interface Settings {
   terminalSuggestions: boolean;
   /** Notify when a command this long ends out of sight; 0 = off. */
   terminalLongCommandSecs: number;
+  /** Last folder chosen with "Download to folder…" (file panel). */
+  filesDownloadDir?: string | null;
   /** Dim the panes without focus in a tab with several panes. */
   terminalDimInactive: boolean;
 }
@@ -459,10 +461,26 @@ export interface SavedFile {
 
 export type TransferState = "queued" | "running" | "done" | "skipped" | "failed" | "cancelled";
 
+export type TransferDirection = "upload" | "download" | "copy" | "dragout";
+export type CopyRoute = "rsync" | "scp" | "relay";
+
+/** Result of `files_copy_across`. */
+export interface CopyAcross {
+  route: CopyRoute;
+  transferIds: string[];
+  /** Relay only: text to type into the source shell (no newline). */
+  keyHint: string | null;
+}
+
 export interface FileTransfer {
   id: string;
+  /** The server the file is on (the source of a copy). */
   tunnelId: string;
-  direction: "upload" | "download";
+  direction: TransferDirection;
+  /** Copy only: the destination server; `localPath` is then the folder on it. */
+  destTunnelId: string | null;
+  /** Copy only: how the bytes travelled. */
+  route: CopyRoute | null;
   name: string;
   remotePath: string;
   localPath: string;

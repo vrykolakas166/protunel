@@ -18,6 +18,7 @@ const stepDefinitions: (TourStep & { panel?: TourPanel; platform?: "windows" | "
   { id: "add-socks", chapter: "tunnels", target: "add-socks", panel: "add" },
   { id: "add-jump", chapter: "tunnels", target: "add-jump", panel: "add" },
   { id: "list", chapter: "tunnels", target: "list" },
+  { id: "groups", chapter: "tunnels", target: "list" },
   { id: "bulk", chapter: "tunnels", target: "bulk", keys: ["Ctrl+F"] },
   { id: "router", chapter: "router", target: "router" },
   { id: "router-enable", chapter: "router", target: "router-enable", panel: "router:rules" },
@@ -33,6 +34,7 @@ const stepDefinitions: (TourStep & { panel?: TourPanel; platform?: "windows" | "
   { id: "settings-reconnect", chapter: "settings", target: "settings-reconnect", panel: "settings:tunnels" },
   { id: "settings-terminal", chapter: "settings", target: "settings-smart", panel: "settings:terminal" },
   { id: "settings-config", chapter: "settings", target: "settings-config", panel: "settings:backup" },
+  { id: "settings-winscp", chapter: "settings", target: "settings-config", panel: "settings:backup" },
   { id: "settings-hosts", chapter: "settings", target: "settings-hosts", panel: "settings:backup" },
   { id: "settings-about", chapter: "settings", target: "settings-updates", panel: "settings:about" },
 ];

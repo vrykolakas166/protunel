@@ -1,0 +1,1016 @@
+//! Queued server-to-server copies and direct-route discovery.
+
+use super::*;
+use crate::db::Tunnel;
+use tokio::sync::OnceCell;
+
+const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+const FAILED_PROBE_TTL: Duration = Duration::from_secs(60);
+const HOST_KEY_ALIAS: &str = "protunel-dest";
+
+// The watchdog handles both explicit cancellation and a lost client (EOF).
+// The completion marker is sent only after the child exits and TERM is ignored.
+const WATCH_COPY: &str = r#"
+marker=$1
+shift
+exec 3<&0
+"$@" </dev/null 3<&- &
+child=$!
+trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 143' TERM HUP
+(if ! IFS= read -r request || [ "$request" = cancel ]; then kill -TERM "$$"; fi) <&3 >/dev/null 2>&1 &
+watcher=$!
+exec 3<&-
+wait "$child"
+status=$?
+trap '' TERM HUP
+printf '\n%s\n' "$marker"
+wait "$watcher"
+exit "$status"
+"#;
+
+#[derive(Default)]
+pub(super) struct Probes(Mutex<HashMap<(Uuid, Uuid), CachedProbe>>);
+
+struct CachedProbe {
+    endpoint: (String, String, u16),
+    key: String,
+    session: Weak<Handle>,
+    result: Arc<ProbeResult>,
+}
+
+type ProbeResult = OnceCell<(bool, Instant)>;
+
+fn probe_is_fresh(now: Instant, reachable: bool, checked_at: Instant) -> bool {
+    reachable || now.duration_since(checked_at) < FAILED_PROBE_TTL
+}
+
+impl Probes {
+    async fn reachable(
+        &self,
+        pair: (Uuid, Uuid),
+        session: &Arc<Handle>,
+        sftp: &SftpSession,
+        tunnel: &Tunnel,
+        key: &str,
+    ) -> Option<Arc<ProbeResult>> {
+        let endpoint = (tunnel.username.clone(), tunnel.host.clone(), tunnel.port);
+        let session_id = Arc::downgrade(session);
+        let result = {
+            let mut probes = self.0.lock().unwrap();
+            let new_probe = || CachedProbe {
+                endpoint: endpoint.clone(),
+                key: key.to_owned(),
+                session: session_id.clone(),
+                result: Arc::new(OnceCell::new()),
+            };
+            let probe = probes.entry(pair).or_insert_with(&new_probe);
+            let fresh = probe.result.get().is_none_or(|&(reachable, checked_at)| {
+                probe_is_fresh(Instant::now(), reachable, checked_at)
+            });
+            if probe.endpoint != endpoint
+                || probe.key != key
+                || !probe.session.ptr_eq(&session_id)
+                || !fresh
+            {
+                *probe = new_probe();
+            }
+            probe.result.clone()
+        };
+        let reachable = result
+            .get_or_init(|| async {
+                let reachable = if let Ok(path) = write_known_host(sftp, key).await {
+                    let reachable = succeeds(session, &probe_command(tunnel, &path)).await;
+                    let _ = sftp.remove_file(path).await;
+                    reachable
+                } else {
+                    false
+                };
+                (reachable, Instant::now())
+            })
+            .await
+            .0;
+        reachable.then_some(result)
+    }
+
+    fn invalidate(&self, pair: (Uuid, Uuid), result: &Arc<ProbeResult>) {
+        let mut probes = self.0.lock().unwrap();
+        if probes
+            .get(&pair)
+            .is_some_and(|probe| Arc::ptr_eq(&probe.result, result))
+        {
+            probes.remove(&pair);
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyAcross {
+    pub route: Route,
+    pub transfer_ids: Vec<Uuid>,
+    pub key_hint: Option<String>,
+}
+
+struct CopyBatch {
+    from: Uuid,
+    to: Uuid,
+    source_session: Arc<Handle>,
+    dest_session: Arc<Handle>,
+    tunnel: Tunnel,
+    dest_dir: String,
+    overwrite: bool,
+    pin: Option<(String, Arc<ProbeResult>)>,
+}
+
+pub async fn copy_across(
+    app: &AppHandle,
+    state: &AppState,
+    from: Uuid,
+    sources: Vec<String>,
+    to: Uuid,
+    dest_dir: String,
+    overwrite: bool,
+) -> Result<CopyAcross, String> {
+    if from == to {
+        return Err("same-tunnel".to_string());
+    }
+    let source_session = live_session(state, from)?;
+    let dest_session = live_session(state, to)?;
+    let tunnel = state
+        .db
+        .get(to)
+        .map_err(|e| e.to_string())?
+        .ok_or("not-connected")?;
+    let mut pin = None;
+    let mut jobs: Vec<_> = sources
+        .into_iter()
+        .map(|source| (source, Route::Relay))
+        .collect();
+    let mut route = Route::Relay;
+    if let Some(key) = state
+        .known_hosts
+        .openssh_key(&format!("{}:{}", tunnel.host, tunnel.port))
+    {
+        if let Ok(sftp) = sftp_for_session(app, from, &source_session).await {
+            let files = app.state::<Files>();
+            if let Some(probe) = files
+                .copy_probes
+                .reachable((from, to), &source_session, &sftp, &tunnel, &key)
+                .await
+            {
+                pin = Some((key, probe));
+                let (rsync_a, rsync_b) = tokio::join!(
+                    succeeds(&source_session, "command -v rsync"),
+                    succeeds(&dest_session, "command -v rsync"),
+                );
+                for (source, job_route) in &mut jobs {
+                    *job_route = if rsync_a && rsync_b {
+                        Route::Rsync
+                    } else if regular_source(&sftp, source.trim_end_matches('/')).await {
+                        Route::Scp
+                    } else {
+                        Route::Relay
+                    };
+                    if *job_route != Route::Relay {
+                        route = *job_route;
+                    }
+                }
+            }
+        }
+    }
+    let key_hint = if pin.is_some() {
+        None
+    } else {
+        let check_key = shell_command([
+            "sh",
+            "-c",
+            r#"for key in "$HOME"/.ssh/id_*.pub; do [ -f "$key" ] && exit 0; done; exit 1"#,
+        ]);
+        let has_key = succeeds(&source_session, &check_key).await;
+        key_hint_command(&tunnel, has_key)
+    };
+
+    let batch = Arc::new(CopyBatch {
+        from,
+        to,
+        source_session,
+        dest_session,
+        tunnel,
+        dest_dir,
+        overwrite,
+        pin,
+    });
+    batch.ensure_live(state)?;
+    let transfer_ids = jobs
+        .into_iter()
+        .map(|(source, route)| batch.clone().queue(app, source, route))
+        .collect();
+    Ok(CopyAcross {
+        route,
+        transfer_ids,
+        key_hint,
+    })
+}
+
+fn live_session(state: &AppState, id: Uuid) -> Result<Arc<Handle>, String> {
+    state
+        .session_for(id)
+        .filter(|session| !session.is_closed())
+        .ok_or_else(|| "not-connected".to_string())
+}
+
+async fn succeeds(session: &Handle, command: &str) -> bool {
+    exec(session, command, PROBE_TIMEOUT)
+        .await
+        .is_ok_and(|out| out.status == Some(0))
+}
+
+impl CopyBatch {
+    fn ensure_live(&self, state: &AppState) -> Result<(), String> {
+        // A queued job belongs to the connections present when the route was chosen.
+        if !Arc::ptr_eq(&live_session(state, self.from)?, &self.source_session)
+            || !Arc::ptr_eq(&live_session(state, self.to)?, &self.dest_session)
+        {
+            return Err("not-connected".to_string());
+        }
+        Ok(())
+    }
+
+    fn queue(self: Arc<Self>, app: &AppHandle, source: String, route: Route) -> Uuid {
+        let (_, name) = split(&source);
+        let transfer = Transfer {
+            id: Uuid::new_v4(),
+            tunnel_id: self.from,
+            dest_tunnel_id: Some(self.to),
+            direction: Direction::Copy,
+            route: Some(route),
+            name: name.to_string(),
+            remote_path: source.clone(),
+            local_path: self.dest_dir.clone(),
+            done: 0,
+            total: 0,
+            state: TransferState::Queued,
+            error: None,
+            open_when_done: false,
+        };
+        spawn(app, transfer, move |ctx| {
+            Box::pin(async move {
+                match self.run(&ctx, &source, route).await {
+                    Err(e) if e == "exists" => {
+                        ctx.skipped.store(true, Ordering::Relaxed);
+                        Ok(())
+                    }
+                    result => result,
+                }
+            })
+        })
+    }
+
+    async fn run(&self, ctx: &Ctx, source: &str, mut route: Route) -> Result<(), String> {
+        let source = source.trim_end_matches('/');
+        let (_, name) = split(source);
+        if !valid_name(name) || source.contains('\0') || self.dest_dir.contains('\0') {
+            return Err("invalid-path".to_string());
+        }
+        self.ensure_live(&ctx.app.state::<AppState>())?;
+        ctx.check()?;
+        let dest = sftp_for_session(&ctx.app, self.to, &self.dest_session).await?;
+        let dest_dir = dest
+            .canonicalize(self.dest_dir.as_str())
+            .await
+            .map_err(err)?;
+        let target = join(&dest_dir, name);
+        if !self.overwrite && exists(&dest, &target).await? {
+            return Err("exists".to_string());
+        }
+        let a = sftp_for_session(&ctx.app, self.from, &self.source_session).await?;
+        if route == Route::Scp && !regular_source(&a, source).await {
+            route = Route::Relay;
+            let transfer = {
+                let mut transfer = ctx.transfer.lock().unwrap();
+                transfer.route = Some(route);
+                transfer.clone()
+            };
+            publish(&ctx.app, &transfer);
+        }
+        if route == Route::Relay {
+            return relay(ctx, &a, &dest, source, &target, self.overwrite).await;
+        }
+
+        let (key, probe) = self
+            .pin
+            .as_ref()
+            .expect("direct routes require a pinned key");
+        ctx.check()?;
+        let known_hosts = write_known_host(&a, key).await?;
+        let result = match route {
+            Route::Rsync => {
+                let marker = completion_marker();
+                let command = rsync_command(
+                    &self.tunnel,
+                    source,
+                    &dest_dir,
+                    self.overwrite,
+                    &marker,
+                    &known_hosts,
+                );
+                run_direct(ctx, &self.source_session, &command, &marker, true).await
+            }
+            Route::Scp => self.scp(ctx, &dest, source, &target, &known_hosts).await,
+            Route::Relay => unreachable!(),
+        };
+        if result.as_ref().is_err_and(|e| e.status == Some(255)) {
+            ctx.app
+                .state::<Files>()
+                .copy_probes
+                .invalidate((self.from, self.to), probe);
+        }
+        let _ = a.remove_file(known_hosts).await;
+        result.map_err(|e| e.message)
+    }
+
+    async fn scp(
+        &self,
+        ctx: &Ctx,
+        dest: &SftpSession,
+        source: &str,
+        target: &str,
+        known_hosts: &str,
+    ) -> Result<(), DirectError> {
+        ctx.check()?;
+        let stage = join(
+            split(target).0,
+            &format!(".{}.protunel-part", Uuid::new_v4().simple()),
+        );
+        dest.create_dir(stage.as_str())
+            .await
+            .map_err(|e| at(&stage, e))?;
+        let marker = completion_marker();
+        let command = scp_command(&self.tunnel, source, &stage, &marker, known_hosts);
+        let result = run_direct(ctx, &self.source_session, &command, &marker, false).await;
+        let result = match result {
+            Err(mut e) if e.exit_unconfirmed => {
+                e.message = format!(
+                    "{}; copy exit unconfirmed, staging folder left at {stage}",
+                    e.message
+                );
+                return Err(e);
+            }
+            Err(e) => Err(e),
+            Ok(()) => {
+                let staged = join(&stage, split(source).1);
+                commit_part(ctx, dest, &staged, target, self.overwrite)
+                    .await
+                    .map_err(DirectError::from)
+            }
+        };
+        let cleanup = delete_tree(dest, &stage, true).await;
+        result.and(cleanup.map_err(DirectError::from))
+    }
+}
+
+async fn regular_source(sftp: &SftpSession, source: &str) -> bool {
+    valid_name(split(source).1)
+        && sftp
+            .symlink_metadata(source)
+            .await
+            .is_ok_and(|attrs| attrs.is_regular())
+}
+
+async fn write_known_host(sftp: &SftpSession, key: &str) -> Result<String, String> {
+    if key.is_empty() || key.chars().any(char::is_control) {
+        return Err("invalid trusted host key".into());
+    }
+    let path = format!("/tmp/protunel-kh-{}", Uuid::new_v4().simple());
+    let mut file = sftp
+        .open_with_flags_and_attributes(
+            path.as_str(),
+            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+            FileAttributes {
+                permissions: Some(0o600),
+                ..FileAttributes::empty()
+            },
+        )
+        .await
+        .map_err(|e| at(&path, e))?;
+    let line = format!("{HOST_KEY_ALIAS} {key}\n");
+    let result = file.write_all(line.as_bytes()).await;
+    let closed = file.close().await;
+    if let Err(e) = result.and(closed) {
+        let _ = sftp.remove_file(path).await;
+        return Err(e.to_string());
+    }
+    Ok(path)
+}
+
+fn valid_name(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\0'])
+}
+
+fn shell_command<'a>(args: impl IntoIterator<Item = &'a str>) -> String {
+    args.into_iter().map(quote).collect::<Vec<_>>().join(" ")
+}
+
+fn ssh_options(user_known_hosts: &str) -> Vec<String> {
+    [
+        "BatchMode=yes".into(),
+        "ConnectTimeout=5".into(),
+        format!("UserKnownHostsFile={user_known_hosts}"),
+        "GlobalKnownHostsFile=/dev/null".into(),
+        "StrictHostKeyChecking=yes".into(),
+        format!("HostKeyAlias={HOST_KEY_ALIAS}"),
+        // No KnownHostsCommand=none: it needs OpenSSH 8.5+, and older ssh
+        // (RHEL/CentOS 7–8) refuses the unknown option, so every probe would
+        // fail and the direct route would never be used. The pinned files
+        // above already decide the check.
+        "VerifyHostKeyDNS=no".into(),
+        "ControlPath=none".into(),
+    ]
+    .into_iter()
+    .flat_map(|option| ["-o".into(), option])
+    .collect()
+}
+
+fn probe_command(tunnel: &Tunnel, known_hosts: &str) -> String {
+    let port = tunnel.port.to_string();
+    let login = format!("{}@{}", tunnel.username, tunnel.host);
+    let options = ssh_options(known_hosts);
+    shell_command(
+        ["ssh"]
+            .into_iter()
+            .chain(options.iter().map(String::as_str))
+            .chain(["-p", &port, "--", &login, "true"]),
+    )
+}
+
+fn key_hint_command(tunnel: &Tunnel, has_key: bool) -> Option<String> {
+    if [&tunnel.username, &tunnel.host]
+        .into_iter()
+        .any(|value| value.chars().any(|c| c.is_control() || c.is_whitespace()))
+    {
+        return None;
+    }
+    let prefix = if has_key {
+        ""
+    } else {
+        "ssh-keygen -t ed25519 && "
+    };
+    let hint = format!(
+        "{prefix}ssh-copy-id -p {} {}@{}",
+        tunnel.port,
+        quote(&tunnel.username),
+        quote(&tunnel.host)
+    );
+    assert!(!hint.chars().any(char::is_control));
+    Some(hint)
+}
+
+fn remote_dir(tunnel: &Tunnel, dir: &str) -> String {
+    let host = &tunnel.host;
+    let host = if host.contains(':') && !host.starts_with('[') {
+        format!("[{host}]")
+    } else {
+        host.clone()
+    };
+    format!("{}@{host}:{}", tunnel.username, join(dir, ""))
+}
+
+fn local_source(source: &str) -> String {
+    if source.starts_with('/') {
+        source.to_string()
+    } else {
+        format!("./{source}")
+    }
+}
+
+fn completion_marker() -> String {
+    format!("protunel-copy-done-{}", Uuid::new_v4().simple())
+}
+
+fn rsync_command(
+    tunnel: &Tunnel,
+    source: &str,
+    dir: &str,
+    overwrite: bool,
+    marker: &str,
+    known_hosts: &str,
+) -> String {
+    let options = ssh_options(known_hosts);
+    let port = tunnel.port.to_string();
+    let transport = shell_command(
+        ["ssh"]
+            .into_iter()
+            .chain(options.iter().map(String::as_str))
+            .chain(["-p", &port]),
+    );
+    let source = local_source(source);
+    let dest = remote_dir(tunnel, dir);
+    let mut args = vec![
+        "sh",
+        "-c",
+        WATCH_COPY,
+        "protunel-copy",
+        marker,
+        "env",
+        "LC_ALL=C",
+        "rsync",
+        "-a",
+    ];
+    args.push(if overwrite {
+        "--ignore-times"
+    } else {
+        "--ignore-existing"
+    });
+    // Secluded args carry the destination path over the rsync protocol.
+    args.extend([
+        "--info=progress2",
+        "-s",
+        "-e",
+        &transport,
+        "--",
+        &source,
+        &dest,
+    ]);
+    shell_command(args)
+}
+
+fn scp_command(
+    tunnel: &Tunnel,
+    source: &str,
+    dir: &str,
+    marker: &str,
+    known_hosts: &str,
+) -> String {
+    let source = local_source(source);
+    let dest = remote_dir(tunnel, dir);
+    let port = tunnel.port.to_string();
+    let options = ssh_options(known_hosts);
+    let mut args = vec!["sh", "-c", WATCH_COPY, "protunel-copy", marker, "scp", "-p"];
+    // Older scp defaults to a remote shell. Require SFTP mode for paths
+    // that cannot be passed verbatim to that shell.
+    if !dir
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b"/._-".contains(&b))
+    {
+        args.push("-s");
+    }
+    args.extend(options.iter().map(String::as_str));
+    args.extend(["-P", &port, "--", &source, &dest]);
+    shell_command(args)
+}
+
+struct DirectError {
+    message: String,
+    status: Option<u32>,
+    exit_unconfirmed: bool,
+}
+
+impl From<String> for DirectError {
+    fn from(message: String) -> Self {
+        Self {
+            message,
+            status: None,
+            exit_unconfirmed: false,
+        }
+    }
+}
+
+enum DirectExit {
+    Status(u32),
+    Signal,
+}
+
+impl DirectExit {
+    fn status(&self) -> Option<u32> {
+        match *self {
+            Self::Status(status) => Some(status),
+            Self::Signal => None,
+        }
+    }
+}
+
+async fn run_direct(
+    ctx: &Ctx,
+    session: &Handle,
+    command: &str,
+    marker: &str,
+    progress: bool,
+) -> Result<(), DirectError> {
+    ctx.check()?;
+    let mut channel = tokio::select! {
+        biased;
+        _ = ctx.cancel.cancelled() => return Err("cancelled".to_string().into()),
+        channel = session.channel_open_session() => channel.map_err(|e| e.to_string())?,
+    };
+    if let Err(e) = ctx.check() {
+        let _ = channel.close().await;
+        return Err(e.into());
+    }
+    if let Err(e) = channel.exec(true, command).await {
+        let _ = channel.close().await;
+        return Err(DirectError {
+            exit_unconfirmed: true,
+            ..e.to_string().into()
+        });
+    }
+
+    let mut stderr = Vec::new();
+    let mut line = Vec::new();
+    let exit = loop {
+        let msg = tokio::select! {
+            biased;
+            _ = ctx.cancel.cancelled() => {
+                let exit = tokio::time::timeout(Duration::from_secs(5), async {
+                    let _ = channel.data_bytes("cancel\n").await;
+                    let _ = channel.eof().await;
+                    wait_for_exit(&mut channel).await
+                }).await.ok().flatten();
+                let _ = channel.close().await;
+                return Err(DirectError {
+                    message: "cancelled".into(),
+                    status: exit.as_ref().and_then(DirectExit::status),
+                    exit_unconfirmed: exit.is_none(),
+                });
+            }
+            msg = channel.wait() => msg,
+        };
+        match msg {
+            Some(ChannelMsg::Data { data }) => {
+                for &byte in data.iter() {
+                    if matches!(byte, b'\r' | b'\n') {
+                        if line == marker.as_bytes() {
+                            let _ = channel.eof().await;
+                        } else if progress {
+                            update_progress(ctx, &line);
+                        }
+                        line.clear();
+                    } else if line.len() < 1024 {
+                        line.push(byte);
+                    }
+                }
+            }
+            Some(ChannelMsg::ExtendedData { data, .. }) => {
+                let room = 8192 - stderr.len();
+                stderr.extend_from_slice(&data[..data.len().min(room)]);
+            }
+            Some(ChannelMsg::ExitStatus { exit_status }) => {
+                break Some(DirectExit::Status(exit_status))
+            }
+            Some(ChannelMsg::ExitSignal { .. }) => break Some(DirectExit::Signal),
+            Some(ChannelMsg::Failure) | None => break None,
+            _ => {}
+        }
+    };
+    let _ = channel.close().await;
+    if progress {
+        update_progress(ctx, &line);
+    }
+    let status = exit.as_ref().and_then(DirectExit::status);
+    if status == Some(0) {
+        let done = ctx.done.load(Ordering::Relaxed);
+        ctx.set_total(done);
+        return Ok(());
+    }
+    let out = ExecOutput {
+        stdout: Vec::new(),
+        stderr,
+        status,
+    };
+    Err(DirectError {
+        message: stderr_or(&out, "copy-failed"),
+        status,
+        exit_unconfirmed: exit.is_none(),
+    })
+}
+
+async fn wait_for_exit(channel: &mut russh::Channel<client::Msg>) -> Option<DirectExit> {
+    while let Some(msg) = channel.wait().await {
+        match msg {
+            ChannelMsg::ExitStatus { exit_status } => return Some(DirectExit::Status(exit_status)),
+            ChannelMsg::ExitSignal { .. } => return Some(DirectExit::Signal),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parse_progress2(line: &str) -> Option<(u64, Option<u64>)> {
+    let mut fields = line.split_whitespace();
+    let bytes = fields.next()?;
+    let done: u64 = bytes
+        .strip_suffix('B')
+        .unwrap_or(bytes)
+        .replace(',', "")
+        .parse()
+        .ok()?;
+    let percent: u64 = fields.next()?.strip_suffix('%')?.parse().ok()?;
+    if percent > 100 || !fields.next()?.ends_with("/s") || !fields.next()?.contains(':') {
+        return None;
+    }
+    // Progress2 exposes a rounded percentage, so this is an estimate until EOF.
+    let total = (u128::from(done) * 100)
+        .checked_div(u128::from(percent))
+        .map(|total| total.min(u128::from(u64::MAX)) as u64);
+    Some((done, total))
+}
+
+fn update_progress(ctx: &Ctx, line: &[u8]) {
+    if let Some((done, total)) = std::str::from_utf8(line).ok().and_then(parse_progress2) {
+        ctx.done.store(done, Ordering::Relaxed);
+        if let Some(total) = total {
+            ctx.set_total(total);
+        }
+        ctx.publish_progress(done);
+    }
+}
+
+enum RelayStep {
+    Copy(String, String, FileAttributes),
+    SetDirectoryMode(String, u32),
+}
+
+async fn relay(
+    ctx: &Ctx,
+    a: &SftpSession,
+    b: &SftpSession,
+    source: &str,
+    target: &str,
+    overwrite: bool,
+) -> Result<(), String> {
+    let attrs = a
+        .symlink_metadata(source)
+        .await
+        .map_err(|e| at(source, e))?;
+    if attrs.is_dir() {
+        ctx.set_total(remote_size(ctx, a, source).await?);
+    } else {
+        ctx.set_total(attrs.size.unwrap_or(0));
+    }
+
+    let mut stack = vec![RelayStep::Copy(
+        source.to_string(),
+        target.to_string(),
+        attrs,
+    )];
+    while let Some(step) = stack.pop() {
+        ctx.check()?;
+        let (source, target, attrs) = match step {
+            RelayStep::Copy(source, target, attrs) => (source, target, attrs),
+            RelayStep::SetDirectoryMode(target, mode) => {
+                if b.symlink_metadata(target.as_str())
+                    .await
+                    .is_ok_and(|attrs| attrs.is_dir())
+                {
+                    let attrs = FileAttributes {
+                        permissions: Some(mode & 0o7777),
+                        ..FileAttributes::empty()
+                    };
+                    let _ = b.set_metadata(target.as_str(), attrs).await;
+                }
+                continue;
+            }
+        };
+        if !attrs.is_dir() && !attrs.is_regular() {
+            continue;
+        }
+        // Recheck before opening a listed file or directory that may have changed.
+        let current = a
+            .symlink_metadata(source.as_str())
+            .await
+            .map_err(|e| at(&source, e))?;
+        if attrs.is_dir() {
+            if !current.is_dir() {
+                continue;
+            }
+            match b.symlink_metadata(target.as_str()).await {
+                Ok(attrs) if overwrite && attrs.is_dir() => {}
+                Ok(_) if !overwrite => return Err("exists".to_string()),
+                Ok(_) => return Err(format!("{target}: not a folder")),
+                Err(e) if is_missing(&e) => {
+                    if let Err(e) = b.create_dir(target.as_str()).await {
+                        if !overwrite && exists(b, &target).await? {
+                            return Err("exists".to_string());
+                        }
+                        return Err(at(&target, e));
+                    }
+                    // Keep new directories writable until all children are in place.
+                    if let Some(mode) = current.permissions {
+                        stack.push(RelayStep::SetDirectoryMode(target.clone(), mode));
+                    }
+                }
+                Err(e) => return Err(at(&target, e)),
+            }
+            for item in a.read_dir(&source).await.map_err(|e| at(&source, e))? {
+                let name = item.file_name();
+                if valid_name(&name) {
+                    stack.push(RelayStep::Copy(
+                        join(&source, &name),
+                        join(&target, &name),
+                        item.metadata(),
+                    ));
+                }
+            }
+        } else if current.is_regular() {
+            relay_file(ctx, a, b, &source, &target, &current, overwrite).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn relay_file(
+    ctx: &Ctx,
+    a: &SftpSession,
+    b: &SftpSession,
+    source: &str,
+    target: &str,
+    attrs: &FileAttributes,
+    overwrite: bool,
+) -> Result<(), String> {
+    let mut src = a.open(source).await.map_err(|e| at(source, e))?;
+    let part = format!("{target}.{}.protunel-part", short_id());
+    let mut dst = b
+        .open_with_flags(
+            part.as_str(),
+            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+        )
+        .await
+        .map_err(|e| at(target, e))?;
+    let mut buf = vec![0u8; CHUNK];
+    let result = async {
+        loop {
+            ctx.check()?;
+            let n = src
+                .read(&mut buf)
+                .await
+                .map_err(|e| format!("{source}: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            dst.write_all(&buf[..n])
+                .await
+                .map_err(|e| format!("{target}: {e}"))?;
+            ctx.advance(n as u64);
+        }
+        dst.shutdown().await.map_err(|e| format!("{target}: {e}"))
+    }
+    .await;
+    drop(dst);
+    let _ = src.close().await;
+    let result = match result {
+        Ok(()) => {
+            let metadata = FileAttributes {
+                permissions: attrs.permissions.map(|mode| mode & 0o7777),
+                atime: attrs.atime,
+                mtime: attrs.mtime,
+                ..FileAttributes::empty()
+            };
+            let _ = b.set_metadata(part.as_str(), metadata).await;
+            commit_part(ctx, b, &part, target, overwrite).await
+        }
+        Err(e) => Err(e),
+    };
+    if result.is_err() {
+        let _ = b.remove_file(part.as_str()).await;
+    }
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const KNOWN_HOSTS: &str = "/tmp/protunel-kh-test";
+
+    #[test]
+    fn only_failed_probes_expire_after_sixty_seconds() {
+        let checked_at = Instant::now();
+        assert!(probe_is_fresh(
+            checked_at + Duration::from_secs(59),
+            false,
+            checked_at
+        ));
+        assert!(!probe_is_fresh(
+            checked_at + Duration::from_secs(60),
+            false,
+            checked_at
+        ));
+        assert!(probe_is_fresh(
+            checked_at + Duration::from_secs(3600),
+            true,
+            checked_at
+        ));
+    }
+
+    fn destination() -> Tunnel {
+        Tunnel {
+            id: Uuid::nil(),
+            name: "destination".to_string(),
+            host: "2001:db8::2".to_string(),
+            port: 2222,
+            username: "o'neil".to_string(),
+            auth: crate::db::AuthMethod::Agent,
+            local_socks_port: 0,
+            auto_connect: false,
+            forwards: Vec::new(),
+            jump_tunnel_id: None,
+            socks_enabled: false,
+            group: None,
+            bookmarks: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn parses_rsync_aggregate_progress() {
+        assert_eq!(
+            parse_progress2("\r  1,024,000  25%   1.00MB/s    0:00:03  "),
+            Some((1_024_000, Some(4_096_000)))
+        );
+        assert_eq!(
+            parse_progress2("4,096,000B 100% 8.00MB/s 0:00:01 (xfr#2, to-chk=0/3)"),
+            Some((4_096_000, Some(4_096_000)))
+        );
+        assert_eq!(
+            parse_progress2("123 0% 1.20kB/s ??:??:??"),
+            Some((123, None))
+        );
+        assert_eq!(parse_progress2("receiving incremental file list"), None);
+        assert_eq!(parse_progress2("123 25%"), None);
+        assert_eq!(parse_progress2("123 101% 1.0MB/s 0:00:00"), None);
+    }
+
+    #[test]
+    fn quotes_probe_and_key_hint() {
+        let tunnel = destination();
+        assert_eq!(
+            probe_command(&tunnel, KNOWN_HOSTS),
+            r"'ssh' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=5' '-o' 'UserKnownHostsFile=/tmp/protunel-kh-test' '-o' 'GlobalKnownHostsFile=/dev/null' '-o' 'StrictHostKeyChecking=yes' '-o' 'HostKeyAlias=protunel-dest' '-o' 'VerifyHostKeyDNS=no' '-o' 'ControlPath=none' '-p' '2222' '--' 'o'\''neil@2001:db8::2' 'true'"
+        );
+        let hint = r"ssh-copy-id -p 2222 'o'\''neil'@'2001:db8::2'";
+        assert_eq!(key_hint_command(&tunnel, true).as_deref(), Some(hint));
+        assert_eq!(
+            key_hint_command(&tunnel, false),
+            Some(format!("ssh-keygen -t ed25519 && {hint}"))
+        );
+    }
+
+    #[test]
+    fn omits_key_hint_when_login_has_controls_or_whitespace() {
+        for c in [' ', '\n', '\t', '\u{2028}', '\u{a0}', '\u{1b}', '\u{7f}'] {
+            let mut tunnel = destination();
+            tunnel.username.push(c);
+            assert_eq!(key_hint_command(&tunnel, true), None);
+            let mut tunnel = destination();
+            tunnel.host.push(c);
+            assert_eq!(key_hint_command(&tunnel, false), None);
+        }
+    }
+
+    #[test]
+    fn pins_both_copy_transports_and_quotes_host_key_options() {
+        let tunnel = destination();
+        let options = ssh_options(KNOWN_HOSTS);
+        let quoted = shell_command(options.iter().map(String::as_str));
+        let scp = scp_command(&tunnel, "file", "/to/.stage", "done", KNOWN_HOSTS);
+        assert!(scp.contains(&quoted));
+        let rsync = rsync_command(&tunnel, "file", "/to", false, "done", KNOWN_HOSTS);
+        let transport = format!("'ssh' {quoted} '-p' '2222'");
+        assert!(rsync.contains(&format!("'-e' {}", quote(&transport))));
+    }
+
+    #[test]
+    fn builds_rsync_commands_with_a_limited_ssh_transport() {
+        let tunnel = destination();
+        let source = "-a:b 'source'";
+        let dest = "/my dir/$(literal)";
+        let command = rsync_command(&tunnel, source, dest, false, "done", KNOWN_HOSTS);
+        assert!(command.contains("'rsync' '-a' '--ignore-existing' '--info=progress2' '-s'"));
+        assert!(command.ends_with(
+            r"'--' './-a:b '\''source'\''' 'o'\''neil@[2001:db8::2]:/my dir/$(literal)/'"
+        ));
+        let overwrite = rsync_command(&tunnel, source, dest, true, "done", KNOWN_HOSTS);
+        assert!(overwrite.contains("'--ignore-times'"));
+        assert!(!overwrite.contains("--ignore-existing"));
+    }
+
+    #[test]
+    fn scp_uses_sftp_mode_when_the_remote_path_needs_it() {
+        let tunnel = destination();
+        let command = scp_command(
+            &tunnel,
+            "/from/a b",
+            "/to/it's a stage",
+            "done",
+            KNOWN_HOSTS,
+        );
+        assert!(command.contains("'scp' '-p' '-s'"));
+        assert!(!command.contains("'-rp'"));
+        assert!(command.contains("'StrictHostKeyChecking=yes'"));
+        assert!(command.ends_with(
+            r"'-P' '2222' '--' '/from/a b' 'o'\''neil@[2001:db8::2]:/to/it'\''s a stage/'"
+        ));
+        assert!(
+            scp_command(&tunnel, "file", "/to/.stage", "done", KNOWN_HOSTS)
+                .contains("'scp' '-p' '-o'")
+        );
+    }
+}

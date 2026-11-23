@@ -1,11 +1,13 @@
 // The transfer queue: in the file panel's footer and the terminal footer's chip.
 
+import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { filesCancelTransfer, filesReveal, filesUpload } from "../../api";
+import { filesCancelTransfer, filesCopyAcross, filesReveal, filesUpload } from "../../api";
 import { formatBytes } from "../../format";
 import type { FileTransfer, Tunnel } from "../../types";
 import { isActive } from "./useTransfers";
 import { parentPath } from "./paths";
+import { nextSpeed, type SpeedSample } from "./dropLogic";
 
 interface Props {
   transfers: FileTransfer[];
@@ -25,7 +27,7 @@ export function TransferList({ transfers, byId, onClear, emptyHint }: Props) {
     <div className="flex max-h-72 flex-col">
       <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
         {[...transfers].reverse().map((x) => (
-          <TransferRow key={x.id} transfer={x} host={byId[x.tunnelId]} />
+          <TransferRow key={x.id} transfer={x} host={byId[x.tunnelId]} destHost={x.destTunnelId ? byId[x.destTunnelId] : undefined} />
         ))}
       </ul>
       {finished && (
@@ -40,15 +42,39 @@ export function TransferList({ transfers, byId, onClear, emptyHint }: Props) {
   );
 }
 
-function TransferRow({ transfer: x, host }: { transfer: FileTransfer; host?: Tunnel }) {
+const endpoint = (h?: Tunnel) => (h ? `${h.username}@${h.host}` : "");
+
+function TransferRow({ transfer: x, host, destHost }: { transfer: FileTransfer; host?: Tunnel; destHost?: Tunnel }) {
   const { t } = useTranslation("terminal");
+  // Relay speed from the progress deltas (Rust reports bytes, not a rate).
+  const sample = useRef<SpeedSample | undefined>(undefined);
+  if (x.direction === "copy" && x.state === "running") sample.current = nextSpeed(sample.current, x.done, Date.now());
+  else sample.current = undefined;
+  const speed = sample.current?.speed ?? null;
+  const isCopy = x.direction === "copy";
+  const route = !isCopy || !x.route
+    ? null
+    : x.route === "relay"
+      ? speed !== null && x.state === "running"
+        ? t("files.queue.routeRelaySpeed", { speed: formatBytes(speed) })
+        : t("files.queue.routeRelay")
+      : t(x.route === "rsync" ? "files.queue.routeRsync" : "files.queue.routeScp");
   const pct = x.total > 0 ? Math.min(100, Math.round((x.done / x.total) * 100)) : 0;
   const where = host ? `${host.username}@${host.host}` : "";
-  const arrow = x.direction === "upload" ? "↑" : "↓";
+  const arrow = x.direction === "upload" ? "↑" : x.direction === "copy" ? "⇄" : "↓";
   const stateText: Record<FileTransfer["state"], string> = {
     queued: t("files.queue.queued"),
     running: `${pct}% · ${formatBytes(x.done)} / ${formatBytes(x.total)}`,
-    done: x.direction === "upload" ? t("files.queue.uploaded") : x.openWhenDone ? t("files.queue.opened") : t("files.queue.downloaded"),
+    done:
+      x.direction === "upload"
+        ? t("files.queue.uploaded")
+        : x.direction === "copy"
+          ? t("files.queue.copied")
+          : x.direction === "dragout"
+            ? t("files.queue.dragged")
+            : x.openWhenDone
+              ? t("files.queue.opened")
+              : t("files.queue.downloaded"),
     skipped: t("files.queue.skipped"),
     failed: t("files.queue.failed"),
     cancelled: t("files.queue.cancelled"),
@@ -78,6 +104,14 @@ function TransferRow({ transfer: x, host }: { transfer: FileTransfer; host?: Tun
             {t("files.queue.overwrite")}
           </button>
         )}
+        {x.state === "skipped" && x.direction === "copy" && x.destTunnelId && (
+          <button
+            onClick={() => void filesCopyAcross(x.tunnelId, [x.remotePath], x.destTunnelId!, x.localPath, true).catch(() => {})}
+            className="shrink-0 rounded px-1.5 text-[11px] text-amber hover:bg-amber/10"
+          >
+            {t("files.queue.overwrite")}
+          </button>
+        )}
         {x.state === "done" && x.direction === "download" && !x.openWhenDone && (
           <button
             onClick={() => void filesReveal(x.id)}
@@ -89,8 +123,13 @@ function TransferRow({ transfer: x, host }: { transfer: FileTransfer; host?: Tun
       </div>
       <div className="ml-5 flex items-center gap-2 text-[10px] text-muted">
         <span className="min-w-0 flex-1 truncate font-mono" title={x.error ?? undefined}>
-          {where}:{x.remotePath}
+          {isCopy
+            ? `${where} → ${endpoint(destHost)}:${x.localPath}`
+            : x.direction === "dragout"
+              ? `${where}:${x.remotePath} → ${t("files.queue.explorer")}`
+              : `${where}:${x.remotePath}`}
         </span>
+        {route && <span className="shrink-0">{route}</span>}
         <span className={`shrink-0 ${tone}`}>{x.error && x.state === "failed" ? x.error : stateText[x.state]}</span>
       </div>
       {x.state === "running" && (

@@ -24,6 +24,8 @@ interface Props {
   onDownload: () => void;
   onOpenLocal: () => void;
   onSaved: () => void;
+  /** Unsaved edits appeared or went away (false again when the view unmounts). */
+  onDirty?: (dirty: boolean) => void;
   errorText: (e: unknown) => string;
 }
 
@@ -34,7 +36,7 @@ type Loaded =
   | FileContent;
 
 export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
-  { tunnelId, path, where, onBack, onDownload, onOpenLocal, onSaved, errorText },
+  { tunnelId, path, where, onBack, onDownload, onOpenLocal, onSaved, onDirty, errorText },
   ref,
 ) {
   const { t } = useTranslation("terminal");
@@ -147,7 +149,14 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
   const saveRef = useRef(save);
   saveRef.current = save;
 
-  useImperativeHandle(ref, () => ({ dirty: () => dirty, save: () => saveRef.current(false) }), [dirty]);
+  const onDirtyRef = useRef(onDirty);
+  onDirtyRef.current = onDirty;
+  useEffect(() => {
+    onDirtyRef.current?.(dirty);
+  }, [dirty]);
+  useEffect(() => () => onDirtyRef.current?.(false), []);
+
+  useImperativeHandle(ref, () => ({ dirty: () => dirty, save:() => saveRef.current(false) }), [dirty]);
 
   const toggleWrap = () => {
     setWrap((w) => {

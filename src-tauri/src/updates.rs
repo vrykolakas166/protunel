@@ -360,6 +360,22 @@ fn before_windows_install(app: &AppHandle) -> impl Fn() + Send + Sync + 'static 
     }
 }
 
+/// This launch is the restart into a just-installed update (its notes are
+/// still waiting). Read without consuming them, for `setup`.
+///
+/// The relaunch carries the old process's arguments (the Windows installer
+/// gets them as `/ARGS`, `app.restart()` reuses them), so an instance started
+/// at sign-in comes back with `AUTOSTART_ARG`; with "start minimized" on it
+/// would come back hidden in the tray and the update would look like it did
+/// nothing.
+pub fn just_updated(app: &AppHandle) -> bool {
+    let Some(path) = data_file(app, "whats_new.json") else { return false };
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|json| serde_json::from_str::<WhatsNew>(&json).ok())
+        .is_some_and(|w| w.version == app.package_info().version.to_string())
+}
+
 /// Release notes left by the update that installed this version, once.
 pub fn take_whats_new(app: &AppHandle) -> Option<WhatsNew> {
     let path = data_file(app, "whats_new.json")?;

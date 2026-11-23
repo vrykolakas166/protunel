@@ -62,6 +62,10 @@
       "title": "Manage tunnels and forwards",
       "body": "Use a tunnel’s switch to connect it, or expand Forwards on its row to add a port forward while it’s running. Jump hosts group their dependent tunnels underneath them."
     },
+    "groups": {
+      "title": "Organize hosts in groups",
+      "body": "Give a tunnel a group in its edit form and the list shows named sections, here and in the terminal’s host tree. Click a section heading to collapse it, or Ctrl+click to collapse or expand every group at once."
+    },
     "bulk": {
       "title": "Search and connect in bulk",
       "body": "Press Ctrl+F to filter by name or host. The connect and disconnect buttons act on the entire list, including tunnels hidden by your search."
@@ -122,6 +126,10 @@
       "title": "Export or import a configuration",
       "body": "Use Export to create a configuration file and set a passphrase to include encrypted credentials. Use Import to review what will be applied before confirming."
     },
+    "settings-winscp": {
+      "title": "Import from WinSCP",
+      "body": "On the same Backup page, choose the WinSCP import to read a WinSCP.ini. Preview the sessions, pick the ones you want, and they arrive as hosts with their folders as groups. Passwords go straight into the credential vault."
+    },
     "settings-hosts": {
       "title": "Review trusted hosts",
       "body": "Open the trusted hosts list on Backup to inspect saved SSH fingerprints. Forget a key here when you’re ready to verify its replacement on the next connection."
@@ -132,7 +140,7 @@
     },
     "term-hosts": {
       "title": "Open a host",
-      "body": "Choose a saved host in the sidebar to open its shell, or use + beside Hosts to add one. Expand a jump host to see the hosts that connect through it, or show the sidebar with Ctrl+Shift+S."
+      "body": "Choose a saved host in the sidebar to open its shell, or use + beside Hosts to add one. Hosts with a group appear in collapsible sections (Ctrl+click a heading to toggle them all). Expand a jump host to see the hosts that connect through it, or show the sidebar with Ctrl+Shift+S."
     },
     "term-select": {
       "title": "Open several hosts together",
@@ -149,6 +157,18 @@
     "term-header": {
       "title": "Move, zoom, and watch panes",
       "body": "In a split tab, drag a pane by its header, use its zoom button, or use its broadcast toggle while broadcast is on. Right-click the header to watch for output or 30 seconds of silence, and look for accent dots marking unread output."
+    },
+    "term-files": {
+      "title": "Browse files on a server",
+      "body": "The folder button, or Ctrl+Shift+O, opens a file panel for the focused shell. Each shell gets its own panel: drag it to snap to a pane corner, pull an edge to resize, or double-click its header to maximize. Use Download to folder… to save files where you choose."
+    },
+    "term-files-copy": {
+      "title": "Copy between servers",
+      "body": "Drag rows from one panel onto another panel or a folder. On the same server the rows move, and Ctrl copies. Another server always copies: directly when the source can log in to the target, otherwise through this computer, with a hint to run ssh-copy-id for a faster route."
+    },
+    "term-files-out": {
+      "title": "Drag files out to Explorer",
+      "body": "Drag rows from a file panel straight into an Explorer window or onto the desktop to download them there."
     },
     "term-layout": {
       "title": "Arrange panes and sync scrolling",

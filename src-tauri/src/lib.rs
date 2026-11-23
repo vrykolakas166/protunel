@@ -75,7 +75,9 @@ pub fn run() {
                 // launch set to "start minimized" never flashes it.
                 let from_autostart = std::env::args().any(|arg| arg == commands::AUTOSTART_ARG);
                 let settings = app.state::<AppState>().settings.get();
-                if !(from_autostart && settings.start_minimized) {
+                // A restart into an update always shows the window, even when
+                // the old instance was started minimized at sign-in.
+                if !(from_autostart && settings.start_minimized) || updates::just_updated(app.handle()) {
                     let _ = main.show();
                 }
                 // Entries written by older versions start the app without
@@ -129,10 +131,13 @@ pub fn run() {
             // reopen racing the teardown could show nothing at all).
             tauri::WindowEvent::CloseRequested { api, .. } if window.label() == commands::TERMINAL_WINDOW => {
                 api.prevent_close();
-                let _ = window.hide();
-                let _ = window.emit_to(window.label(), events::TERMINAL_HIDDEN_EVENT, ());
-                window.state::<AppState>().terminals.close_all();
-                commands::schedule_terminal_teardown(window.app_handle());
+                if commands::terminal_has_unsaved() {
+                    // An editor holds unsaved changes: the page asks, then calls
+                    // `terminal_window_hide` if the answer is "close anyway".
+                    let _ = window.emit_to(window.label(), events::TERMINAL_CLOSE_REQUESTED_EVENT, ());
+                } else {
+                    commands::hide_terminal_window(window.app_handle());
+                }
             }
             // Its terminals would otherwise keep shells open on the server with
             // nobody left to read them.
@@ -200,6 +205,8 @@ pub fn run() {
             commands::terminal_write_many,
             commands::terminal_resize,
             commands::terminal_close,
+            commands::terminal_set_unsaved,
+            commands::terminal_window_hide,
             commands::files_home,
             commands::files_list,
             commands::files_properties,
@@ -209,12 +216,15 @@ pub fn run() {
             commands::files_count,
             commands::files_delete,
             commands::files_paste,
+            commands::files_copy_across,
             commands::files_read_text,
             commands::files_read_image,
             commands::files_write_text,
             commands::files_upload,
             commands::files_pick_upload,
             commands::files_download,
+            commands::files_pick_download,
+            commands::files_drag_out,
             commands::files_open_local,
             commands::files_transfers,
             commands::files_cancel_transfer,

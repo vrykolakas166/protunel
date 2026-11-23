@@ -53,6 +53,14 @@
   "pasteConfirmTitle": "Dán vào nhiều shell?",
   "pasteConfirmMessage": "Sẽ dán {{lines}} dòng vào {{targets}} khung cùng lúc. Mỗi dòng có thể chạy như một lệnh.",
   "pasteConfirm": "Dán vào tất cả",
+  "unsavedClose": {
+    "title": "Thay đổi chưa lưu",
+    "message": "Các tệp này có thay đổi chưa được lưu. Đóng bây giờ sẽ bỏ các thay đổi đó.",
+    "cancel": "Hủy",
+    "discard": "Bỏ thay đổi và đóng",
+    "save": "Lưu và đóng",
+    "saveFailed": "Không lưu được nên chưa đóng gì cả."
+  },
   "dragPaneHint": "Kéo để di chuyển khung: vào mép khung khác, sang tab khác, hoặc lên thanh tab",
   "dropNewTab": "Tab mới",
   "expand": "Mở rộng",
@@ -108,7 +116,7 @@
     "addTab": "Thêm vào workspace “{{name}}”",
     "removeTab": "Gỡ khỏi “{{name}}”",
     "inWorkspace": "Thuộc workspace “{{name}}”",
-    "changedHint": "“{{name}}” đã thay đổi so với lúc lưu: bấm để lưu",
+    "changedHint": "“{{name}}” có thay đổi chưa lưu: bấm để chọn cách lưu",
     "savedHint": "Workspace “{{name}}”, không có thay đổi chưa lưu",
     "restoreOne": "Khôi phục phiên trước · {{target}}"
   },
@@ -195,6 +203,7 @@
     "upload": "Tải lên",
     "uploadHint": "Tải tệp lên đây (hoặc thả tệp vào khung này)",
     "download": "Tải về",
+    "downloadTo": "Tải về thư mục…",
     "downloadHint": "Tải về thư mục Downloads",
     "openLocal": "Mở bằng ứng dụng hệ thống",
     "openingLocal": "Đang mở {{name}}…",
@@ -313,7 +322,14 @@
       "cancelled": "Đã hủy",
       "cancel": "Hủy",
       "overwrite": "Ghi đè",
-      "reveal": "Mở thư mục"
+      "reveal": "Mở thư mục",
+      "copied": "Đã sao chép",
+      "explorer": "Explorer",
+      "dragged": "Đã kéo ra",
+      "routeRsync": "trực tiếp · rsync",
+      "routeScp": "trực tiếp · scp",
+      "routeRelay": "qua máy này",
+      "routeRelaySpeed": "qua máy này · {{speed}}/s"
     },
     "err": {
       "not-connected": "{{where}} chưa kết nối: hãy kết nối lại shell trước.",
@@ -325,7 +341,24 @@
       "too-large": "Quá lớn để mở ở đây."
     },
     "maximize": "Phóng to (nhấp đúp header)",
-    "restore": "Về cỡ cũ (nhấp đúp header)"
+    "restore": "Về cỡ cũ (nhấp đúp header)",
+    "dropCopy": "Sao chép tới {{where}} → {{path}}",
+    "dropMove": "Chuyển tới {{where}} → {{path}}",
+    "dragLabel_other": "{{count}} mục",
+    "copying": "Đang sao chép…",
+    "dragOut": {
+      "preparing": "Đang chuẩn bị…",
+      "tooMany": "Quá nhiều mục để kéo (dùng Tải về)",
+      "pathTooLong": "Đường dẫn quá dài với Windows: {{path}}"
+    },
+    "relay": {
+      "hint": "Nhanh hơn: cho {{from}} đăng nhập vào {{to}}",
+      "type": "Gõ vào shell",
+      "typeTitle": "Gõ lệnh vào shell của {{from}} mà không nhấn Enter",
+      "copy": "Sao chép lệnh",
+      "dismiss": "Đóng",
+      "typed": "Đã gõ. Nhấn Enter trong shell để chạy."
+    }
   },
   "kbFiles": "tệp của shell"
 }

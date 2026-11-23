@@ -6,9 +6,8 @@
 //! (the supervisor replaces the handle on every reconnect), so an operation can
 //! never land on a stale session.
 //!
-//! Transfer bytes only ever move between this module and the local disk. The
-//! webview sees directory listings, and the contents of files it explicitly
-//! opens to view or edit (bounded by `MAX_TEXT_BYTES` / `MAX_IMAGE_BYTES`).
+//! Transfers run over SSH or through Rust. The webview sees directory listings
+//! and the contents it opens to view or edit (bounded by the preview limits).
 
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
@@ -32,6 +31,10 @@ use crate::events::FILE_TRANSFER_EVENT;
 use crate::ssh::SshHandler;
 use crate::AppState;
 
+#[path = "copy_across.rs"]
+mod copy_across;
+pub use copy_across::{copy_across, CopyAcross};
+
 /// Largest text file shown or edited in the popup.
 pub const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024;
 /// Largest image previewed in the popup.
@@ -43,10 +46,10 @@ const PARALLEL_TRANSFERS: usize = 3;
 /// Finished transfers kept for a reloaded webview.
 const KEEP_FINISHED: usize = 50;
 /// Progress events per transfer, at most.
-const PROGRESS_EVERY: Duration = Duration::from_millis(200);
+pub(super) const PROGRESS_EVERY: Duration = Duration::from_millis(200);
 /// Delete counts stop here; the confirmation then says "more than".
 pub const COUNT_LIMIT: u64 = 100_000;
-const CHUNK: usize = 256 * 1024;
+pub(super) const CHUNK: usize = 256 * 1024;
 
 type Handle = client::Handle<SshHandler>;
 
@@ -58,6 +61,7 @@ struct Cached {
 /// Open SFTP channels and the transfer queue. Managed state.
 pub struct Files {
     cache: tokio::sync::Mutex<HashMap<Uuid, Cached>>,
+    copy_probes: copy_across::Probes,
     transfers: Mutex<Transfers>,
     slots: Arc<Semaphore>,
 }
@@ -66,6 +70,7 @@ impl Default for Files {
     fn default() -> Self {
         Self {
             cache: tokio::sync::Mutex::new(HashMap::new()),
+            copy_probes: copy_across::Probes::default(),
             transfers: Mutex::new(Transfers::default()),
             slots: Arc::new(Semaphore::new(PARALLEL_TRANSFERS)),
         }
@@ -75,12 +80,16 @@ impl Default for Files {
 /// The SFTP channel of a tunnel's current session, opened on first use.
 pub async fn sftp_for(app: &AppHandle, tunnel_id: Uuid) -> Result<Arc<SftpSession>, String> {
     let state = app.state::<AppState>();
-    let files = app.state::<Files>();
     let session = state.session_for(tunnel_id).ok_or("not-connected")?;
+    sftp_for_session(app, tunnel_id, &session).await
+}
+
+async fn sftp_for_session(app: &AppHandle, tunnel_id: Uuid, session: &Arc<Handle>) -> Result<Arc<SftpSession>, String> {
+    let files = app.state::<Files>();
     {
         let cache = files.cache.lock().await;
         if let Some(entry) = cache.get(&tunnel_id) {
-            if entry.session.upgrade().is_some_and(|s| Arc::ptr_eq(&s, &session)) {
+            if entry.session.upgrade().is_some_and(|s| Arc::ptr_eq(&s, session)) {
                 return Ok(entry.sftp.clone());
             }
         }
@@ -101,7 +110,7 @@ pub async fn sftp_for(app: &AppHandle, tunnel_id: Uuid) -> Result<Arc<SftpSessio
     let sftp = Arc::new(sftp);
     files.cache.lock().await.insert(
         tunnel_id,
-        Cached { session: Arc::downgrade(&session), sftp: sftp.clone() },
+        Cached { session: Arc::downgrade(session), sftp: sftp.clone() },
     );
     Ok(sftp)
 }
@@ -368,7 +377,7 @@ pub async fn delete(sftp: &SftpSession, paths: &[String]) -> Result<(), String> 
     for path in paths {
         let attrs = sftp.symlink_metadata(path.as_str()).await.map_err(err)?;
         if attrs.is_dir() && !attrs.is_symlink() {
-            delete_tree(sftp, path).await?;
+            delete_tree(sftp, path, false).await?;
         } else {
             sftp.remove_file(path.as_str()).await.map_err(|e| at(path, e))?;
         }
@@ -376,7 +385,7 @@ pub async fn delete(sftp: &SftpSession, paths: &[String]) -> Result<(), String> 
     Ok(())
 }
 
-async fn delete_tree(sftp: &SftpSession, root: &str) -> Result<(), String> {
+async fn delete_tree(sftp: &SftpSession, root: &str, staged_copy: bool) -> Result<(), String> {
     // Iterative post-order: a deep tree must not grow the async stack.
     let mut stack = vec![(root.to_string(), false)];
     while let Some((dir, emptied)) = stack.pop() {
@@ -390,6 +399,9 @@ async fn delete_tree(sftp: &SftpSession, root: &str) -> Result<(), String> {
         if now.is_symlink() || !now.is_dir() {
             return Err(format!("{dir}: changed while deleting"));
         }
+        if staged_copy {
+            make_stage_writable(sftp, &dir, &now).await?;
+        }
         stack.push((dir.clone(), true));
         for item in sftp.read_dir(&dir).await.map_err(|e| at(&dir, e))? {
             let meta = item.metadata();
@@ -400,6 +412,16 @@ async fn delete_tree(sftp: &SftpSession, root: &str) -> Result<(), String> {
                 sftp.remove_file(path.as_str()).await.map_err(|e| at(&path, e))?;
             }
         }
+    }
+    Ok(())
+}
+
+/// SCP preserves directory modes, including read-only ones, in its staging
+/// tree. Moving or removing staged children requires write access to the parent.
+async fn make_stage_writable(sftp: &SftpSession, path: &str, attrs: &FileAttributes) -> Result<(), String> {
+    if let Some(mode) = attrs.permissions.filter(|mode| mode & 0o700 != 0o700) {
+        let attrs = FileAttributes { permissions: Some((mode & 0o7777) | 0o700), ..FileAttributes::empty() };
+        sftp.set_metadata(path, attrs).await.map_err(|e| at(path, e))?;
     }
     Ok(())
 }
@@ -727,6 +749,17 @@ pub fn quote(arg: &str) -> String {
 pub enum Direction {
     Upload,
     Download,
+    Copy,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    DragOut,
+}
+
+#[derive(Clone, Copy, Serialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "lowercase")]
+pub enum Route {
+    Rsync,
+    Scp,
+    Relay,
 }
 
 #[derive(Clone, Copy, Serialize, PartialEq, Eq, Debug)]
@@ -746,6 +779,9 @@ pub enum TransferState {
 pub struct Transfer {
     pub id: Uuid,
     pub tunnel_id: Uuid,
+    /// Copy only: B. The source on A is `remote_path`, and `local_path` is the folder on B.
+    pub dest_tunnel_id: Option<Uuid>,
+    pub route: Option<Route>,
     pub direction: Direction,
     pub name: String,
     pub remote_path: String,
@@ -781,7 +817,7 @@ pub fn clear_finished(app: &AppHandle) {
     t.list.retain(|x| matches!(x.state, TransferState::Queued | TransferState::Running));
 }
 
-fn publish(app: &AppHandle, transfer: &Transfer) {
+pub(super) fn publish(app: &AppHandle, transfer: &Transfer) {
     let files = app.state::<Files>();
     {
         let mut t = files.transfers.lock().unwrap();
@@ -810,6 +846,19 @@ fn publish(app: &AppHandle, transfer: &Transfer) {
     let _ = app.emit(FILE_TRANSFER_EVENT, transfer);
 }
 
+/// Attach an externally driven stream to the normal transfer queue.
+#[cfg(windows)]
+pub(super) fn track_drag_out(app: &AppHandle, transfer: &Transfer, cancel: &CancellationToken) {
+    app.state::<Files>().transfers.lock().unwrap().cancels.insert(transfer.id, cancel.clone());
+    publish(app, transfer);
+}
+
+#[cfg(windows)]
+pub(super) fn finish_drag_out(app: &AppHandle, transfer: &Transfer) {
+    app.state::<Files>().transfers.lock().unwrap().cancels.remove(&transfer.id);
+    publish(app, transfer);
+}
+
 pub struct UploadJob {
     pub local: PathBuf,
     pub remote_dir: String,
@@ -832,6 +881,8 @@ pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
     let transfer = Transfer {
         id: Uuid::new_v4(),
         tunnel_id,
+        dest_tunnel_id: None,
+        route: None,
         direction: Direction::Upload,
         remote_path: join(&job.remote_dir, &name),
         local_path: job.local.to_string_lossy().into_owned(),
@@ -842,7 +893,7 @@ pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
         error: None,
         open_when_done: false,
     };
-    spawn(app, transfer, move |ctx| Box::pin(upload(ctx, job)))
+    spawn(app, transfer, move |ctx| Box::pin(upload(ctx, tunnel_id, job)))
 }
 
 pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uuid {
@@ -850,6 +901,8 @@ pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uui
     let transfer = Transfer {
         id: Uuid::new_v4(),
         tunnel_id,
+        dest_tunnel_id: None,
+        route: None,
         direction: Direction::Download,
         name: name.to_string(),
         remote_path: job.remote.clone(),
@@ -860,7 +913,7 @@ pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uui
         error: None,
         open_when_done: job.open_when_done,
     };
-    spawn(app, transfer, move |ctx| Box::pin(download(ctx, job)))
+    spawn(app, transfer, move |ctx| Box::pin(download(ctx, tunnel_id, job)))
 }
 
 type JobFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>;
@@ -868,7 +921,6 @@ type JobFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), S
 /// What a running job reports through.
 struct Ctx {
     app: AppHandle,
-    sftp: Arc<SftpSession>,
     transfer: Mutex<Transfer>,
     cancel: CancellationToken,
     last: Mutex<Instant>,
@@ -885,6 +937,9 @@ impl Ctx {
     }
     fn advance(&self, bytes: u64) {
         let done = self.done.fetch_add(bytes, Ordering::Relaxed) + bytes;
+        self.publish_progress(done);
+    }
+    fn publish_progress(&self, done: u64) {
         let mut last = self.last.lock().unwrap();
         if last.elapsed() >= PROGRESS_EVERY {
             *last = Instant::now();
@@ -918,35 +973,32 @@ fn spawn(
     tauri::async_runtime::spawn(async move {
         let slots = app.state::<Files>().slots.clone();
         let permit = tokio::select! {
-            p = slots.acquire_owned() => p.ok(),
+            biased;
             _ = cancel.cancelled() => None,
+            p = slots.acquire_owned() => p.ok(),
         };
         let mut transfer = transfer;
         let result = match permit {
             None => Err("cancelled".to_string()),
-            Some(_permit) => match sftp_for(&app, transfer.tunnel_id).await {
-                Err(e) => Err(e),
-                Ok(sftp) => {
-                    transfer.state = TransferState::Running;
-                    publish(&app, &transfer);
-                    let ctx = Arc::new(Ctx {
-                        app: app.clone(),
-                        sftp,
-                        transfer: Mutex::new(transfer.clone()),
-                        cancel: cancel.clone(),
-                        last: Mutex::new(Instant::now()),
-                        skipped: AtomicBool::new(false),
-                        done: AtomicU64::new(0),
-                    });
-                    let result = run(ctx.clone()).await;
-                    transfer = ctx.transfer.lock().unwrap().clone();
-                    transfer.done = ctx.done.load(Ordering::Relaxed);
-                    if ctx.skipped.load(Ordering::Relaxed) && result.is_ok() {
-                        transfer.state = TransferState::Skipped;
-                    }
-                    result
+            Some(_permit) => {
+                transfer.state = TransferState::Running;
+                publish(&app, &transfer);
+                let ctx = Arc::new(Ctx {
+                    app: app.clone(),
+                    transfer: Mutex::new(transfer.clone()),
+                    cancel: cancel.clone(),
+                    last: Mutex::new(Instant::now()),
+                    skipped: AtomicBool::new(false),
+                    done: AtomicU64::new(0),
+                });
+                let result = run(ctx.clone()).await;
+                transfer = ctx.transfer.lock().unwrap().clone();
+                transfer.done = ctx.done.load(Ordering::Relaxed);
+                if ctx.skipped.load(Ordering::Relaxed) && result.is_ok() {
+                    transfer.state = TransferState::Skipped;
                 }
-            },
+                result
+            }
         };
         match result {
             Ok(()) if transfer.state == TransferState::Skipped => {}
@@ -959,7 +1011,12 @@ fn spawn(
                     }
                 }
             }
-            Err(_) if cancel.is_cancelled() => transfer.state = TransferState::Cancelled,
+            Err(e) if cancel.is_cancelled() => {
+                transfer.state = TransferState::Cancelled;
+                if transfer.direction == Direction::Copy && e != "cancelled" {
+                    transfer.error = Some(e);
+                }
+            }
             Err(e) => {
                 transfer.state = TransferState::Failed;
                 transfer.error = Some(e);
@@ -967,6 +1024,9 @@ fn spawn(
         }
         if matches!(transfer.state, TransferState::Failed) {
             forget_if_dead(&app, transfer.tunnel_id).await;
+            if let Some(dest_tunnel_id) = transfer.dest_tunnel_id {
+                forget_if_dead(&app, dest_tunnel_id).await;
+            }
         }
         app.state::<Files>().transfers.lock().unwrap().cancels.remove(&id);
         publish(&app, &transfer);
@@ -982,20 +1042,21 @@ async fn forget_if_dead(app: &AppHandle, tunnel_id: Uuid) {
     }
 }
 
-async fn upload(ctx: Arc<Ctx>, job: UploadJob) -> Result<(), String> {
+async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, job: UploadJob) -> Result<(), String> {
+    let sftp = sftp_for(&ctx.app, tunnel_id).await?;
     let name = job.local.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
     let target = join(&job.remote_dir, &name);
     let meta = tokio::fs::metadata(&job.local).await.map_err(|e| e.to_string())?;
-    if !job.overwrite && exists(&ctx.sftp, &target).await? {
+    if !job.overwrite && exists(&sftp, &target).await? {
         ctx.skipped.store(true, Ordering::Relaxed);
         return Ok(());
     }
     let result = if meta.is_dir() {
         ctx.set_total(local_size(&job.local).await);
-        upload_tree(&ctx, &job.local, &target, job.overwrite).await
+        upload_tree(&ctx, &sftp, &job.local, &target, job.overwrite).await
     } else {
         ctx.set_total(meta.len());
-        upload_file(&ctx, &job.local, &target, job.overwrite).await
+        upload_file(&ctx, &sftp, &job.local, &target, job.overwrite).await
     };
     match result {
         // Someone else created the name meanwhile: still never replaced.
@@ -1023,18 +1084,18 @@ async fn local_size(root: &Path) -> u64 {
     total
 }
 
-async fn upload_tree(ctx: &Ctx, root: &Path, target: &str, overwrite: bool) -> Result<(), String> {
+async fn upload_tree(ctx: &Ctx, sftp: &SftpSession, root: &Path, target: &str, overwrite: bool) -> Result<(), String> {
     let mut stack = vec![(root.to_path_buf(), target.to_string())];
     let mut first = true;
     while let Some((local, remote)) = stack.pop() {
         ctx.check()?;
-        match ctx.sftp.symlink_metadata(remote.as_str()).await {
+        match sftp.symlink_metadata(remote.as_str()).await {
             // Merging (overwrite) only into a real folder, never through a link.
             Ok(a) if a.is_dir() && !a.is_symlink() && (overwrite || !first) => {}
             Ok(_) if first && !overwrite => return Err("exists".to_string()),
             Ok(_) => return Err(format!("{remote}: not a folder")),
             Err(e) if is_missing(&e) => {
-                ctx.sftp.create_dir(remote.as_str()).await.map_err(|e| at(&remote, e))?;
+                sftp.create_dir(remote.as_str()).await.map_err(|e| at(&remote, e))?;
             }
             Err(e) => return Err(at(&remote, e)),
         }
@@ -1045,7 +1106,7 @@ async fn upload_tree(ctx: &Ctx, root: &Path, target: &str, overwrite: bool) -> R
             let child = join(&remote, &name);
             match item.file_type().await {
                 Ok(t) if t.is_dir() => stack.push((item.path(), child)),
-                Ok(t) if t.is_file() => upload_file(ctx, &item.path(), &child, overwrite).await?,
+                Ok(t) if t.is_file() => upload_file(ctx, sftp, &item.path(), &child, overwrite).await?,
                 _ => {} // symlinks and devices are not copied
             }
         }
@@ -1055,12 +1116,11 @@ async fn upload_tree(ctx: &Ctx, root: &Path, target: &str, overwrite: bool) -> R
 
 /// Writes to `<name>.protunel-part` and renames when complete, so an
 /// interrupted upload never looks like a finished file.
-async fn upload_file(ctx: &Ctx, local: &Path, remote: &str, overwrite: bool) -> Result<(), String> {
+async fn upload_file(ctx: &Ctx, sftp: &SftpSession, local: &Path, remote: &str, overwrite: bool) -> Result<(), String> {
     let mut src = tokio::fs::File::open(local).await.map_err(|e| e.to_string())?;
     // A part file of its own (never an existing file, never through a link).
     let part = format!("{remote}.{}.protunel-part", short_id());
-    let mut dst = ctx
-        .sftp
+    let mut dst = sftp
         .open_with_flags(part.as_str(), OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE)
         .await
         .map_err(|e| at(remote, e))?;
@@ -1080,7 +1140,7 @@ async fn upload_file(ctx: &Ctx, local: &Path, remote: &str, overwrite: bool) -> 
     .await;
     if let Err(e) = copied {
         drop(dst);
-        let _ = ctx.sftp.remove_file(part.as_str()).await;
+        let _ = sftp.remove_file(part.as_str()).await;
         return Err(e);
     }
     drop(dst);
@@ -1092,12 +1152,12 @@ async fn upload_file(ctx: &Ctx, local: &Path, remote: &str, overwrite: bool) -> 
                 permissions: Some(meta.permissions().mode() & 0o777),
                 ..FileAttributes::empty()
             };
-            let _ = ctx.sftp.set_metadata(part.as_str(), attrs).await;
+            let _ = sftp.set_metadata(part.as_str(), attrs).await;
         }
     }
-    let committed = commit_upload(ctx, &part, remote, overwrite).await;
+    let committed = commit_part(ctx, sftp, &part, remote, overwrite).await;
     if committed.is_err() {
-        let _ = ctx.sftp.remove_file(part.as_str()).await;
+        let _ = sftp.remove_file(part.as_str()).await;
     }
     committed
 }
@@ -1105,27 +1165,27 @@ async fn upload_file(ctx: &Ctx, local: &Path, remote: &str, overwrite: bool) -> 
 /// Publishes a finished part file. Without `overwrite` a plain SFTP rename,
 /// which refuses an existing name ("exists"); with it posix-rename, and only
 /// when the server lacks that, remove-then-rename.
-async fn commit_upload(ctx: &Ctx, part: &str, remote: &str, overwrite: bool) -> Result<(), String> {
+async fn commit_part(ctx: &Ctx, sftp: &SftpSession, part: &str, remote: &str, overwrite: bool) -> Result<(), String> {
     ctx.check()?; // a Cancel during the last write still wins
     if !overwrite {
-        if exists(&ctx.sftp, remote).await? {
+        if exists(sftp, remote).await? {
             return Err("exists".to_string());
         }
-        return ctx.sftp.rename(part, remote).await.map_err(|e| {
-            if matches!(&e, SftpError::Status(s) if s.status_code == StatusCode::Failure) {
-                "exists".to_string()
-            } else {
-                at(remote, e)
+        return match sftp.rename(part, remote).await {
+            Ok(()) => Ok(()),
+            Err(e) if matches!(&e, SftpError::Status(_)) && exists(sftp, remote).await? => {
+                Err("exists".to_string())
             }
-        });
+            Err(e) => Err(at(remote, e)),
+        };
     }
-    match ctx.sftp.posix_rename(part, remote).await {
+    match sftp.posix_rename(part, remote).await {
         Ok(true) => Ok(()),
         Ok(false) => {
-            if exists(&ctx.sftp, remote).await? {
-                ctx.sftp.remove_file(remote).await.map_err(|e| at(remote, e))?;
+            if exists(sftp, remote).await? {
+                sftp.remove_file(remote).await.map_err(|e| at(remote, e))?;
             }
-            ctx.sftp.rename(part, remote).await.map_err(|e| at(remote, e))
+            sftp.rename(part, remote).await.map_err(|e| at(remote, e))
         }
         Err(e) => Err(at(remote, e)),
     }
@@ -1135,8 +1195,9 @@ fn short_id() -> String {
     Uuid::new_v4().simple().to_string()[..8].to_string()
 }
 
-async fn download(ctx: Arc<Ctx>, job: DownloadJob) -> Result<(), String> {
-    let attrs = ctx.sftp.metadata(job.remote.as_str()).await.map_err(err)?;
+async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, job: DownloadJob) -> Result<(), String> {
+    let sftp = sftp_for(&ctx.app, tunnel_id).await?;
+    let attrs = sftp.metadata(job.remote.as_str()).await.map_err(err)?;
     let (_, name) = split(&job.remote);
     tokio::fs::create_dir_all(&job.local_dir).await.map_err(|e| e.to_string())?;
     // Downloads never overwrite a local file: "name (1).ext" like a browser,
@@ -1144,12 +1205,12 @@ async fn download(ctx: Arc<Ctx>, job: DownloadJob) -> Result<(), String> {
     let local = reserve_local(&job.local_dir, name, attrs.is_dir()).await?;
     ctx.set_local(&local);
     let result = if attrs.is_dir() {
-        let total = remote_size(ctx.as_ref(), &job.remote).await?;
+        let total = remote_size(&ctx, &sftp, &job.remote).await?;
         ctx.set_total(total);
-        download_tree(&ctx, &job.remote, &local).await
+        download_tree(&ctx, &sftp, &job.remote, &local).await
     } else {
         ctx.set_total(attrs.size.unwrap_or(0));
-        download_file(&ctx, &job.remote, &local).await
+        download_file(&ctx, &sftp, &job.remote, &local).await
     };
     if result.is_err() && !attrs.is_dir() {
         let _ = tokio::fs::remove_file(&local).await; // the empty reservation
@@ -1178,8 +1239,7 @@ async fn reserve_local(dir: &Path, name: &str, folder: bool) -> Result<PathBuf, 
     Err("exists".to_string())
 }
 
-async fn remote_size(ctx: &Ctx, root: &str) -> Result<u64, String> {
-    let sftp = &ctx.sftp;
+async fn remote_size(ctx: &Ctx, sftp: &SftpSession, root: &str) -> Result<u64, String> {
     let mut total = 0;
     let mut stack = vec![root.to_string()];
     while let Some(dir) = stack.pop() {
@@ -1197,11 +1257,11 @@ async fn remote_size(ctx: &Ctx, root: &str) -> Result<u64, String> {
     Ok(total)
 }
 
-async fn download_tree(ctx: &Ctx, root: &str, local_root: &Path) -> Result<(), String> {
+async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &Path) -> Result<(), String> {
     let mut stack = vec![(root.to_string(), local_root.to_path_buf())];
     while let Some((remote, local)) = stack.pop() {
         ctx.check()?;
-        for item in ctx.sftp.read_dir(&remote).await.map_err(|e| at(&remote, e))? {
+        for item in sftp.read_dir(&remote).await.map_err(|e| at(&remote, e))? {
             let meta = item.metadata();
             // Names that differ remotely but not as local names (`a:b`, `a?b`)
             // get "(1)" instead of landing on each other.
@@ -1210,7 +1270,7 @@ async fn download_tree(ctx: &Ctx, root: &str, local_root: &Path) -> Result<(), S
                 stack.push((item.path(), child));
             } else if meta.is_regular() {
                 let child = reserve_local(&local, &item.file_name(), false).await?;
-                download_file(ctx, &item.path(), &child).await?;
+                download_file(ctx, sftp, &item.path(), &child).await?;
             }
         }
     }
@@ -1229,8 +1289,8 @@ pub fn sanitize(name: &str) -> String {
     }
 }
 
-async fn download_file(ctx: &Ctx, remote: &str, local: &Path) -> Result<(), String> {
-    let mut src = ctx.sftp.open(remote).await.map_err(|e| at(remote, e))?;
+async fn download_file(ctx: &Ctx, sftp: &SftpSession, remote: &str, local: &Path) -> Result<(), String> {
+    let mut src = sftp.open(remote).await.map_err(|e| at(remote, e))?;
     let part = local.with_file_name(format!(
         "{}.{}.protunel-part",
         local.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),

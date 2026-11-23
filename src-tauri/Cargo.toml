@@ -58,6 +58,18 @@ winreg = "0.55.0"
 # Same versions Tauri's wry uses, so `with_webview` hands us these exact types.
 webview2-com = "0.39.1"
 windows-core = "0.62.2"
+windows = { version = "0.62.2", features = [
+  "Win32_Graphics_Gdi",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Ole",
+  "Win32_System_SystemServices",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+] }
 windows-sys = { version = "0.61.2", features = [
   "Win32_Networking_WinInet",
   "Win32_Networking_WinSock",

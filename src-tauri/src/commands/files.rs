@@ -12,8 +12,10 @@ use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
 use crate::ssh::sftp::{
-    self, Content, Count, DownloadJob, Listing, PasteOutcome, Properties, Saved, Transfer, UploadJob,
+    self, Content, Count, Direction, DownloadJob, Listing, PasteOutcome, Properties, Saved, Transfer,
+    UploadJob,
 };
+pub use crate::ssh::sftp::CopyAcross;
 use crate::AppState;
 
 /// A failed call may mean the session died under the channel; drop the cache
@@ -126,6 +128,19 @@ pub async fn files_paste(
 }
 
 #[tauri::command]
+pub async fn files_copy_across(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    from_tunnel_id: Uuid,
+    sources: Vec<String>,
+    to_tunnel_id: Uuid,
+    dest_dir: String,
+    overwrite: bool,
+) -> Result<CopyAcross, String> {
+    sftp::copy_across(&app, &state, from_tunnel_id, sources, to_tunnel_id, dest_dir, overwrite).await
+}
+
+#[tauri::command]
 pub async fn files_read_text(app: AppHandle, tunnel_id: Uuid, path: String, tail: bool) -> Result<Content, String> {
     let r = async { sftp::read_text(&*sftp::sftp_for(&app, tunnel_id).await?, &path, tail).await }.await;
     settle(&app, tunnel_id, r).await
@@ -222,6 +237,73 @@ pub fn files_download(app: AppHandle, tunnel_id: Uuid, remote_paths: Vec<String>
         .collect())
 }
 
+/// "Download to folder…": a folder picker (Rust side) starting in the last
+/// folder chosen, then one download per path into it. Cancel queues nothing.
+#[tauri::command]
+pub async fn files_pick_download(
+    app: AppHandle,
+    window: WebviewWindow,
+    tunnel_id: Uuid,
+    remote_paths: Vec<String>,
+) -> Result<Vec<Uuid>, String> {
+    let state = app.state::<AppState>();
+    let start = state
+        .settings
+        .get()
+        .files_download_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .or_else(|| app.path().download_dir().ok());
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut dialog = app.dialog().file().set_parent(&window);
+    if let Some(start) = start {
+        dialog = dialog.set_directory(start);
+    }
+    dialog.pick_folder(move |path| {
+        let _ = tx.send(path);
+    });
+    let Some(picked) = rx.await.map_err(|_| "file dialog closed".to_string())? else {
+        return Ok(Vec::new());
+    };
+    let dir = picked.into_path().map_err(|e| e.to_string())?;
+    // Re-read: the dialog may have been open a long time and other windows
+    // may have saved settings meanwhile.
+    let mut fresh = state.settings.get();
+    fresh.files_download_dir = Some(dir.to_string_lossy().into_owned());
+    state.settings.update_or_log(fresh.clone());
+    let _ = tauri::Emitter::emit(&app, crate::events::SETTINGS_CHANGED_EVENT, &fresh);
+    Ok(remote_paths
+        .into_iter()
+        .map(|remote| {
+            sftp::start_download(
+                &app,
+                tunnel_id,
+                DownloadJob { remote, local_dir: dir.clone(), open_when_done: false },
+            )
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn files_drag_out(
+    app: AppHandle,
+    window: WebviewWindow,
+    tunnel_id: Uuid,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let result = crate::ssh::drag_out::start(&app, window, tunnel_id, paths).await;
+        settle(&app, tunnel_id, result).await
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, window, tunnel_id, paths);
+        Err("unsupported".into())
+    }
+}
+
 /// "Open with the system app": a temp copy, opened once downloaded. Edits to
 /// it are not sent back.
 #[tauri::command]
@@ -262,6 +344,9 @@ pub fn files_reveal(app: AppHandle, id: Uuid) -> Result<(), String> {
         .into_iter()
         .find(|t| t.id == id)
         .ok_or("unknown transfer")?;
+    if transfer.direction == Direction::Copy {
+        return Err("unsupported".to_string());
+    }
     tauri_plugin_opener::reveal_item_in_dir(&transfer.local_path).map_err(|e| e.to_string())
 }
 
