@@ -12,19 +12,70 @@ import i18n from "./i18n";
  * In a dev build, Shift + right-click still reaches the webview's menu.
  */
 
-export type MenuEntry = { label: string; action: () => void; enabled?: boolean } | "separator";
+/** `checked` (true or false) makes the entry a check item. */
+export type MenuEntry =
+  | { label: string; action: () => void; enabled?: boolean; checked?: boolean }
+  | "separator";
 
 /** Shift + right-click in a dev build: leave the webview menu alone. */
 const wantsWebviewMenu = (e: MouseEvent | ReactMouseEvent) => import.meta.env.DEV && e.shiftKey;
 
+/**
+ * Every `Menu.new` is a native menu held in the window's Rust resource table,
+ * plus one IPC channel per item, until it is closed; the windows live for
+ * days (they hide instead of closing), so menus are closed, never left to
+ * pile up. Not right after `popup` resolves: on Linux it resolves while the
+ * menu is still open, and on Windows the click is delivered after it. A menu
+ * is closed once its chosen action has run, and in any case when the next
+ * one opens (a new right-click means the old menu is gone). At most one is
+ * alive per window.
+ */
+let live: Menu | null = null;
+/** Bumped per right-click, so a menu that finished building late never shows. */
+let generation = 0;
+
+function release(menu: Menu) {
+  if (live === menu) live = null;
+  void menu.close().catch(() => {});
+}
+
 async function popup(entries: MenuEntry[], x: number, y: number) {
+  if (live) release(live);
+  const mine = ++generation;
+  let menu: Menu | null = null;
+  // The action runs first; the menu (and its channels) goes after, so the
+  // close can never race the click it delivered.
+  const run = (action: () => void) => () => {
+    try {
+      action();
+    } finally {
+      if (menu) {
+        const done = menu;
+        window.setTimeout(() => release(done), 0);
+      }
+    }
+  };
   const items = entries.map((entry) =>
     entry === "separator"
       ? { item: "Separator" as const }
-      : { text: entry.label, enabled: entry.enabled ?? true, action: entry.action },
+      : entry.checked !== undefined
+        ? { text: entry.label, enabled: entry.enabled ?? true, checked: entry.checked, action: run(entry.action) }
+        : { text: entry.label, enabled: entry.enabled ?? true, action: run(entry.action) },
   );
-  const menu = await Menu.new({ items });
-  await menu.popup(new LogicalPosition(x, y));
+  menu = await Menu.new({ items });
+  // A later right-click started while this one was being built: it wins,
+  // whichever finishes first.
+  if (mine !== generation) {
+    release(menu);
+    return;
+  }
+  if (live) release(live);
+  live = menu;
+  try {
+    await menu.popup(new LogicalPosition(x, y));
+  } catch {
+    release(menu);
+  }
 }
 
 /** Opens `entries` at the pointer. Returns false (doing nothing) for Shift in dev. */
