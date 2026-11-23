@@ -31,5 +31,14 @@
   "errorKind": {
     "auth": "Đăng nhập thất bại — kiểm tra mật khẩu hoặc khóa",
     "unreachable": "Không tới được máy chủ — kiểm tra địa chỉ, cổng hoặc VPN"
+  },
+  "group": {
+    "none": "Không nhóm",
+    "rename": "Đổi tên nhóm…",
+    "ungroup": "Bỏ nhóm các máy chủ…",
+    "expand": "Hiện nhóm này",
+    "collapse": "Ẩn nhóm này",
+    "count": "{{connected}}/{{total}}",
+    "menu": "Thao tác với nhóm {{name}}"
   }
 }

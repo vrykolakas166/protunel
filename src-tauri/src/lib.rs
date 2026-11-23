@@ -15,6 +15,7 @@ mod tray;
 mod tunnel;
 mod updates;
 mod window_anim;
+mod winscp;
 
 use tauri::{Emitter, Manager, RunEvent};
 pub use tunnel::AppState;
@@ -147,6 +148,7 @@ pub fn run() {
             commands::update_tunnel,
             commands::delete_tunnel,
             commands::reorder_tunnels,
+            commands::set_tunnels_group,
             commands::add_port_forward,
             commands::update_port_forward,
             commands::delete_port_forward,
@@ -201,6 +203,9 @@ pub fn run() {
             config_io::pick_import_file,
             config_io::preview_import,
             config_io::apply_import,
+            winscp::winscp_preview,
+            winscp::winscp_cancel,
+            winscp::winscp_import,
             network::list_local_ips,
             platform::platform_status,
         ])

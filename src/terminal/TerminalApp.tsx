@@ -20,7 +20,8 @@ import { useLanguage } from "../hooks/useLanguage";
 import { useTheme } from "../themes";
 import { useTunnelEvents } from "../hooks/useTunnelEvents";
 import type { Settings, Tunnel, TunnelInput, Workspace } from "../types";
-import { HostTree, hostRows, subtreeIds, type HostRow } from "./HostTree";
+import { HostTree, hostTree, subtreeIds, type HostRow, type HostSection } from "./HostTree";
+import { loadCollapsedGroups, saveCollapsedGroups, sectionKey } from "../groups";
 import {
   MAX_PANES,
   computeLayout,
@@ -88,6 +89,7 @@ interface PendingPaste {
 const SIDEBAR_KEY = "protunel.terminal.sidebarHidden";
 /** Set once the "Ctrl+Shift+B types into all" hint has been shown. */
 const BROADCAST_HINT_KEY = "protunel.terminal.broadcastHintShown";
+const COLLAPSED_GROUPS_KEY = "protunel.terminal.collapsedGroups";
 
 /** How long "Undo" stays offered after tiling or equalizing a tab. */
 const UNDO_MS = 5000;
@@ -159,6 +161,8 @@ export function TerminalApp() {
   const [focusSignal, setFocusSignal] = useState(0);
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** Collapsed group sections in the host tree, remembered in this window. */
+  const [collapsedGroups, setCollapsedGroups] = useState(() => loadCollapsedGroups(COLLAPSED_GROUPS_KEY));
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
@@ -278,9 +282,15 @@ export function TerminalApp() {
     setAlerted((prev) => without(prev, [tab.focused]));
   }, [activeKey, tabs, focusSignal]);
 
-  const rows = useMemo(() => hostRows(tunnels, query, collapsed), [tunnels, query, collapsed]);
-  /** Every host in tree order, whatever is collapsed or filtered. */
-  const treeOrder = useMemo(() => hostRows(tunnels, "", new Set()).map((row) => row.tunnel.id), [tunnels]);
+  const { rows, sections } = useMemo(
+    () => hostTree(tunnels, query, collapsed, collapsedGroups),
+    [tunnels, query, collapsed, collapsedGroups],
+  );
+  /** Every host in tree order (groups included), whatever is collapsed or filtered. */
+  const treeOrder = useMemo(
+    () => hostTree(tunnels, "", new Set(), new Set()).rows.map((row) => row.tunnel.id),
+    [tunnels],
+  );
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const hiddenSelected = selected.filter((id) => !rows.some((row) => row.tunnel.id === id)).length;
 
@@ -442,6 +452,40 @@ export function TerminalApp() {
         : []),
       "separator",
       { label: selectedSet.has(id) ? t("select.unpick") : t("select.pick"), action: () => pick(id, false) },
+    ]);
+  };
+
+  const toggleSection = (name: string | null) =>
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      const key = sectionKey(name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsedGroups(COLLAPSED_GROUPS_KEY, next);
+      return next;
+    });
+
+  /** A group header's menu: open the whole group in one tab, or pick from it. */
+  const sectionMenu = (e: ReactMouseEvent, section: HostSection) => {
+    const count = section.ids.length;
+    openMenu(e, [
+      {
+        label:
+          count > MAX_PANES
+            ? t("group.openAllTooMany", { count, max: MAX_PANES })
+            : t("group.openAll", { count }),
+        enabled: count > 0 && count <= MAX_PANES,
+        action: () => openHosts(section.ids),
+      },
+      {
+        // Above the pane limit this is the way in: pick which ones.
+        label: t("group.selectHosts"),
+        action: () => {
+          setSelecting(true);
+          setSelected((prev) => [...new Set([...prev, ...section.ids.slice(0, MAX_PANES)])]);
+          anchorRef.current = null;
+        },
+      },
     ]);
   };
 
@@ -1147,6 +1191,10 @@ export function TerminalApp() {
             selected={selectedSet}
             onPick={pick}
             onRowMenu={hostMenu}
+            sections={sections}
+            connectedCount={(ids) => ids.filter((id) => statuses[id]?.status === "connected").length}
+            onToggleSection={toggleSection}
+            onSectionMenu={sectionMenu}
           />
           {selecting && (
             // Picking hosts to open together: what is picked and the one action.

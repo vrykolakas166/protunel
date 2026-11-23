@@ -265,9 +265,13 @@ Secrets are handled separately. With a blank passphrase, passwords and key passp
 
 Import shows a preview and is section-scoped:
 
-- Tunnels match by id (update in place) or by name. On a name conflict you can replace the tunnel or import it alongside as `... (imported)`.
+- Tunnels match by id (update in place) or by name. Jump hosts imported under a new id take the hosts that go through them along. On a name conflict you can replace the tunnel or import it alongside as `... (imported)`.
 - Router rules replace the existing list rather than merge. Tunnel targets are rewritten to follow any re-id'd tunnel.
 - Known hosts merge, and your existing entries win (TOFU).
+
+### From WinSCP
+
+Settings › Backup › Import from WinSCP reads a `WinSCP.ini` (WinSCP: Tools › Export/Backup configuration). Session folders become groups and WinSCP tunnels become jump hosts, matched to hosts you already have when the address and user agree. Each session's remote directory is kept as a bookmark. The preview shows which sessions are new, which are already here (skip, or only move them into the folder's group), and names that don't match where they connect. Saved passwords go straight into the OS vault and never reach the window. Host keys are not imported: each server is still confirmed on first connect. A configuration protected by a WinSCP master password can't be read. Delete the exported file afterwards, since anyone holding it can read every saved password.
 
 ## License
 

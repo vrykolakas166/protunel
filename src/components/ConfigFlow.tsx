@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { pickImportFile, previewImport } from "../api";
-import type { ImportPreview, ImportResult, Tunnel } from "../types";
+import { pickImportFile, previewImport, winscpCancel, winscpPreview } from "../api";
+import type { ImportPreview, ImportResult, Tunnel, WinscpOutcome, WinscpPreview } from "../types";
+import { WinscpDoneView, WinscpView } from "./config/WinscpView";
 import { ExportView } from "./config/ExportView";
 import { ImportedView } from "./config/ImportedView";
 import { ImportView } from "./config/ImportView";
 import { AlertIcon, DownloadIcon, HubTile, Icon, UploadIcon } from "./config/parts";
 
-type View = "hub" | "export" | "import" | "imported";
+type View = "hub" | "export" | "import" | "imported" | "winscp" | "winscpDone";
 
 interface Props {
   tunnels: Tunnel[];
@@ -28,13 +29,15 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
   const { t } = useTranslation("configPanel");
   const [view, setView] = useState<View>("hub");
   useEffect(() => {
-    onBusyChange?.(view === "export" || view === "import");
+    onBusyChange?.(view === "export" || view === "import" || view === "winscp");
   }, [view, onBusyChange]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   /** The file being imported and what it would change. */
   const [chosen, setChosen] = useState<{ path: string; preview: ImportPreview; pick: number } | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [winscp, setWinscp] = useState<WinscpPreview | null>(null);
+  const [winscpDone, setWinscpDone] = useState<WinscpOutcome | null>(null);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -49,9 +52,30 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
   };
 
   const goHub = () => {
+    // The parse Rust kept for the preview is dropped with it.
+    if (winscp) void winscpCancel(winscp.token).catch(() => {});
+    setWinscp(null);
     setView("hub");
     setError(null);
   };
+
+  const chooseWinscpFile = () =>
+    run(async () => {
+      try {
+        const preview = await winscpPreview();
+        if (!preview) return;
+        setWinscp(preview);
+        setView("winscp");
+      } catch (err) {
+        const text = String(err);
+        // `run` shows what is thrown as is: a plain string, no "Error:" prefix.
+        throw text === "master-password"
+          ? t("winscp.masterPassword")
+          : text === "no-sessions"
+            ? t("winscp.noSessions")
+            : text;
+      }
+    });
 
   // The Import tile goes straight to the file dialog: picking a file is the
   // only thing that screen could ask for first.
@@ -71,7 +95,11 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
         ? t("import.heading")
         : view === "imported"
           ? t("result.heading")
-          : null;
+          : view === "winscp"
+            ? t("winscp.heading")
+            : view === "winscpDone"
+              ? t("winscp.doneHeading")
+              : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -119,6 +147,19 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
             disabled={busy}
             onClick={chooseImportFile}
           />
+          <button
+            onClick={chooseWinscpFile}
+            disabled={busy}
+            className="col-span-2 flex items-center gap-3 rounded-xl border border-border bg-bg px-4 py-3 text-left transition-colors hover:border-accent hover:bg-surface-hover disabled:opacity-50"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+              <DownloadIcon size={18} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-text">{t("hub.winscpTitle")}</span>
+              <span className="block text-[11px] text-muted">{t("hub.winscpDescription")}</span>
+            </span>
+          </button>
         </div>
       )}
 
@@ -144,6 +185,25 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
       )}
 
       {view === "imported" && result && <ImportedView result={result} onClose={goHub} />}
+
+      {view === "winscp" && winscp && (
+        <WinscpView
+          key={winscp.token}
+          preview={winscp}
+          busy={busy}
+          setBusy={setBusy}
+          setError={setError}
+          onDone={(outcome) => {
+            setWinscp(null);
+            setWinscpDone(outcome);
+            setView("winscpDone");
+            onImported();
+          }}
+          onCancel={goHub}
+        />
+      )}
+
+      {view === "winscpDone" && winscpDone && <WinscpDoneView outcome={winscpDone} onClose={goHub} />}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type SubmitEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { forgetKnownHost, listKnownHosts } from "../api";
+import { canonicalGroup, groupNames } from "../groups";
 import { allocatePorts, parseHostRange, rangeName, usedLocalPorts } from "../hostRange";
 import { hostKeyId } from "../hooks/useHostKeyMismatches";
 import type { AuthMethod, KnownHostEntry, Tunnel, TunnelInput } from "../types";
@@ -68,6 +69,8 @@ export function AddTunnelForm({
   const [autoConnect, setAutoConnect] = useState(mode === "edit" ? (initial?.autoConnect ?? false) : false);
   const [socksEnabled, setSocksEnabled] = useState(initial?.socksEnabled ?? defaultSocksEnabled);
   const [jumpTunnelId, setJumpTunnelId] = useState(initial?.jumpTunnelId ?? "");
+  const [group, setGroup] = useState(initial?.group ?? "");
+  const existingGroups = useMemo(() => groupNames(tunnels), [tunnels]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,6 +135,8 @@ export function AddTunnelForm({
         autoConnect,
         socksEnabled,
         jumpTunnelId: jumpTunnelId || null,
+        // "pt" joins an existing "PT" instead of starting a second group.
+        group: canonicalGroup(group, existingGroups),
       };
       if (range.kind === "range" && onSubmitMany) {
         await onSubmitMany(
@@ -161,14 +166,32 @@ export function AddTunnelForm({
       size="md"
     >
       <form onSubmit={submit} className="space-y-3">
-        <div>
-          <label className={labelClass}>{t("name")}</label>
-          <input
-            className={inputClass}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <label className={labelClass}>{t("name")}</label>
+            <input
+              className={inputClass}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className={labelClass}>{t("group")}</label>
+            <input
+              className={inputClass}
+              value={group}
+              onChange={(e) => setGroup(e.target.value)}
+              list="tunnel-groups"
+              placeholder={t("groupPlaceholder")}
+              title={t("groupHint")}
+            />
+            <datalist id="tunnel-groups">
+              {existingGroups.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-2">

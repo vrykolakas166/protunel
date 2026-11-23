@@ -165,5 +165,16 @@
     "openFamilyTooMany": "Open with its {{count}} child hosts (more than {{max}} panes)",
     "pick": "Select",
     "unpick": "Deselect"
+  },
+  "hostVia": "via {{name}}",
+  "group": {
+    "none": "Ungrouped",
+    "expand": "Show this group",
+    "collapse": "Hide this group",
+    "menu": "{{name}} group actions",
+    "openAll_one": "Open this host",
+    "openAll_other": "Open all {{count}} hosts in one tab",
+    "openAllTooMany": "Open all in one tab (over {{max}}, pick some)",
+    "selectHosts": "Select hosts from this group…"
   }
 }

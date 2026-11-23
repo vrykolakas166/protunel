@@ -5,6 +5,9 @@
     "clone": "Nhân bản tunnel"
   },
   "name": "Tên",
+  "group": "Nhóm",
+  "groupPlaceholder": "Không",
+  "groupHint": "Thư mục để xếp máy chủ này, ví dụ PT hoặc Staging. Chọn nhóm có sẵn hoặc gõ tên mới; để trống nếu không cần.",
   "clonedName": "{{name}} (bản sao)",
   "host": "Máy chủ",
   "port": "Cổng",

@@ -58,5 +58,15 @@
   },
   "importConfig": "Nhập cấu hình…",
   "connectAllFiltered": "Kết nối cả {{count}} tunnel, kể cả các tunnel đang bị ẩn do tìm kiếm?",
-  "disconnectAllFiltered": "Ngắt mọi tunnel đang hoạt động, kể cả các tunnel đang bị ẩn do tìm kiếm?"
+  "disconnectAllFiltered": "Ngắt mọi tunnel đang hoạt động, kể cả các tunnel đang bị ẩn do tìm kiếm?",
+  "group": {
+    "renameTitle": "Đổi tên nhóm",
+    "renameLabel": "Tên mới",
+    "renameConfirm": "Đổi tên",
+    "mergeHint": "Đã có nhóm {{name}}: máy chủ của nhóm đó và nhóm này sẽ gộp làm một.",
+    "ungroupTitle": "Bỏ nhóm {{name}}?",
+    "ungroupMessage_one": "Máy chủ vẫn được giữ, chỉ không còn nhóm.",
+    "ungroupMessage_other": "{{count}} máy chủ vẫn được giữ, chỉ không còn nhóm.",
+    "ungroupConfirm": "Bỏ nhóm"
+  }
 }

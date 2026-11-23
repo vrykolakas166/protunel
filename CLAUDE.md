@@ -375,6 +375,18 @@ not TS — that keeps file contents off the IPC boundary and out of
 - Tunnel ids can change on import (name conflicts imported as copies), so every
   id goes through `id_map` and router rule targets are rewritten through it.
   Forwards always get fresh ids or a copy collides with the original's primary key.
+- A jump host imported under a new id (name conflict → copy) takes its
+  children along: a second pass rewrites `jump_tunnel_id` through `id_map`.
+- WinSCP import (`winscp.rs`, Backup page `config/WinscpView.tsx`): Rust
+  opens the dialog, parses `WinSCP.ini` and keeps the parse behind a token
+  (`PENDING`, 15 min); the preview carries no secret. `winscp_import` decodes
+  each password (WinSCP's XOR obfuscation keyed by user+host; master-password
+  files refused) only when importing, straight into the vault, deleting the
+  row again if the vault write fails. Jump hosts are resolved first (an
+  existing tunnel with the same endpoint, or created once); a failed one
+  blocks its rows. Folders → `group`, RemoteDirectory → `bookmarks`, SOCKS
+  off, host keys never imported (TOFU). `real_file` is an ignored test that
+  previews a real file without printing secrets (`WINSCP_INI=…`).
 - `KnownHosts::merge` keeps the existing key on conflict — do not "fix" this into
   an overwrite, it is the TOFU guarantee.
 
@@ -387,6 +399,9 @@ not TS — that keeps file contents off the IPC boundary and out of
   `insert`, and `update` together. The exception is `tunnels.position` (display
   order): it lives only in SQL — `insert` appends, `update` never touches it,
   `reorder_tunnels` rewrites it — so editing a tunnel can't move it.
+  `tunnels.group_name` (`Tunnel.group`, one-level folder) goes through
+  `insert`/`update` like any field, plus `set_group` for a whole group's
+  Rename / Ungroup (`set_tunnels_group`), which never restarts a tunnel.
 - **OS credential vault** (`secrets.rs`, `keyring`) — passwords and key passphrases,
   keyed by tunnel UUID. Never in SQLite. Clone and range add (`add_tunnels`)
   copy a secret vault-to-vault via `copy_secret_from`; it never goes to the webview.
@@ -467,6 +482,15 @@ the feature stops applying.
   every window's copy in step (`App`, `SettingsPanel`, `TerminalApp` all
   listen): saves send the whole `Settings` object, so a window holding a stale
   copy would revert another window's change on its next save.
+- Groups (`src/groups.ts`, `tests/groups.test.ts`): once any host has one,
+  the tunnel list and the terminal host tree (`HostTree.tsx` `hostTree`) show
+  sections sorted by name, ungrouped last. A host nests under its jump host
+  only inside the same group, otherwise its row says "via …": a bastion is
+  shared across groups and each host stays in its own. Drag-and-drop reorders
+  within a group only. Collapsed sections live in localStorage per window; a
+  search opens every matching section without changing that, and a group's
+  name matches all its hosts. Typed groups reuse an existing spelling
+  case-insensitively (`canonicalGroup`).
 - Dates and times shown to the user go through `format.ts` `formatTimestamp`
   (the app's language, not the OS locale) — never a bare `toLocale*String()`.
 - Vietnamese wording follows one glossary: máy chủ, khóa máy chủ, máy chủ đã

@@ -489,6 +489,7 @@ pub async fn apply_import(
 
             if is_update {
                 state.db.update(&tunnel).map_err(|e| e.to_string())?;
+                state.db.set_bookmarks(tunnel.id, &tunnel.bookmarks).map_err(|e| e.to_string())?;
                 result.tunnels_updated += 1;
             } else {
                 state.db.insert(&tunnel).map_err(|e| e.to_string())?;
@@ -514,6 +515,22 @@ pub async fn apply_import(
                 .map_err(|e| e.to_string())?;
 
             id_map.insert(imported.id, target_id);
+        }
+
+        // Second pass, once every row has its final id: a jump host imported
+        // under a new id (a name conflict made it a copy) must take its
+        // children with it, or they keep pointing at the original.
+        for imported in &bundle.tunnels {
+            let Some(jump) = imported.jump_tunnel_id else { continue };
+            let Some(&jump_target) = id_map.get(&jump) else { continue };
+            let target_id = id_map[&imported.id];
+            if jump_target == jump {
+                continue;
+            }
+            if let Some(mut tunnel) = state.db.get(target_id).map_err(|e| e.to_string())? {
+                tunnel.jump_tunnel_id = Some(jump_target);
+                state.db.update(&tunnel).map_err(|e| e.to_string())?;
+            }
         }
     }
 

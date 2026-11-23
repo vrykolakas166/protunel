@@ -31,5 +31,14 @@
   "errorKind": {
     "auth": "Sign-in failed — check the password or key",
     "unreachable": "Can't reach the server — check the address, port or VPN"
+  },
+  "group": {
+    "none": "Ungrouped",
+    "rename": "Rename group…",
+    "ungroup": "Ungroup hosts…",
+    "expand": "Show this group",
+    "collapse": "Hide this group",
+    "count": "{{connected}}/{{total}}",
+    "menu": "{{name}} group actions"
   }
 }

@@ -58,5 +58,15 @@
   },
   "importConfig": "Import config…",
   "connectAllFiltered": "Connect all {{count}} tunnels, including the ones the search hides?",
-  "disconnectAllFiltered": "Disconnect every active tunnel, including the ones the search hides?"
+  "disconnectAllFiltered": "Disconnect every active tunnel, including the ones the search hides?",
+  "group": {
+    "renameTitle": "Rename group",
+    "renameLabel": "New name",
+    "renameConfirm": "Rename",
+    "mergeHint": "A group named {{name}} exists: its hosts and these will be one group.",
+    "ungroupTitle": "Ungroup {{name}}?",
+    "ungroupMessage_one": "The host stays, just without a group.",
+    "ungroupMessage_other": "The {{count}} hosts stay, just without a group.",
+    "ungroupConfirm": "Ungroup"
+  }
 }

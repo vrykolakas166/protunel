@@ -38,6 +38,8 @@ fn insert_tunnel(state: &AppState, input: TunnelInput, secret: Option<&str>) -> 
         forwards: Vec::new(),
         jump_tunnel_id: input.jump_tunnel_id,
         socks_enabled: input.socks_enabled,
+        group: crate::db::clean_group(input.group),
+        bookmarks: Vec::new(),
     };
     state.db.insert(&tunnel).map_err(|e| e.to_string())?;
     if let Some(secret) = secret {
@@ -149,6 +151,8 @@ pub async fn update_tunnel(
         forwards: Vec::new(),
         jump_tunnel_id: input.jump_tunnel_id,
         socks_enabled: input.socks_enabled,
+        group: crate::db::clean_group(input.group),
+        bookmarks: Vec::new(),
     };
     state.db.update(&tunnel).map_err(|e| e.to_string())?;
     let secret_changed = secret.is_some();
@@ -177,6 +181,22 @@ pub fn delete_tunnel(app: AppHandle, state: State<AppState>, id: Uuid) -> Result
     state.db.orphan_router_rules(id).map_err(|e| e.to_string())?;
     let _ = state.router.reload_rules(&state.db);
     let _ = secrets::delete_secret(id);
+    tunnels_changed(&app);
+    Ok(())
+}
+
+/// Files hosts under a group (a blank or missing name ungroups them): the
+/// group header's Rename / Ungroup. Only the group changes, so running
+/// tunnels and open shells are untouched.
+#[tauri::command]
+pub fn set_tunnels_group(
+    app: AppHandle,
+    state: State<AppState>,
+    ids: Vec<Uuid>,
+    group: Option<String>,
+) -> Result<(), String> {
+    let group = crate::db::clean_group(group);
+    state.db.set_group(&ids, group.as_deref()).map_err(|e| e.to_string())?;
     tunnels_changed(&app);
     Ok(())
 }
@@ -296,6 +316,8 @@ mod reconnect_tests {
             forwards: Vec::new(),
             jump_tunnel_id: None,
             socks_enabled: true,
+            group: None,
+            bookmarks: Vec::new(),
         }
     }
 

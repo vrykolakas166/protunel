@@ -4,7 +4,7 @@ import type { Tunnel } from "../types";
 /**
  * The tunnel list's search: Ctrl+F drops the box in, Escape (or closing it)
  * takes it back out and clears the filter, so a closed box never leaves the
- * list silently filtered with no visible reason why. Matches name or host.
+ * list silently filtered with no visible reason why. Matches name, host or group.
  */
 export function useTunnelSearch(tunnels: Tunnel[]) {
   const [query, setQuery] = useState("");
@@ -36,7 +36,13 @@ export function useTunnelSearch(tunnels: Tunnel[]) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return tunnels;
-    return tunnels.filter((tun) => tun.name.toLowerCase().includes(q) || tun.host.toLowerCase().includes(q));
+    // A group's name matches every host in it.
+    return tunnels.filter(
+      (tun) =>
+        tun.name.toLowerCase().includes(q) ||
+        tun.host.toLowerCase().includes(q) ||
+        (tun.group ?? "").toLowerCase().includes(q),
+    );
   }, [tunnels, query]);
 
   return {

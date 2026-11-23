@@ -27,6 +27,9 @@ import type {
   TerminalMemory,
   Tunnel,
   TunnelInput,
+  WinscpImportRequest,
+  WinscpOutcome,
+  WinscpPreview,
 } from "./types";
 
 export const listTunnels = () => invoke<Tunnel[]>("list_tunnels");
@@ -48,6 +51,9 @@ export const deleteTunnel = (id: string) => invoke<void>("delete_tunnel", { id }
 
 /** Saves the display order of tunnels; ids are the full list, top to bottom. */
 export const reorderTunnels = (ids: string[]) => invoke<void>("reorder_tunnels", { ids });
+/** Files hosts under `group`; null or blank ungroups them. */
+export const setTunnelsGroup = (ids: string[], group: string | null) =>
+  invoke<void>("set_tunnels_group", { ids, group });
 
 export const addPortForward = (tunnelId: string, input: PortForwardInput) =>
   invoke<PortForward>("add_port_forward", { tunnelId, input });
@@ -127,6 +133,11 @@ export const exportConfig = (passphrase: string | undefined, sections: ExportSec
   invoke<string | null>("export_config", { passphrase: passphrase || null, sections });
 
 export const pickImportFile = () => invoke<string | null>("pick_import_file");
+
+/** Opens the file dialog (Rust side) and previews a WinSCP.ini; null when cancelled. */
+export const winscpPreview = () => invoke<WinscpPreview | null>("winscp_preview");
+export const winscpCancel = (token: string) => invoke<void>("winscp_cancel", { token });
+export const winscpImport = (request: WinscpImportRequest) => invoke<WinscpOutcome>("winscp_import", { request });
 
 export const previewImport = (path: string, passphrase?: string) =>
   invoke<ImportPreview>("preview_import", { path, passphrase: passphrase || null });

@@ -12,7 +12,9 @@
     "exportTitle": "Export",
     "exportDescription": "Save tunnels, router rules and settings to a JSON file — to back up or move to another machine.",
     "importTitle": "Import",
-    "importDescription": "Load a previously exported file. You'll see exactly what changes before anything is applied."
+    "importDescription": "Load a previously exported file. You'll see exactly what changes before anything is applied.",
+    "winscpTitle": "Import from WinSCP…",
+    "winscpDescription": "Your WinSCP sessions as hosts: folders become groups, tunnels become jump hosts. Export WinSCP.ini from WinSCP's Tools › Export/Backup configuration."
   },
   "export": {
     "heading": "Export config",
@@ -83,5 +85,46 @@
     "hosts": "known hosts added",
     "noSecretsReminder": "No passwords were restored — open each imported tunnel and re-enter its password or key passphrase before connecting.",
     "close": "Done"
+  },
+  "winscp": {
+    "heading": "Import from WinSCP",
+    "doneHeading": "WinSCP import",
+    "masterPassword": "This WinSCP configuration uses a master password and can't be imported. Turn the master password off in WinSCP (Preferences › Security), export again, then turn it back on.",
+    "noSessions": "No saved sessions in this file.",
+    "expired": "The preview expired. Pick the file again.",
+    "summary": "{{file}}: {{fresh}} new, {{existing}} already here.",
+    "unsupportedCount_one": "{{count}} session isn't SSH and is left out.",
+    "unsupportedCount_other": "{{count}} sessions aren't SSH and are left out.",
+    "bastions": "Jump hosts (WinSCP tunnels)",
+    "pickBastion": "Pick a jump host…",
+    "useExisting": "Use {{name}}",
+    "createBastion": "Create a new one",
+    "pickBastionFirst": "Pick which existing host to use for each highlighted jump host.",
+    "noGroup": "No folder",
+    "new": "New",
+    "notSsh": "Not SSH",
+    "via": "via {{name}}",
+    "existingAs": "Already here as {{name}}",
+    "skipExisting": "Already here: skip",
+    "setGroupOnly": "Already here: move to {{group}}",
+    "safety": "Passwords go straight from the file into your system's credential store. Each server's host key is still confirmed on the first connection.",
+    "cancel": "Cancel",
+    "import_one": "Import {{count}} host",
+    "import_other": "Import {{count}} hosts",
+    "done": "Imported",
+    "statAdded": "hosts added",
+    "statBastions": "jump hosts created",
+    "statGrouped": "moved to a group",
+    "statFailed": "failed",
+    "groups": "Groups: {{groups}}",
+    "cleanup": "Delete the WinSCP.ini you exported (and any decoded copy of it) if you no longer need it: it holds every saved password, readable by anyone with the file.",
+    "warn": {
+      "nameHost": "Named {{named}} but connects to another host.",
+      "nameUser": "Named for user {{named}} but logs in as another.",
+      "noPassword": "No saved password: add one with Edit before connecting.",
+      "passwordUnreadable": "Its saved password couldn't be read; set it after importing.",
+      "keyPathMissing": "Key file not on this computer: {{path}}",
+      "bastionCredentialsDiffer": "Sessions saved different passwords for this jump host; the first one is used."
+    }
   }
 }

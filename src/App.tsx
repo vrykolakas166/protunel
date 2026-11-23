@@ -5,6 +5,8 @@ import { AddTunnelForm } from "./components/AddTunnelForm";
 import { CapturePanel } from "./components/CapturePanel";
 import { isWindows } from "./platform";
 import { ConfirmDialog } from "./components/ConfirmDialog";
+import { PromptDialog } from "./components/PromptDialog";
+import { groupNames, groupOf } from "./groups";
 import { HostKeyPrompt } from "./components/HostKeyPrompt";
 import { KnownHostsPanel } from "./components/KnownHostsPanel";
 import { LocalIps } from "./components/LocalIps";
@@ -53,6 +55,7 @@ import {
   listTunnels,
   openTerminalWindow,
   reorderTunnels,
+  setTunnelsGroup,
   updateSettings,
   updateTunnel,
 } from "./api";
@@ -109,6 +112,8 @@ function App() {
   const [showTour, setShowTour] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Tunnel | null>(null);
+  /** A group header's Rename / Ungroup, waiting for its dialog. */
+  const [groupAction, setGroupAction] = useState<{ kind: "rename" | "ungroup"; name: string } | null>(null);
   const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
   const updates = useUpdates();
   /** Release notes of the version this launch just updated to, shown once. */
@@ -241,6 +246,20 @@ function App() {
       } else {
         await connectTunnel(tunnel.id);
       }
+    } catch (err) {
+      setMessage({ text: String(err), isError: true });
+    }
+  };
+
+  /** Hosts filed under `name` (case-insensitive, like the sections). */
+  const hostsInGroup = (name: string) =>
+    tunnels.filter((tun) => groupOf(tun)?.toLowerCase() === name.toLowerCase()).map((tun) => tun.id);
+
+  const applyGroup = async (ids: string[], group: string | null) => {
+    setGroupAction(null);
+    try {
+      await setTunnelsGroup(ids, group);
+      await refresh();
     } catch (err) {
       setMessage({ text: String(err), isError: true });
     }
@@ -529,6 +548,8 @@ function App() {
               onReviewHostKey={setReviewingKey}
               searchQuery={search.query}
               onClearSearch={() => search.setQuery("")}
+              onRenameGroup={(name) => setGroupAction({ kind: "rename", name })}
+              onUngroup={(name) => setGroupAction({ kind: "ungroup", name })}
             />
           </div>
         </>
@@ -664,6 +685,38 @@ function App() {
 
       {hostKeyQueue[0] && (
         <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />
+      )}
+
+      {groupAction?.kind === "rename" && (
+        <PromptDialog
+          title={t("group.renameTitle")}
+          label={t("group.renameLabel")}
+          initial={groupAction.name}
+          confirmLabel={t("group.renameConfirm")}
+          // Renaming onto another group's name merges the two: say so first.
+          hint={(value) => {
+            const other = groupNames(tunnels).find(
+              (g) => g.toLowerCase() === value.trim().toLowerCase() && g.toLowerCase() !== groupAction.name.toLowerCase(),
+            );
+            return other ? t("group.mergeHint", { name: other }) : null;
+          }}
+          onConfirm={(value) => {
+            const target =
+              groupNames(tunnels).find((g) => g.toLowerCase() === value.toLowerCase() && g !== groupAction.name) ?? value;
+            void applyGroup(hostsInGroup(groupAction.name), target);
+          }}
+          onCancel={() => setGroupAction(null)}
+        />
+      )}
+      {groupAction?.kind === "ungroup" && (
+        <ConfirmDialog
+          title={t("group.ungroupTitle", { name: groupAction.name })}
+          message={t("group.ungroupMessage", { count: hostsInGroup(groupAction.name).length })}
+          confirmLabel={t("group.ungroupConfirm")}
+          tone="accent"
+          onConfirm={() => void applyGroup(hostsInGroup(groupAction.name), null)}
+          onCancel={() => setGroupAction(null)}
+        />
       )}
 
       {pendingDelete && (

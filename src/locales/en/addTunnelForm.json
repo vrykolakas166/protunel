@@ -5,6 +5,9 @@
     "clone": "Clone tunnel"
   },
   "name": "Name",
+  "group": "Group",
+  "groupPlaceholder": "None",
+  "groupHint": "A folder to show this host under, like PT or Staging. Pick an existing one or type a new name; leave blank for none.",
   "clonedName": "{{name}} copy",
   "host": "Host",
   "port": "Port",

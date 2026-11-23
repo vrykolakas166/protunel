@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type SubmitEvent } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type SubmitEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { hostKeyId } from "../hooks/useHostKeyMismatches";
@@ -10,6 +17,16 @@ import { addPortForward, deletePortForward } from "../api";
 import { TunnelWaveform } from "./TunnelWaveform";
 import { openMenu } from "../contextMenu";
 import { plainSshError } from "../simpleMode";
+import {
+  groupOf,
+  groupSections,
+  hasGroups,
+  loadCollapsedGroups,
+  saveCollapsedGroups,
+  sectionKey,
+} from "../groups";
+
+const COLLAPSED_GROUPS_KEY = "protunel.main.collapsedGroups";
 
 const DOT_COLOR: Record<string, string> = {
   disconnected: "bg-slate",
@@ -39,17 +56,32 @@ interface Props {
   /** The search `tunnels` was filtered by ("" when not searching). */
   searchQuery: string;
   onClearSearch: () => void;
+  /** A group header's Rename / Ungroup (the header's ⋯ menu). */
+  onRenameGroup: (name: string) => void;
+  onUngroup: (name: string) => void;
 }
 
-/** The tunnel a row hangs under in the tree, or null for a top-level row. */
-function parentOf(tunnel: Tunnel, ids: Set<string>): string | null {
-  return tunnel.jumpTunnelId && ids.has(tunnel.jumpTunnelId) ? tunnel.jumpTunnelId : null;
+/**
+ * The tunnel a row hangs under in the tree, or null for a top-level row. A
+ * host nests under its jump host only inside the same group: a shared
+ * bastion serves several groups, and each host stays in its own (the row
+ * says "via <bastion>" either way).
+ */
+function parentOf(tunnel: Tunnel, byId: Map<string, Tunnel>): string | null {
+  const parent = tunnel.jumpTunnelId ? byId.get(tunnel.jumpTunnelId) : undefined;
+  return parent && sectionKey(groupOf(parent)) === sectionKey(groupOf(tunnel)) ? parent.id : null;
 }
+
+type Entry =
+  | { kind: "header"; name: string | null; total: number; connected: number; collapsed: boolean }
+  | { kind: "row"; tunnel: Tunnel; depth: number };
 
 export function TunnelList({
   tunnels,
   searchQuery,
   onClearSearch,
+  onRenameGroup,
+  onUngroup,
   statuses,
   stats,
   throughput,
@@ -68,6 +100,17 @@ export function TunnelList({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  /** Collapsed group sections (`sectionKey`), remembered in this window. */
+  const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedGroups(COLLAPSED_GROUPS_KEY));
+  const toggleSection = (name: string | null) =>
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      const key = sectionKey(name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveCollapsedGroups(COLLAPSED_GROUPS_KEY, next);
+      return next;
+    });
   // While dragging: the live order (ids) and the row being dragged.
   const [order, setOrder] = useState<string[] | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
@@ -155,17 +198,20 @@ export function TunnelList({
     // Listen on the window, not the grip with pointer capture: reordering
     // makes React move the row's DOM node, which drops the capture and left
     // the drag stalling until the pointer happened to cross the grip again.
-    const ids = new Set(tunnels.map((tun) => tun.id));
-    const parent = parentOf(tunnel, ids);
+    const byId = new Map(tunnels.map((tun) => [tun.id, tun]));
+    const parent = parentOf(tunnel, byId);
+    const section = sectionKey(groupOf(tunnel));
+    const sameSection = (tun: Tunnel) => sectionKey(groupOf(tun)) === section;
     const initial = tunnels.map((tun) => tun.id);
     let current = initial;
 
-    // The row plus everything that jumps through it, at any depth.
+    // The row plus everything shown under it (what jumps through it, at any
+    // depth, in the same group).
     const block = new Set([tunnel.id]);
     for (let grew = true; grew; ) {
       grew = false;
       for (const tun of tunnels) {
-        if (!block.has(tun.id) && tun.jumpTunnelId && block.has(tun.jumpTunnelId)) {
+        if (!block.has(tun.id) && sameSection(tun) && tun.jumpTunnelId && block.has(tun.jumpTunnelId)) {
           block.add(tun.id);
           grew = true;
         }
@@ -188,9 +234,13 @@ export function TunnelList({
       // The block's middle decides its slot among its siblings.
       const anchor = rowRefs.current.get(tunnel.id)!;
       const middle = state.y - state.grab + anchor.offsetHeight / 2;
-      const siblings = current.filter(
-        (id) => id !== tunnel.id && parentOf(tunnels.find((tun) => tun.id === id)!, ids) === parent,
-      );
+      // Siblings: same parent and same group. A drag never moves a host to
+      // another group (that is the form's Group field).
+      const siblings = current.filter((id) => {
+        if (id === tunnel.id) return false;
+        const tun = byId.get(id)!;
+        return sameSection(tun) && parentOf(tun, byId) === parent;
+      });
       if (siblings.length === 0) {
         placeDragged();
         return;
@@ -294,38 +344,110 @@ export function TunnelList({
   const ordered = order
     ? order.map((id) => byIdAll.get(id)).filter((tun): tun is Tunnel => !!tun)
     : tunnels;
-  const tunnelIds = new Set(ordered.map((t) => t.id));
+  const orderedById = new Map(ordered.map((t) => [t.id, t]));
   const childrenByParent = new Map<string, Tunnel[]>();
   for (const tunnel of ordered) {
-    if (tunnel.jumpTunnelId && tunnelIds.has(tunnel.jumpTunnelId)) {
-      const siblings = childrenByParent.get(tunnel.jumpTunnelId) ?? [];
+    const parent = parentOf(tunnel, orderedById);
+    if (parent) {
+      const siblings = childrenByParent.get(parent) ?? [];
       siblings.push(tunnel);
-      childrenByParent.set(tunnel.jumpTunnelId, siblings);
+      childrenByParent.set(parent, siblings);
     }
   }
-  const roots = ordered.filter(
-    (t) => !t.jumpTunnelId || !tunnelIds.has(t.jumpTunnelId),
-  );
 
-  const rows: { tunnel: Tunnel; depth: number }[] = [];
+  // Sections only once some host has a group; until then the list looks as
+  // it always did. A search shows every matching section open, without
+  // touching what is saved as collapsed.
+  const grouped = hasGroups(tunnels);
+  const searching = searchQuery.trim() !== "";
+  const sections = grouped ? groupSections(ordered, groupOf) : [{ name: null, items: ordered }];
+  const entries: Entry[] = [];
   const visited = new Set<string>();
   const pushSubtree = (tunnel: Tunnel, depth: number) => {
     if (visited.has(tunnel.id)) return; // guards a jump-chain cycle from bad data
     visited.add(tunnel.id);
-    rows.push({ tunnel, depth });
+    entries.push({ kind: "row", tunnel, depth });
     if (collapsedGroups.has(tunnel.id)) return;
     for (const child of childrenByParent.get(tunnel.id) ?? []) {
       pushSubtree(child, depth + 1);
     }
   };
-  for (const root of roots) {
-    pushSubtree(root, 0);
+  for (const section of sections) {
+    const collapsed = grouped && !searching && collapsedSections.has(sectionKey(section.name));
+    if (grouped) {
+      entries.push({
+        kind: "header",
+        name: section.name,
+        total: section.items.length,
+        connected: section.items.filter((tun) => statuses[tun.id]?.status === "connected").length,
+        collapsed,
+      });
+    }
+    if (collapsed) continue;
+    for (const tunnel of section.items) {
+      if (!parentOf(tunnel, orderedById)) pushSubtree(tunnel, 0);
+    }
   }
+
+  const groupHeader = (entry: Extract<Entry, { kind: "header" }>) => {
+    const label = entry.name ?? t("group.none");
+    const menu = (e: ReactMouseEvent) =>
+      entry.name !== null &&
+      openMenu(e, [
+        { label: t("group.rename"), action: () => onRenameGroup(entry.name!) },
+        { label: t("group.ungroup"), action: () => onUngroup(entry.name!) },
+      ]);
+    return (
+      <li
+        key={`group:${sectionKey(entry.name)}`}
+        onContextMenu={menu}
+        className="group/header -mb-1 mt-1 flex items-center gap-1.5 px-1 first:mt-0"
+      >
+        <button
+          onClick={() => toggleSection(entry.name)}
+          aria-expanded={!entry.collapsed}
+          title={entry.collapsed ? t("group.expand") : t("group.collapse")}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded py-0.5 text-left text-xs font-semibold text-muted hover:text-text"
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            aria-hidden="true"
+            className={`shrink-0 transition-transform ${entry.collapsed ? "" : "rotate-90"}`}
+          >
+            <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className={`truncate ${entry.name === null ? "italic" : ""}`}>{label}</span>
+          <span className="shrink-0 font-mono text-[10px] font-normal">
+            {t("group.count", { connected: entry.connected, total: entry.total })}
+          </span>
+          <span className="h-px min-w-4 flex-1 bg-border" aria-hidden="true" />
+        </button>
+        {entry.name !== null && (
+          <button
+            onClick={(e) => menu(e)}
+            aria-label={t("group.menu", { name: label })}
+            title={t("group.menu", { name: label })}
+            aria-haspopup="menu"
+            className="shrink-0 rounded px-1 text-muted opacity-0 hover:bg-surface-hover hover:text-text focus-visible:opacity-100 group-hover/header:opacity-100"
+          >
+            ⋯
+          </button>
+        )}
+      </li>
+    );
+  };
 
   return (
     // `relative`: rows measure `offsetTop` against the list itself.
     <ul ref={listRef} className="relative flex flex-1 flex-col gap-2 overflow-y-auto p-4">
-      {rows.map(({ tunnel, depth }) => {
+      {entries.map((entry) => {
+        if (entry.kind === "header") return groupHeader(entry);
+        const { tunnel, depth } = entry;
         const children = childrenByParent.get(tunnel.id) ?? [];
         const hasChildren = children.length > 0;
         const isCollapsed = collapsedGroups.has(tunnel.id);

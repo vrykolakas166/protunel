@@ -12,7 +12,9 @@
     "exportTitle": "Xuất",
     "exportDescription": "Lưu tunnel, quy tắc router và cài đặt ra tệp JSON — để sao lưu hoặc chuyển sang máy khác.",
     "importTitle": "Nhập",
-    "importDescription": "Mở tệp cấu hình đã xuất trước đó. Bạn sẽ xem trước mọi thay đổi trước khi áp dụng."
+    "importDescription": "Mở tệp cấu hình đã xuất trước đó. Bạn sẽ xem trước mọi thay đổi trước khi áp dụng.",
+    "winscpTitle": "Nhập từ WinSCP…",
+    "winscpDescription": "Đưa các session WinSCP thành máy chủ: thư mục thành nhóm, tunnel thành máy chủ trung gian. Xuất WinSCP.ini trong WinSCP qua Tools › Export/Backup configuration."
   },
   "export": {
     "heading": "Xuất cấu hình",
@@ -83,5 +85,46 @@
     "hosts": "máy chủ đã biết",
     "noSecretsReminder": "Không có mật khẩu nào được khôi phục — hãy mở từng tunnel vừa nhập và nhập lại mật khẩu hoặc passphrase khóa trước khi kết nối.",
     "close": "Xong"
+  },
+  "winscp": {
+    "heading": "Nhập từ WinSCP",
+    "doneHeading": "Nhập từ WinSCP",
+    "masterPassword": "Cấu hình WinSCP này dùng master password nên không nhập được. Tắt master password trong WinSCP (Preferences › Security), xuất lại, rồi bật lại.",
+    "noSessions": "Tệp không có session nào đã lưu.",
+    "expired": "Bản xem trước đã hết hạn. Hãy chọn lại tệp.",
+    "summary": "{{file}}: {{fresh}} mới, {{existing}} đã có.",
+    "unsupportedCount_one": "{{count}} session không phải SSH nên được bỏ qua.",
+    "unsupportedCount_other": "{{count}} session không phải SSH nên được bỏ qua.",
+    "bastions": "Máy chủ trung gian (tunnel của WinSCP)",
+    "pickBastion": "Chọn máy chủ trung gian…",
+    "useExisting": "Dùng {{name}}",
+    "createBastion": "Tạo mới",
+    "pickBastionFirst": "Hãy chọn máy chủ có sẵn để dùng cho từng máy chủ trung gian đang được đánh dấu.",
+    "noGroup": "Không thư mục",
+    "new": "Mới",
+    "notSsh": "Không phải SSH",
+    "via": "qua {{name}}",
+    "existingAs": "Đã có với tên {{name}}",
+    "skipExisting": "Đã có: bỏ qua",
+    "setGroupOnly": "Đã có: chuyển vào {{group}}",
+    "safety": "Mật khẩu được đưa thẳng từ tệp vào kho thông tin xác thực của hệ điều hành. Khóa máy chủ vẫn được hỏi xác nhận ở lần kết nối đầu tiên.",
+    "cancel": "Hủy",
+    "import_one": "Nhập {{count}} máy chủ",
+    "import_other": "Nhập {{count}} máy chủ",
+    "done": "Đã nhập",
+    "statAdded": "máy chủ đã thêm",
+    "statBastions": "máy chủ trung gian đã tạo",
+    "statGrouped": "đã chuyển nhóm",
+    "statFailed": "lỗi",
+    "groups": "Nhóm: {{groups}}",
+    "cleanup": "Xóa tệp WinSCP.ini đã xuất (và mọi bản đã giải mã) nếu không còn cần: tệp chứa mọi mật khẩu đã lưu, ai có tệp đều đọc được.",
+    "warn": {
+      "nameHost": "Tên ghi {{named}} nhưng kết nối tới máy chủ khác.",
+      "nameUser": "Tên ghi user {{named}} nhưng đăng nhập bằng user khác.",
+      "noPassword": "Không có mật khẩu đã lưu: thêm bằng Sửa trước khi kết nối.",
+      "passwordUnreadable": "Không đọc được mật khẩu đã lưu; hãy đặt lại sau khi nhập.",
+      "keyPathMissing": "Tệp khóa không có trên máy này: {{path}}",
+      "bastionCredentialsDiffer": "Các session lưu mật khẩu khác nhau cho máy chủ trung gian này; dùng mật khẩu đầu tiên."
+    }
   }
 }

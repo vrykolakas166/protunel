@@ -58,6 +58,14 @@ pub struct Tunnel {
     pub jump_tunnel_id: Option<Uuid>,
     #[serde(default = "default_socks_enabled")]
     pub socks_enabled: bool,
+    /// One-level folder the host is shown under (WinSCP-style). None: ungrouped.
+    #[serde(default)]
+    pub group: Option<String>,
+    /// Remote directories to offer first when browsing files on this host
+    /// (WinSCP's RemoteDirectory on import). Like `position`, `update` never
+    /// touches it: the form doesn't edit it, so an edit can't wipe it.
+    #[serde(default)]
+    pub bookmarks: Vec<String>,
 }
 
 fn default_socks_enabled() -> bool {
@@ -96,6 +104,17 @@ pub struct TunnelInput {
     pub jump_tunnel_id: Option<Uuid>,
     #[serde(default = "default_socks_enabled")]
     pub socks_enabled: bool,
+    #[serde(default)]
+    pub group: Option<String>,
+}
+
+fn bookmarks_json(bookmarks: &[String]) -> Option<String> {
+    (!bookmarks.is_empty()).then(|| serde_json::to_string(bookmarks).unwrap_or_default())
+}
+
+/// A group name as stored: trimmed, and blank means no group.
+pub fn clean_group(group: Option<String>) -> Option<String> {
+    group.map(|g| g.trim().to_string()).filter(|g| !g.is_empty())
 }
 
 const SCHEMA: &str = "
@@ -111,7 +130,9 @@ const SCHEMA: &str = "
         auto_connect INTEGER NOT NULL DEFAULT 0,
         jump_tunnel_id TEXT,
         socks_enabled INTEGER NOT NULL DEFAULT 1,
-        position INTEGER NOT NULL DEFAULT 0
+        position INTEGER NOT NULL DEFAULT 0,
+        group_name TEXT,
+        bookmarks TEXT
     );
     CREATE TABLE IF NOT EXISTS port_forwards (
         id TEXT PRIMARY KEY,
@@ -144,6 +165,8 @@ fn migrate(conn: &Connection) {
         "ALTER TABLE tunnels ADD COLUMN position INTEGER NOT NULL DEFAULT 0",
         [],
     );
+    let _ = conn.execute("ALTER TABLE tunnels ADD COLUMN group_name TEXT", []);
+    let _ = conn.execute("ALTER TABLE tunnels ADD COLUMN bookmarks TEXT", []);
 }
 
 const FORWARD_COLUMNS: &str = "id, tunnel_id, remote_host, remote_port, local_port";
@@ -180,7 +203,7 @@ fn row_to_rule(row: &rusqlite::Row) -> rusqlite::Result<RouterRule> {
     })
 }
 
-const COLUMNS: &str = "id, name, host, port, username, auth_kind, auth_key_path, local_socks_port, auto_connect, jump_tunnel_id, socks_enabled";
+const COLUMNS: &str = "id, name, host, port, username, auth_kind, auth_key_path, local_socks_port, auto_connect, jump_tunnel_id, socks_enabled, group_name, bookmarks";
 
 fn row_to_tunnel(row: &rusqlite::Row) -> rusqlite::Result<Tunnel> {
     let id: String = row.get(0)?;
@@ -199,6 +222,11 @@ fn row_to_tunnel(row: &rusqlite::Row) -> rusqlite::Result<Tunnel> {
         forwards: Vec::new(),
         jump_tunnel_id: jump_tunnel_id.and_then(|s| Uuid::parse_str(&s).ok()),
         socks_enabled: row.get(10)?,
+        group: row.get(11)?,
+        bookmarks: row
+            .get::<_, Option<String>>(12)?
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default(),
     })
 }
 
@@ -257,8 +285,8 @@ impl Db {
     pub fn insert(&self, t: &Tunnel) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "INSERT INTO tunnels (id, name, host, port, username, auth_kind, auth_key_path, local_socks_port, auto_connect, jump_tunnel_id, socks_enabled, position)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+            "INSERT INTO tunnels (id, name, host, port, username, auth_kind, auth_key_path, local_socks_port, auto_connect, jump_tunnel_id, socks_enabled, group_name, bookmarks, position)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
                      (SELECT COALESCE(MAX(position), -1) + 1 FROM tunnels))",
             params![
                 t.id.to_string(),
@@ -272,6 +300,8 @@ impl Db {
                 t.auto_connect,
                 t.jump_tunnel_id.map(|id| id.to_string()),
                 t.socks_enabled,
+                t.group,
+                bookmarks_json(&t.bookmarks),
             ],
         )?;
         Ok(())
@@ -280,7 +310,7 @@ impl Db {
     pub fn update(&self, t: &Tunnel) -> rusqlite::Result<()> {
         let conn = self.conn.lock().unwrap();
         conn.execute(
-            "UPDATE tunnels SET name=?2, host=?3, port=?4, username=?5, auth_kind=?6, auth_key_path=?7, local_socks_port=?8, auto_connect=?9, jump_tunnel_id=?10, socks_enabled=?11
+            "UPDATE tunnels SET name=?2, host=?3, port=?4, username=?5, auth_kind=?6, auth_key_path=?7, local_socks_port=?8, auto_connect=?9, jump_tunnel_id=?10, socks_enabled=?11, group_name=?12
              WHERE id=?1",
             params![
                 t.id.to_string(),
@@ -294,9 +324,33 @@ impl Db {
                 t.auto_connect,
                 t.jump_tunnel_id.map(|id| id.to_string()),
                 t.socks_enabled,
+                t.group,
             ],
         )?;
         Ok(())
+    }
+
+    pub fn set_bookmarks(&self, id: Uuid, bookmarks: &[String]) -> rusqlite::Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "UPDATE tunnels SET bookmarks = ?2 WHERE id = ?1",
+            params![id.to_string(), bookmarks_json(bookmarks)],
+        )?;
+        Ok(())
+    }
+
+    /// Files `ids` under `group` (None: ungrouped) in one transaction. Only
+    /// the group changes, so live sessions are left alone.
+    pub fn set_group(&self, ids: &[Uuid], group: Option<&str>) -> rusqlite::Result<()> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn.transaction()?;
+        for id in ids {
+            tx.execute(
+                "UPDATE tunnels SET group_name = ?2 WHERE id = ?1",
+                params![id.to_string(), group],
+            )?;
+        }
+        tx.commit()
     }
 
     /// Display order. Position is never touched by [`Db::update`], so editing a
@@ -536,6 +590,8 @@ mod tests {
             forwards: Vec::new(),
             jump_tunnel_id: None,
             socks_enabled: false,
+            group: None,
+            bookmarks: Vec::new(),
         }
     }
 
@@ -563,5 +619,17 @@ mod tests {
 
         db.insert(&tunnel("d")).unwrap();
         assert_eq!(names(&db), ["c", "b2", "a", "d"]);
+    }
+
+    #[test]
+    fn group_is_stored_and_cleared() {
+        let db = Db::open(Path::new(":memory:")).unwrap();
+        let mut t = tunnel("a");
+        t.group = clean_group(Some("  PT ".into()));
+        db.insert(&t).unwrap();
+        assert_eq!(db.get(t.id).unwrap().unwrap().group.as_deref(), Some("PT"));
+        t.group = clean_group(Some("   ".into()));
+        db.update(&t).unwrap();
+        assert_eq!(db.get(t.id).unwrap().unwrap().group, None);
     }
 }

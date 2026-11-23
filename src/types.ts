@@ -15,6 +15,10 @@ export interface Tunnel {
   forwards: PortForward[];
   jumpTunnelId: string | null;
   socksEnabled: boolean;
+  /** One-level folder shown as a section (see `groups.ts`); null: ungrouped. */
+  group: string | null;
+  /** Remote directories offered first when browsing this host's files. */
+  bookmarks: string[];
 }
 
 export interface PortForward {
@@ -41,6 +45,8 @@ export interface TunnelInput {
   autoConnect: boolean;
   jumpTunnelId: string | null;
   socksEnabled: boolean;
+  /** One-level folder shown as a section (see `groups.ts`); null: ungrouped. */
+  group: string | null;
 }
 
 export type TunnelStatus =
@@ -342,4 +348,57 @@ export interface PlatformStatus {
   launchCommand: string;
   /** False for a package-manager install, which must not self-update. */
   selfUpdate: boolean;
+}
+
+// WinSCP import (`winscp.rs`). Never carries a password.
+export type WinscpWarning =
+  | { kind: "nameHost"; named: string }
+  | { kind: "nameUser"; named: string }
+  | { kind: "noPassword" }
+  | { kind: "passwordUnreadable" }
+  | { kind: "keyPathMissing"; path: string }
+  | { kind: "bastionCredentialsDiffer" };
+
+export type WinscpRowStatus =
+  | { kind: "new" }
+  | { kind: "existing"; id: string; name: string; group: string | null }
+  | { kind: "unsupported" };
+
+export interface WinscpRow {
+  index: number;
+  name: string;
+  group: string | null;
+  target: string;
+  remoteDir: string | null;
+  status: WinscpRowStatus;
+  bastion: number | null;
+  warnings: WinscpWarning[];
+}
+
+export interface WinscpBastion {
+  index: number;
+  target: string;
+  candidates: { id: string; name: string }[];
+  warnings: WinscpWarning[];
+}
+
+export interface WinscpPreview {
+  token: string;
+  fileName: string;
+  rows: WinscpRow[];
+  bastions: WinscpBastion[];
+}
+
+export interface WinscpImportRequest {
+  token: string;
+  rows: { index: number; action: "add" | "setGroup" }[];
+  bastions: { index: number; useTunnel: string | null }[];
+}
+
+export interface WinscpOutcome {
+  added: number;
+  grouped: number;
+  bastionsCreated: number;
+  failed: { name: string; error: string }[];
+  groups: string[];
 }

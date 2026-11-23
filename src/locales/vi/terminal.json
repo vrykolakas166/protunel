@@ -165,5 +165,16 @@
     "openFamilyTooMany": "Mở cùng {{count}} máy chủ con (quá {{max}} khung)",
     "pick": "Chọn",
     "unpick": "Bỏ chọn"
+  },
+  "hostVia": "qua {{name}}",
+  "group": {
+    "none": "Không nhóm",
+    "expand": "Hiện nhóm này",
+    "collapse": "Ẩn nhóm này",
+    "menu": "Thao tác với nhóm {{name}}",
+    "openAll_one": "Mở máy chủ này",
+    "openAll_other": "Mở cả {{count}} máy chủ trong 1 tab",
+    "openAllTooMany": "Mở cả nhóm trong 1 tab (quá {{max}}, hãy chọn bớt)",
+    "selectHosts": "Chọn máy chủ trong nhóm này…"
   }
 }
