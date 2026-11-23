@@ -232,6 +232,8 @@ Run the verification commands in `CLAUDE.md`. Have Codex review the diff
   - Dragging between panels of different servers always **copies**; the
     original is never deleted (no cross-server move in this version).
   - Within one server, a drop moves; Ctrl copies.
+  - Copy in A's panel, then Paste in B's panel, takes the same path as a
+    drag. Cut never crosses servers: the user deletes on A by hand.
   - Copy goes **direct A → B** when a check on A
     (`ssh -o BatchMode=yes -o StrictHostKeyChecking=yes … true`) passes. That
     happens automatically, with no prompt.
