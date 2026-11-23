@@ -14,7 +14,7 @@
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20x86__64-lightgrey?style=flat">
 </p>
 
-protunel manages SSH tunnels for Windows and Linux (x86_64). Add a host, switch it on, and get a local `socks5://127.0.0.1:<port>` proxy tunneled through SSH, with no PuTTY or plink. The same hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
+protunel manages SSH tunnels for Windows and Linux (x86_64). Add a host, switch it on, and reach internal sites through it: the proxy router picks a tunnel per connection, and a tunnel can also expose its own local `socks5://127.0.0.1:<port>` proxy (tick "Enable local SOCKS5 proxy") for apps pointed straight at it. No PuTTY or plink. The same hosts open in a tabbed, split-pane SSH terminal with broadcast typing.
 
 Contents: [Download](#download) | [Features](#features) | [Installation](#installation) | [Linux notes](#linux-notes) | [Proxy router](#proxy-router) | [Process capture](#process-capture) | [SSH terminal](#ssh-terminal) | [Export and import](#export-and-import) | [License](#license)
 
@@ -49,6 +49,7 @@ Get the latest build from the [Releases page](https://github.com/vrykolakas166/p
 
 - Separate window with tabs and drag-to-split panes.
 - Broadcast typing to many servers at once.
+- Watch many servers in one tab: tile evenly, sync scroll, new-output dots and output/silence alerts.
 - Reuses the tunnel's live session.
 
 ### Security
@@ -191,6 +192,7 @@ The AppImage updates itself from inside the app. It bundles its own WebKit, whic
 - Proxy for other apps: there is no system-wide proxy setting to write, so the router panel provides ready-to-paste lines instead. These are `env` lines for `hyprland.conf` (or `export` for a shell profile), a Chromium flag, and Firefox steps, all filled in with the router port.
 - Browsers: point them at `http://127.0.0.1:1090/protunel.pac` (the router port, which answers this one URL itself). While protunel runs they follow the router rules; once it is closed they connect directly, so nothing needs switching back. Firefox takes it under Network Settings, Chromium-based browsers via `--proxy-pac-url`. They do not accept a `file://` PAC.
 - Hyprland: ignores XDG autostart. Settings shows the `exec-once` line when start-at-login is on. On the NVIDIA driver the app disables WebKit's DMA-BUF renderer itself, which otherwise draws a blank window.
+- Laggy window on Wayland: if the log shows `Disabled hardware acceleration because GTK failed to initialize GL: No available configurations for the given pixel format`, GTK3 found no usable EGL config, so WebKit draws everything on the CPU. Running through XWayland restores acceleration. Use `exec-once = env GDK_BACKEND=x11 protunel` in `hyprland.conf`, or copy protunel's `.desktop` file to `~/.local/share/applications/` and set `Exec=env GDK_BACKEND=x11 protunel`.
 - Process capture and the automatic system-proxy toggle are Windows-only.
 
 ## Proxy router
@@ -231,7 +233,11 @@ The Terminal button in the header opens a separate window. Every tunnel is a hos
 A terminal opens a PTY channel on the tunnel's existing session, connecting it and its jump chain if needed. It therefore shares credentials, host-key checks and the connection itself. If the session drops, press Enter to reconnect.
 
 - Tabs and split panes: drag a host from the sidebar tree, a tab, or a pane header onto any edge of a pane to split it (a preview shows where it lands). Drop on the tab bar for a new tab. Moving a pane never restarts its shell. Drag dividers to resize, double-click to even them out.
-- Broadcast: type into every pane of a tab at once, with per-pane opt-out. Multi-line pastes to several servers ask first.
+- Broadcast: type into every pane of a tab at once, with per-pane opt-out. Multi-line pastes to several servers ask first. It pauses while a pane is zoomed.
+- Several servers in one tab: pick hosts in the sidebar's select mode (or Ctrl/Shift+click), or right-click a jump host for "open with its children", and they open as one tiled tab with broadcast off.
+- Layout menu: tile evenly (Ctrl+Shift+G) or equalize splits, each with a 5 s Undo, and sync scroll, so scrolling one pane scrolls the others to the same place.
+- Watching: a pane you are not looking at gets a dot when new output starts after a quiet spell. Right-click a pane header to be notified on output or after 30 s of silence. Notifications name the host, never the output.
+- Optional dimming of unfocused panes (Settings › Terminal).
 - xterm.js with WebGL rendering. Mouse apps (htop, mc, vim) work.
 - Echo latency and throughput are shown in the footer.
 
@@ -243,6 +249,7 @@ A terminal opens a PTY channel on the tunnel's existing session, connecting it a
 | Ctrl+Shift+D / Ctrl+Shift+E | Split right / down with the same host |
 | Alt+arrows | Move focus between panes |
 | Ctrl+Shift+Z | Zoom pane |
+| Ctrl+Shift+G | Tile panes evenly (press again to undo) |
 | Ctrl+Shift+B | Toggle broadcast |
 | Ctrl+Shift+W | Close pane |
 | Ctrl+Shift+K | Find host |

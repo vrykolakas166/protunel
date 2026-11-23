@@ -90,7 +90,8 @@
     "updates": "Cập nhật",
     "links": "Liên kết",
     "mode": "Chế độ",
-    "smart": "Gợi ý & thông báo"
+    "smart": "Gợi ý & thông báo",
+    "tours": "Hướng dẫn"
   },
   "portRangeHint": "Dải cổng SOCKS cục bộ gợi ý khi thêm tunnel; cổng trống đầu tiên được dùng.",
   "knownHostsHint": "Các máy chủ có khóa bạn đã tin cậy. Khóa bị đổi sẽ được báo ngay trên tunnel.",
@@ -99,6 +100,8 @@
   "portRange": "Dải cổng SOCKS",
   "terminalWebgl": "Vẽ bằng GPU",
   "terminalWebglHint": "Nhanh hơn khi output nhiều. Tắt để dùng cách hiển thị chữ của hệ thống, thường nét hơn trên màn hình DPI thường.",
+  "terminalDimInactive": "Làm mờ khung không focus",
+  "terminalDimInactiveHint": "Trong tab có nhiều khung, khung bạn không gõ vào sẽ mờ đi một chút. Khung đang gõ đồng thời và header vẫn rõ.",
   "knownHostsTitle": "Máy chủ đã tin cậy",
   "tagline": "SSH tunnel, định tuyến SOCKS và terminal trong một ứng dụng ở khay hệ thống.",
   "updatesTitle": "Cập nhật protunel",
@@ -131,5 +134,7 @@
   "terminalForget": "Quên các lệnh đã ghi nhớ",
   "terminalForgetHint": "Xoá những gì đã học trên mọi máy chủ. Các workspace vẫn giữ nguyên.",
   "terminalForgetButton": "Quên",
-  "terminalForgotten": "Đã quên"
+  "terminalForgotten": "Đã quên",
+  "tourMain": "Hướng dẫn cửa sổ chính",
+  "tourTerminal": "Hướng dẫn cửa sổ terminal"
 }

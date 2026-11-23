@@ -16,9 +16,24 @@ import { matchShortcut } from "./shortcuts";
 import { isTerminalReport, type CommandResult } from "./shellWatch";
 import { SmartSession, type Chip } from "./smartSession";
 import { SuggestionChip, TabHint } from "./SuggestionChip";
+import { OutputClock } from "./paneWatch";
 import type { ITheme } from "@xterm/xterm";
 
 export type SessionPhase = "connecting" | "open" | "closed";
+
+/** What the window may ask of a pane's terminal from outside. */
+export interface PaneHandle {
+  focus: () => void;
+  /**
+   * Scrolls the history to `fromBottom` lines above the newest line (0: the
+   * bottom), clamped to what this shell has. Ignored in the alternate screen
+   * (vim, htop), which has no history.
+   */
+  scrollFromBottom: (fromBottom: number) => void;
+}
+
+/** Keys with which xterm scrolls its own history (with Shift). */
+const SCROLL_KEYS = new Set(["PageUp", "PageDown"]);
 
 export interface SessionInfo {
   phase: SessionPhase;
@@ -97,6 +112,17 @@ interface Props {
   longCommandSecs: number;
   /** A long command finished while this pane was out of sight. */
   onAttention: () => void;
+  /** Output arrived after the shell had been quiet a while (`paneWatch.ts`). */
+  onBurst: () => void;
+  /** Watched for output: the next output counts as news even mid-stream. */
+  outputWatch: boolean;
+  /** Watch for silence: `onSilence` fires once per quiet spell. */
+  silenceWatch: boolean;
+  onSilence: () => void;
+  /** The user scrolled this pane's history; `fromBottom` is where it now is. */
+  onUserScroll: (fromBottom: number) => void;
+  /** This pane's handle once its terminal exists, null when it goes. */
+  onHandle: (handle: PaneHandle | null) => void;
 }
 
 /**
@@ -120,6 +146,12 @@ export function TerminalView({
   suggestions,
   longCommandSecs,
   onAttention,
+  onBurst,
+  outputWatch,
+  silenceWatch,
+  onSilence,
+  onUserScroll,
+  onHandle,
 }: Props) {
   const { t } = useTranslation("terminal");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -144,8 +176,12 @@ export function TerminalView({
   themeRef.current = theme;
   const focusedRef = useRef(focused);
   focusedRef.current = focused;
-  const callbacks = useRef({ onFocus, onTerminalId, send, confirmPaste, onAttention });
-  callbacks.current = { onFocus, onTerminalId, send, confirmPaste, onAttention };
+  const callbacks = useRef({ onFocus, onTerminalId, send, confirmPaste, onAttention, onBurst, onSilence, onUserScroll, onHandle });
+  callbacks.current = { onFocus, onTerminalId, send, confirmPaste, onAttention, onBurst, onSilence, onUserScroll, onHandle };
+  const silenceWatchRef = useRef(silenceWatch);
+  silenceWatchRef.current = silenceWatch;
+  /** Output timing for "new output" and the silence watch. */
+  const clockRef = useRef(new OutputClock());
   const smartRef = useRef({ suggestions, longCommandSecs, visible });
   smartRef.current = { suggestions, longCommandSecs, visible };
   const [chip, setChip] = useState<Chip | null>(null);
@@ -316,6 +352,8 @@ export function TerminalView({
       output.onmessage = (buffer) => {
         const bytes = new Uint8Array(buffer);
         bytesThisSecond += bytes.length;
+        // The banner and login output before the shell is open are not news.
+        if (clockRef.current.output(performance.now()) && phase === "open") callbacks.current.onBurst();
         if (keyAt !== null) {
           echoMs = performance.now() - keyAt;
           keyAt = null;
@@ -355,6 +393,7 @@ export function TerminalView({
         if (ended) return;
         setTerminalId(id);
         phase = "open";
+        clockRef.current.arm(performance.now());
         smart.opened();
       } catch (err) {
         phase = "closed";
@@ -366,6 +405,7 @@ export function TerminalView({
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
       if (matchShortcut(e)) return false; // the window handles these
+      if (e.shiftKey && SCROLL_KEYS.has(e.key)) scrollIntent();
       const key = e.key.toLowerCase();
       // Alt+Enter (chip) and → / Ctrl+→ (ghost); see `SmartSession.handleKey`.
       if (smart.handleKey(e)) {
@@ -412,6 +452,61 @@ export function TerminalView({
       report();
     });
 
+    // Scrolls the user makes (wheel, Shift+PgUp/PgDn, the scrollbar) are
+    // reported for synchronized scrolling, read a frame after the gesture
+    // as the distance from the bottom. Output never counts: at the bottom it
+    // keeps that distance at 0, and it never triggers a report itself; nor
+    // does a scroll another pane's sync applied here, so syncing never
+    // echoes back and forth.
+    const fromBottom = () => term.buffer.active.baseY - term.buffer.active.viewportY;
+    let reported = 0;
+    let intentFrame = 0;
+    const reportScroll = () => {
+      intentFrame = 0;
+      if (term.buffer.active.type === "alternate") return;
+      const now = fromBottom();
+      if (now === reported) return;
+      reported = now;
+      callbacks.current.onUserScroll(now);
+    };
+    function scrollIntent() {
+      // Taken before the first event of a gesture only: a later one that
+      // moves nothing (the wheel past the top) must not swallow the report
+      // of the scroll its predecessors made.
+      if (!intentFrame && term.buffer.active.type !== "alternate") reported = fromBottom();
+      cancelAnimationFrame(intentFrame);
+      intentFrame = requestAnimationFrame(reportScroll);
+    }
+    const onWheel = () => scrollIntent();
+    const onScrollbarMove = () => {
+      cancelAnimationFrame(intentFrame);
+      intentFrame = requestAnimationFrame(reportScroll);
+    };
+    const endScrollbarDrag = () => {
+      window.removeEventListener("pointerup", endScrollbarDrag, true);
+      window.removeEventListener("pointercancel", endScrollbarDrag, true);
+      window.removeEventListener("blur", endScrollbarDrag);
+      window.removeEventListener("pointermove", onScrollbarMove, true);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest?.(".scrollbar")) return;
+      scrollIntent();
+      window.addEventListener("pointerup", endScrollbarDrag, true);
+      window.addEventListener("pointercancel", endScrollbarDrag, true);
+      window.addEventListener("blur", endScrollbarDrag);
+      window.addEventListener("pointermove", onScrollbarMove, true);
+    };
+    container.addEventListener("wheel", onWheel, { capture: true, passive: true });
+    container.addEventListener("pointerdown", onPointerDown, true);
+    callbacks.current.onHandle({
+      focus: () => term.focus(),
+      scrollFromBottom: (lines) => {
+        const buffer = term.buffer.active;
+        if (buffer.type === "alternate") return;
+        term.scrollToLine(Math.max(0, buffer.baseY - Math.max(0, Math.round(lines))));
+      },
+    });
+
     // PuTTY conventions: releasing a selection copies it, right-click pastes.
     // The release is watched on the window, not the pane: a drag that ends
     // past the pane's edge (overshooting a line end, the usual case) still
@@ -449,6 +544,9 @@ export function TerminalView({
     const ticker = window.setInterval(() => {
       bytesPerSec = bytesThisSecond;
       bytesThisSecond = 0;
+      if (silenceWatchRef.current && phase === "open" && clockRef.current.silent(performance.now())) {
+        callbacks.current.onSilence();
+      }
       report();
     }, 1000);
 
@@ -502,6 +600,11 @@ export function TerminalView({
       window.removeEventListener("mouseup", onRelease, true);
       container.removeEventListener("contextmenu", onContextMenu);
       container.removeEventListener("focusin", onFocusIn);
+      container.removeEventListener("wheel", onWheel, true);
+      container.removeEventListener("pointerdown", onPointerDown, true);
+      endScrollbarDrag();
+      cancelAnimationFrame(intentFrame);
+      callbacks.current.onHandle(null);
       window.clearTimeout(resizeTimer);
       if (terminalId) void terminalClose(terminalId);
       gateHandlers.forEach((handler) => handler.dispose());
@@ -531,6 +634,17 @@ export function TerminalView({
     gateRef.current?.setAllowed(appMouse);
   }, [appMouse]);
 
+  // Arming the silence watch starts its count now, not at the last output.
+  useEffect(() => {
+    if (silenceWatch) clockRef.current.arm(performance.now());
+  }, [silenceWatch]);
+
+  // Arming the output watch makes the very next output news, even in a
+  // steady stream that would otherwise need a quiet spell first.
+  useEffect(() => {
+    if (outputWatch) clockRef.current.expectNews();
+  }, [outputWatch]);
+
   useEffect(() => {
     if (!visible) return;
     const frame = requestAnimationFrame(() => {
@@ -543,7 +657,8 @@ export function TerminalView({
 
   return (
     <div
-      className="relative h-full w-full px-3 pb-1 pt-2"
+      data-pin-scroll
+      className="relative h-full w-full overflow-hidden px-3 pb-1 pt-2"
       style={{ background: theme.background }}
     >
       <div ref={containerRef} className="h-full w-full" />

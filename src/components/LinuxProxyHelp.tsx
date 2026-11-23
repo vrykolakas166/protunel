@@ -35,7 +35,7 @@ export function LinuxProxyHelp({ port }: Props) {
 
   return (
     <details className="col-span-2 rounded border border-border bg-surface p-2 text-[11px] text-muted">
-      <summary className="cursor-pointer text-sm text-text">{t("linuxProxy.title")}</summary>
+      <summary data-tour="router-pac" className="cursor-pointer text-sm text-text">{t("linuxProxy.title")}</summary>
       <div className="mt-2 space-y-3">
         <section className="space-y-1">
           <p className="text-text">{t("linuxProxy.pacHeading")}</p>

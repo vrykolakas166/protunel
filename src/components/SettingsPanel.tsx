@@ -35,6 +35,10 @@ interface Props {
   onRestartToUpdate: () => void;
   /** The "Developer tools" page body, in builds that have it. */
   devTools?: ReactNode;
+  /** Replays the main window's guided tour (Full mode). */
+  onShowTour?: () => void;
+  /** Opens the terminal window with its tour. */
+  onShowTerminalTour?: () => void;
 }
 
 const numberInputClass =
@@ -212,6 +216,8 @@ export function SettingsPanel({
   restarting,
   onRestartToUpdate,
   devTools,
+  onShowTour,
+  onShowTerminalTour,
 }: Props) {
   const { t, i18n } = useTranslation("settingsPanel");
   const { t: tc } = useTranslation("common");
@@ -353,7 +359,7 @@ export function SettingsPanel({
       case "general":
         return (
           <>
-            <Group title={t("groups.mode")}>
+            <Group title={t("groups.mode")} tour="settings-mode">
               <Row
                 title={t("mode.title")}
                 description={simple ? t("mode.simpleHint") : t("mode.fullHint")}
@@ -380,7 +386,7 @@ export function SettingsPanel({
                 }
               />
             </Group>
-            <Group title={t("groups.startup")}>
+            <Group title={t("groups.startup")} tour="settings-startup">
               <Row
                 title={t("runAtStartup")}
                 description={t("runAtStartupHint")}
@@ -521,8 +527,20 @@ export function SettingsPanel({
                   />
                 }
               />
+              <Row
+                title={t("terminalDimInactive")}
+                description={t("terminalDimInactiveHint")}
+                control={
+                  <Switch
+                    label={t("terminalDimInactive")}
+                    checked={settings.terminalDimInactive}
+                    disabled={busy}
+                    onChange={(on) => save({ ...settings, terminalDimInactive: on })}
+                  />
+                }
+              />
             </Group>
-            <Group title={t("groups.smart")}>
+            <Group title={t("groups.smart")} tour="settings-smart">
               <Row
                 title={t("terminalSuggestions")}
                 description={t("terminalSuggestionsHint")}
@@ -568,7 +586,7 @@ export function SettingsPanel({
               <ConfigFlow tunnels={tunnels} onImported={onImported} onBusyChange={onBackupFlow} />
             </div>
             {!inBackupFlow && !simple && (
-              <Group title={t("groups.security")}>
+              <Group title={t("groups.security")} tour="settings-hosts">
                 <Row
                   title={t("knownHostsTitle")}
                   description={t("knownHostsHint")}
@@ -607,7 +625,7 @@ export function SettingsPanel({
               </div>
             </div>
 
-            <Group title={t("groups.updates")}>
+            <Group title={t("groups.updates")} tour="settings-updates">
               {!updates?.supported ? (
                 <Row title={t("updatesTitle")} description={t("updatedByPackageManager")} />
               ) : (
@@ -652,6 +670,32 @@ export function SettingsPanel({
                 </>
               )}
             </Group>
+
+            {!simple && (onShowTour || onShowTerminalTour) && (
+              // Rarely needed after the first run, so it lives here rather
+              // than as a toolbar button (F1 also replays the main tour).
+              <Group title={t("groups.tours")} tour="settings-tours">
+                {(
+                  [
+                    ["tourMain", onShowTour],
+                    ["tourTerminal", onShowTerminalTour],
+                  ] as const
+                ).map(([key, action]) =>
+                  action ? (
+                    <button
+                      key={key}
+                      onClick={action}
+                      className="flex w-full items-center justify-between px-3.5 py-2.5 text-left text-sm text-text hover:bg-surface-hover"
+                    >
+                      {t(key)}
+                      {key === "tourMain" && (
+                        <kbd className="rounded border border-border bg-surface px-1.5 font-mono text-[10px] text-muted">F1</kbd>
+                      )}
+                    </button>
+                  ) : null,
+                )}
+              </Group>
+            )}
 
             <Group title={t("groups.links")}>
               {(

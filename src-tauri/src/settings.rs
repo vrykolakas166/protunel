@@ -71,6 +71,10 @@ pub struct Settings {
     /// of sight, raises a desktop notification. 0 turns it off.
     #[serde(default = "default_long_command_secs")]
     pub terminal_long_command_secs: u32,
+    /// In a tab with several panes, the ones without focus are dimmed a
+    /// little. Off by default: it makes watched panes harder to read.
+    #[serde(default)]
+    pub terminal_dim_inactive: bool,
 }
 
 fn default_long_command_secs() -> u32 {
@@ -127,6 +131,7 @@ impl Default for Settings {
             ui_mode: None,
             terminal_suggestions: true,
             terminal_long_command_secs: default_long_command_secs(),
+            terminal_dim_inactive: false,
         }
     }
 }

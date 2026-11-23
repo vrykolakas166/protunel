@@ -21,6 +21,7 @@ import { plainSshError } from "./simpleMode";
 import { ReleaseNotes } from "./components/ReleaseNotes";
 import { Modal } from "./components/Modal";
 import { SetupNotice } from "./components/SetupNotice";
+import { requestTerminalTour } from "./terminal/TerminalTour";
 import { TourGuide, type TourPanel } from "./components/TourGuide";
 import { TunnelList } from "./components/TunnelList";
 import { useRouterEvents } from "./hooks/useRouterEvents";
@@ -111,6 +112,7 @@ function App() {
   const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
   const updates = useUpdates();
   /** Release notes of the version this launch just updated to, shown once. */
+  const [whatsNewChecked, setWhatsNewChecked] = useState(false);
   const [whatsNew, setWhatsNew] = useState<WhatsNew | null>(null);
   /** Settings › Developer tools exists (debug builds, PROTUNEL_DEVTOOLS=1). */
   const [devTools, setDevTools] = useState(false);
@@ -151,7 +153,8 @@ function App() {
     devToolsEnabled().then(setDevTools).catch(() => {});
     takeWhatsNew()
       .then((notes) => notes && setWhatsNew(notes))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setWhatsNewChecked(true));
     // The terminal window can add and edit hosts too.
     const unlisten = listen("tunnels-changed", () => {
       listTunnels().then(setTunnels).catch(() => {});
@@ -202,6 +205,22 @@ function App() {
     else if (target.startsWith("router:")) setPanel({ kind: "router", tab: target.slice(7) as RouterTab });
     else setPanel({ kind: target as "capture" | "preferences" });
   }, []);
+
+  // F1 replays the tour (Full mode); the toolbar has no button for something
+  // used once. Not in the terminal window, where F1 belongs to htop or mc.
+  useEffect(() => {
+    if (simple) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "F1" || e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault();
+      // Not over a form, prompt or panel: the tour closes panels, which
+      // would throw away what was being typed.
+      if (document.querySelector('[aria-modal="true"]')) return;
+      setShowTour(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [simple]);
 
   const finishTour = async () => {
     setShowTour(false);
@@ -393,17 +412,6 @@ function App() {
             <SettingsIcon name="settings" size={14} />
             {t("settings")}
           </button>
-          {!simple && (
-            // In the header, not floating over the list where it hid the last row.
-            <button
-              onClick={() => setShowTour(true)}
-              title={t("showGuidedTour")}
-              aria-label={t("showGuidedTour")}
-              className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted hover:bg-surface-hover hover:text-text"
-            >
-              ?
-            </button>
-          )}
           <span className="mx-0.5 h-4 w-px bg-border" aria-hidden="true" />
           {settings && <LanguageMenu settings={settings} onSettingsChange={setSettings} />}
           {/* At the right edge because the drawer slides out of that edge. The
@@ -568,6 +576,14 @@ function App() {
             getSettings().then(setSettings);
           }}
           onOpenHosts={() => setShowKnownHosts(true)}
+          onShowTour={() => {
+            closePanel();
+            setShowTour(true);
+          }}
+          onShowTerminalTour={() => {
+            requestTerminalTour();
+            openTerminalWindow().catch((err) => setMessage({ text: String(err), isError: true }));
+          }}
           devTools={
             devTools ? (
               <DevToolsPage
@@ -644,7 +660,7 @@ function App() {
           }}
         />
       )}
-      {showTour && <TourGuide onFinish={finishTour} onRequestPanel={showTourPanel} />}
+      {showTour && !simple && whatsNewChecked && !whatsNew && !hostKeyQueue[0] && <TourGuide onFinish={finishTour} onRequestPanel={showTourPanel} />}
 
       {hostKeyQueue[0] && (
         <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />

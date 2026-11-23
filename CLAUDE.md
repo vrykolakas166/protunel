@@ -239,6 +239,27 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   tabs; every move must keep pane ids.
 - Broadcast fans out in Rust (`terminal_write_many`) so every shell gets the
   same bytes in the same order; the frontend only picks the target ids.
+  It pauses while a pane is zoomed (`inputTargets`): hidden panes must not
+  take keystrokes nobody sees land. The header toggle shows saved membership
+  (`excluded`), the amber frame live reception.
+- Watching several servers (all session-only, never in workspaces):
+  `paneWatch.ts` (pure, `tests/paneLayout.test.ts`) times output per pane —
+  output after ≥5 s of quiet is a "burst", which puts an accent dot on a
+  pane you are not looking at (focused pane of the front window, and
+  on-screen broadcast panes, never get one); opt-in watches per pane (header
+  right-click, the layout menu, the footer chip) notify on output or after
+  30 s of silence, with a 60 s per-pane cooldown and only host + event in the
+  notification, never output. Layout: `layout.ts` `tileLayout`/`gridOf`
+  (even grid shaped by the area's aspect, reading order, pane nodes reused —
+  shells survive) and `equalizeLayout`; Ctrl+Shift+G tiles. Either offers
+  "Undo" for 5 s (`layoutUndo`; Ctrl+Shift+G again undoes a tile), dropped
+  as soon as the tab's root changes any other way. Sync scroll
+  (`Tab.syncScroll`) mirrors deliberate scrolls only (wheel, Shift+PgUp/PgDn,
+  scrollbar, read a frame later as distance from the bottom) through each
+  pane's `PaneHandle`; output and applied syncs never report, so it cannot
+  loop. The sidebar's select mode (or Ctrl/Shift+click, or a jump host's
+  "open with its children") opens hosts as one tiled tab with broadcast off.
+  `settings.terminal_dim_inactive` (default off) dims unfocused panes 15%.
 - Both windows hide on close. Closing the terminal window also runs
   `Terminals::close_all` and emits `terminal-hidden`, on which the page drops
   every tab; the webview itself survives, so reopening is instant (rebuilding it
@@ -484,14 +505,24 @@ the feature stops applying.
   `main.tsx`) blocks the webview menu and gives text fields Cut/Copy/Paste
   (actions restore focus/selection, then `execCommand("insertText")` so React
   sees the change); components open their own with `openMenu` (tunnel rows,
-  the empty list, Simple-mode error rows). Dev builds: Shift + right-click
+  the empty list, Simple-mode error rows). Each menu is a Rust resource
+  with a channel per item: `popup` keeps at most one alive per window,
+  closing it after its action runs or when the next opens (never right after
+  `popup()` resolves: on Linux that is while it is still open). Dev builds: Shift + right-click
   still opens the webview menu for Inspect.
-- `TourGuide` spotlights whatever carries the matching `data-tour="…"` attribute, so
-  moving or renaming one silently drops a step back to a centred card. Steps that
-  live inside a modal declare a `panel`, and `App.showTourPanel` opens exactly that
-  one (`settings:<page>` and `router:<tab>` also pick the page or tab, since
-  `RouterPanel` shows Rules / Log / Settings one at a time) — which is why measurement retries on `requestAnimationFrame`: the target does
-  not exist until the panel it lives in has mounted.
+- The main-window `TourGuide` runs in Full mode after the mode chooser and
+  What's new; F1 or Settings › About replays it (no toolbar button: it is
+  used once). `App.showTourPanel` opens the one
+  preview panel for a step (`settings:<page>` or `router:<tab>` selects the page
+  or tab). The shared `GuidedTour` groups steps into chapters, waits briefly for
+  each `data-tour` target to mount, and skips unavailable targets. The terminal
+  window's empty state or Settings › About replays `TerminalTour`, offered
+  once via localStorage (shared by both windows: About clears the flag, and
+  the `storage` event reaches a live terminal window). F1 stays the shell's.
+  The spotlight never animates its box (a viewport-sized shadow repainting
+  every frame); only the ring fades and the card moves by transform. Both use a
+  modal focus trap with the app behind it inert. The terminal suspends its
+  shortcuts during the tour and restores focus to the active pane on close.
 
 ### Capabilities
 

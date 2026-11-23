@@ -1,97 +1,174 @@
 {
+  "chapters": {
+    "basics": "Cơ bản",
+    "tunnels": "Tunnel",
+    "router": "Router",
+    "capture": "Ứng dụng qua router",
+    "terminal": "Terminal",
+    "settings": "Cài đặt và sao lưu",
+    "sessions": "Máy chủ và phiên",
+    "panes": "Khung và bố cục",
+    "keyboard": "Lệnh và phím tắt"
+  },
+  "stepProgress": "{{current}} / {{total}}",
+  "skipChapter": "Bỏ qua chương",
+  "close": "Đóng hướng dẫn (Esc)",
+  "loading": "Đang tìm mục tiếp theo…",
+  "back": "Quay lại",
+  "next": "Tiếp",
+  "done": "Xong",
   "steps": {
     "welcome": {
       "title": "Chào mừng đến với protunel",
-      "body": "Giới thiệu nhanh qua các tính năng chính. Chỉ mất vài phút, bạn có thể bỏ qua hoặc xem lại bất cứ lúc nào từ nút ?."
+      "body": "Hướng dẫn này đi qua tunnel, Router, terminal và cài đặt. Nhấn ← hoặc → để chuyển bước, Esc để đóng; xem lại bất cứ lúc nào bằng F1 hoặc Cài đặt › Giới thiệu."
     },
-    "add": {
-      "title": "Thêm một tunnel",
-      "body": "Một tunnel tương ứng với một kết nối SSH. Nút này mở form thêm tunnel — hãy xem qua các mục bên trong."
+    "mode": {
+      "title": "Chọn chế độ",
+      "body": "Đổi chế độ trong Cài đặt › Chung. Chế độ Đơn giản có một công tắc Mạng nội bộ, còn chế độ Đầy đủ có các công cụ quản lý tunnel, router và terminal."
     },
-    "add-auth": {
-      "title": "Cách xác thực",
-      "body": "Mật khẩu, tệp khóa riêng (private key), hoặc SSH agent (Pageant trên Windows, $SSH_AUTH_SOCK trên Linux). Mật khẩu và passphrase của khóa được lưu trong kho thông tin xác thực của hệ điều hành, không bao giờ lưu trong cơ sở dữ liệu riêng của ứng dụng."
+    "appearance": {
+      "title": "Xem trước chủ đề",
+      "body": "Rê chuột lên chủ đề để xem trước rồi bấm để áp dụng. Chọn Theo hệ thống để đặt riêng chủ đề sáng và tối."
     },
-    "add-socks": {
-      "title": "Tunnel cung cấp gì",
-      "body": "Bật một proxy SOCKS5 cục bộ và trỏ trình duyệt hoặc curl vào cổng đó. Bạn cũng có thể thêm các port forward tĩnh sau này, ngay từ dòng của tunnel trong danh sách. Server chỉ cần mở shell thì có thể tắt SOCKS."
+    "language": {
+      "title": "Đổi ngôn ngữ",
+      "body": "Mở menu hình quả địa cầu và chọn Tiếng Việt hoặc English."
     },
-    "add-jump": {
-      "title": "Nhảy qua một tunnel khác",
-      "body": "\"Connect via\" giúp tunnel này kết nối thông qua phiên (session) đang hoạt động của một tunnel khác — mô hình bastion thường gặp. Kết nối tunnel bên trong sẽ tự động quay số cả chuỗi, bắt đầu từ tunnel ngoài cùng."
-    },
-    "list": {
-      "title": "Danh sách tunnel",
-      "body": "Bật/tắt tunnel bằng công tắc. Đường nét đứt sẽ chạy hoạt ảnh khi có lưu lượng đi qua. Mở rộng mục Forwards để thêm port forward ngay khi đang chạy — không cần kết nối lại. Các tunnel nhảy qua tunnel khác sẽ được thụt vào dưới tunnel cha; kéo tay nắm bên trái để sắp xếp lại thứ tự."
-    },
-    "bulk": {
-      "title": "Tìm kiếm và thao tác hàng loạt",
-      "body": "Ctrl+F mở ô tìm kiếm để lọc theo tên hoặc máy chủ — nhấn Esc để đóng. Bạn cũng có thể kết nối hoặc ngắt kết nối tất cả cùng lúc tại đây."
-    },
-    "router": {
-      "title": "Bộ định tuyến proxy (router)",
-      "body": "Với cổng SOCKS riêng cho từng tunnel, bạn phải chọn tunnel cho từng ứng dụng. Router đảo ngược cách làm đó: chỉ một cổng cục bộ duy nhất, và các quy tắc sẽ chọn đích đến cho từng kết nối."
-    },
-    "router-enable": {
-      "title": "Bật router",
-      "body": "Router chỉ gắn (bind) một cổng SOCKS5 duy nhất trên 127.0.0.1. Một quy tắc trỏ đến tunnel chưa kết nối sẽ tự động kết nối tunnel đó khi cần, nên bạn có thể để mọi thứ ở trạng thái ngắt kết nối và để lưu lượng tự mở kết nối khi cần."
-    },
-    "router-rules": {
-      "title": "Quy tắc quyết định lưu lượng đi đâu",
-      "body": "Các quy tắc được xếp thứ tự từ trên xuống, quy tắc đang bật khớp đầu tiên sẽ được áp dụng. Có thể khớp theo wildcard tên máy chủ, regex, hoặc dải IP, sau đó gửi qua một tunnel, đi trực tiếp, hoặc chặn lại. Lưu lượng không khớp quy tắc nào sẽ theo hành động mặc định."
-    },
-    "router-proxy": {
-      "title": "Ứng dụng dùng proxy hệ thống",
-      "body": "Bật tùy chọn này để Windows trỏ proxy hệ thống về router, nhờ đó trình duyệt và các ứng dụng dùng proxy hệ thống sẽ đi theo quy tắc của bạn mà không cần cấu hình riêng. Ứng dụng bỏ qua proxy hệ thống có thể được khởi chạy qua router trong mục Ứng dụng. Thiết lập này tự hoàn tác khi router dừng — kể cả khi ứng dụng bị crash."
-    },
-    "router-log": {
-      "title": "Vì sao kết nối đó lại đi trực tiếp?",
-      "body": "Mỗi kết nối đi qua proxy đều được ghi lại kèm quy tắc đã quyết định nó. Đây là nơi đầu tiên nên kiểm tra khi một quy tắc không hoạt động như bạn mong đợi."
-    },
-    "capture": {
-      "title": "Ứng dụng không có tùy chọn proxy",
-      "body": "Client RDP, công cụ CLI, client cơ sở dữ liệu — hầu hết các ứng dụng này không có chỗ để nhập địa chỉ proxy. Ứng dụng qua router sẽ khởi chạy ứng dụng kèm một hook nhỏ được inject vào, nhờ đó lưu lượng của nó vẫn đến được router. Từ đó, quy tắc sẽ quyết định lưu lượng đi đâu, giống như mọi kết nối khác."
-    },
-    "capture-launch": {
-      "title": "Khởi chạy một ứng dụng qua router",
-      "body": "Trỏ đến một tệp .exe (dùng nút Duyệt… hoặc dán đường dẫn), thêm tham số nếu cần. Các mục đã khởi chạy gần đây sẽ hiện thành các nút khởi chạy nhanh phía trên biểu mẫu."
-    },
-    "capture-active": {
-      "title": "Các tiến trình đang chạy",
-      "body": "Mọi tiến trình chạy qua router sẽ được liệt kê ở đây kèm PID, giúp bạn dừng một tiến trình mà không cần tìm trong Task Manager."
-    },
-    "capture-log": {
-      "title": "Lưu lượng của nó thực sự đi đâu",
-      "body": "Mỗi kết nối mà tiến trình chạy qua router tạo ra sẽ hiện ở đây kèm quyết định của quy tắc — tương tự nhật ký quyết định của router, nhưng chỉ giới hạn trong tiến trình này."
-    },
-    "terminal": {
-      "title": "Terminal SSH, mở cửa sổ riêng",
-      "body": "Mỗi tunnel cũng là một máy chủ ở đây, dùng chung thông tin đăng nhập và phiên đang chạy. Kéo máy chủ hoặc tab vào mép một khung để chia màn hình, kéo đường phân cách để đổi kích thước, bật gõ đồng thời để gõ vào nhiều máy chủ cùng lúc. Ctrl+Shift+C / Ctrl+Shift+V để sao chép/dán; bôi đen là tự sao chép."
-    },
-    "preferences": {
-      "title": "Giao diện & ngôn ngữ",
-      "body": "Nút bảng màu ở mép phải mở bảng chọn chủ đề; nút quả địa cầu bên cạnh đổi ngôn ngữ. Cả hai áp dụng ngay, không cần bấm Lưu."
-    },
-    "settings-theme": {
-      "title": "Chủ đề",
-      "body": "Hơn 180 chủ đề màu. Panel trượt ra từ cạnh phải và không làm tối cửa sổ, nên rê chuột lên thẻ là thấy ngay chủ đề trên toàn bộ phía sau; bấm để chọn. \"Theo hệ thống\" tự đổi giữa một chủ đề sáng và một chủ đề tối do bạn chọn. Cửa sổ terminal đổi theo."
-    },
-    "settings-reconnect": {
-      "title": "Duy trì kết nối",
-      "body": "Keepalive là cách duy nhất để phát hiện một kết nối đã chết; cơ chế backoff giúp không dồn dập thử lại khi máy chủ chập chờn. Cổng cục bộ vẫn được giữ trong lúc mất kết nối để không ứng dụng nào khác chiếm mất."
-    },
-    "settings-config": {
-      "title": "Chuyển sang máy khác",
-      "body": "Trang Sao lưu có hai ô. Xuất ghi tunnel, quy tắc router và cài đặt vào một tệp; mật khẩu chỉ được đưa vào (đã mã hóa) nếu bạn đặt passphrase. Nhập cho xem trước mọi thay đổi, và hỏi passphrase ngay trước khi bạn xác nhận."
+    "linux-setup": {
+      "title": "Hoàn tất thiết lập Linux",
+      "body": "Nếu thấy thông báo này, làm theo các lệnh được hiển thị để thiết lập kho thông tin xác thực hoặc SSH agent."
     },
     "tray": {
-      "title": "Ứng dụng nằm ở khay hệ thống",
-      "body": "Đóng cửa sổ chỉ ẩn ứng dụng đi — các tunnel vẫn tiếp tục chạy. Mở lại từ biểu tượng khay hệ thống, bật/tắt tunnel ngay từ menu của nó, và dùng mục Exit trong khay khi bạn thực sự muốn thoát ứng dụng."
+      "title": "Duy trì tunnel trong khay hệ thống",
+      "body": "Đóng cửa sổ chính để ẩn cửa sổ và giữ các tunnel đang chạy. Mở lại từ khay hệ thống hoặc chọn Thoát trong menu của khay để thoát ứng dụng."
+    },
+    "add": {
+      "title": "Thêm tunnel SSH",
+      "body": "Chọn Thêm tunnel rồi nhập địa chỉ máy chủ, cổng SSH và tên người dùng. Kiểm tra dấu vân tay của khóa máy chủ khi kết nối lần đầu."
+    },
+    "add-auth": {
+      "title": "Chọn cách đăng nhập",
+      "body": "Chọn mật khẩu, tệp khóa riêng hoặc SSH agent. Mật khẩu và passphrase của khóa được lưu trong kho thông tin xác thực của hệ điều hành."
+    },
+    "add-socks": {
+      "title": "Thiết lập proxy cục bộ",
+      "body": "Bật SOCKS5 rồi cấu hình ứng dụng dùng cổng cục bộ hiển thị ở đây. Với máy chủ chỉ dùng để mở shell SSH, hãy để SOCKS5 tắt."
+    },
+    "add-jump": {
+      "title": "Kết nối qua máy chủ trung gian",
+      "body": "Chọn tunnel đã lưu trong mục Kết nối qua để truy cập máy chủ nội bộ. Khi kết nối máy chủ đích, protunel tự kết nối các tunnel trung gian theo thứ tự."
+    },
+    "list": {
+      "title": "Quản lý tunnel và port forward",
+      "body": "Dùng công tắc để kết nối tunnel hoặc mở mục Forward trên dòng tương ứng để thêm port forward trong lúc tunnel đang chạy. Các tunnel phụ thuộc nằm bên dưới tunnel trung gian."
+    },
+    "bulk": {
+      "title": "Tìm kiếm và kết nối hàng loạt",
+      "body": "Nhấn Ctrl+F để lọc theo tên hoặc máy chủ. Các nút kết nối và ngắt kết nối áp dụng cho toàn bộ danh sách, kể cả tunnel bị bộ lọc ẩn."
+    },
+    "router": {
+      "title": "Định tuyến qua một proxy cục bộ",
+      "body": "Mở Router để gửi lưu lượng qua một địa chỉ SOCKS5 cục bộ. Các quy tắc chọn đường đi cho từng kết nối."
+    },
+    "router-enable": {
+      "title": "Bật router và sao chép địa chỉ",
+      "body": "Bật công tắc trên thẻ trạng thái rồi sao chép địa chỉ SOCKS5 cục bộ để dùng trong ứng dụng. Router tự kết nối tunnel khi có quy tắc chuyển lưu lượng qua tunnel đó."
+    },
+    "router-rules": {
+      "title": "Đặt thứ tự ưu tiên cho quy tắc",
+      "body": "Thêm wildcard cho tên máy chủ, regex hoặc dải IP rồi chọn tunnel, Đi trực tiếp hoặc Chặn. Đưa thẻ quy tắc ưu tiên lên trên vì router áp dụng quy tắc đang bật đầu tiên khớp với kết nối."
+    },
+    "router-log": {
+      "title": "Xem quyết định định tuyến",
+      "body": "Mở Nhật ký và tìm đích để xem quy tắc nào khớp và kết nối đã đi theo đường nào."
+    },
+    "router-settings": {
+      "title": "Đặt đường đi mặc định",
+      "body": "Mở tab Cài đặt của router để đổi cổng và chọn cách xử lý kết nối không khớp quy tắc nào."
+    },
+    "router-proxy": {
+      "title": "Dùng proxy hệ thống Windows",
+      "body": "Bật proxy hệ thống để đưa lưu lượng của các ứng dụng tương thích qua router bằng PAC. Thêm địa chỉ vào danh sách bỏ qua nếu muốn các ứng dụng đó kết nối trực tiếp."
+    },
+    "router-pac": {
+      "title": "Sao chép URL PAC cho trình duyệt",
+      "body": "Mở hướng dẫn proxy trên Linux rồi sao chép URL PAC vào phần thiết lập proxy tự động của trình duyệt. Hướng dẫn cũng chỉ cách thiết lập SOCKS5 cho từng ứng dụng."
+    },
+    "capture-launch": {
+      "title": "Mở ứng dụng qua router",
+      "body": "Mở Ứng dụng, chọn tệp thực thi và thêm đối số nếu cần. Khởi chạy từ biểu mẫu này để đưa lưu lượng của ứng dụng qua router."
+    },
+    "capture-monitor": {
+      "title": "Kiểm tra ứng dụng và lưu lượng",
+      "body": "Dùng danh sách đang chạy để tìm hoặc dừng tiến trình. Xem nhật ký bên dưới để biết router đã chuyển từng kết nối đi đâu."
+    },
+    "terminal": {
+      "title": "Mở terminal SSH",
+      "body": "Bấm Terminal để mở cửa sổ riêng chứa các máy chủ đã lưu. Bấm ? trong cửa sổ đó để xem cách dùng tab, chia khung và gõ đồng thời."
+    },
+    "settings": {
+      "title": "Tìm cài đặt theo chủ đề",
+      "body": "Mở Cài đặt và dùng danh sách bên trái để chuyển giữa Chung, Tunnel, Terminal, Sao lưu và Giới thiệu."
+    },
+    "settings-reconnect": {
+      "title": "Điều chỉnh kết nối lại",
+      "body": "Mở mục Tunnel để chỉnh keepalive và cách kết nối lại. Các cổng cục bộ vẫn được giữ trong khi tunnel thử kết nối lại."
+    },
+    "settings-terminal": {
+      "title": "Điều chỉnh terminal",
+      "body": "Mở mục Terminal để chỉnh cách hiển thị và hoạt động của chuột hoặc thiết lập gợi ý lệnh và thông báo lệnh chạy lâu tại đây."
+    },
+    "settings-config": {
+      "title": "Xuất hoặc nhập cấu hình",
+      "body": "Chọn Xuất để tạo tệp cấu hình và đặt passphrase nếu muốn kèm thông tin xác thực đã mã hóa. Chọn Nhập để xem trước các thay đổi rồi xác nhận."
+    },
+    "settings-hosts": {
+      "title": "Xem máy chủ đã tin cậy",
+      "body": "Mở danh sách máy chủ đã tin cậy trong mục Sao lưu để xem dấu vân tay SSH đã lưu. Xóa khóa cũ tại đây nếu bạn đã sẵn sàng xác minh khóa mới trong lần kết nối tiếp theo."
+    },
+    "settings-about": {
+      "title": "Xem phiên bản và bản cập nhật",
+      "body": "Mở Giới thiệu để xem phiên bản đang dùng và cách nhận bản cập nhật cho bản cài đặt của bạn."
+    },
+    "term-hosts": {
+      "title": "Mở máy chủ",
+      "body": "Chọn máy chủ đã lưu ở thanh bên để mở shell hoặc bấm + cạnh Máy chủ để thêm mới. Mở rộng máy chủ trung gian để xem các máy chủ kết nối qua nó, hoặc nhấn Ctrl+Shift+S để hiện thanh bên."
+    },
+    "term-select": {
+      "title": "Mở nhiều máy chủ cùng lúc",
+      "body": "Bật Chọn máy chủ bên cạnh tiêu đề Máy chủ, chọn các máy chủ rồi mở chúng trong một tab dạng lưới."
+    },
+    "term-tabs": {
+      "title": "Dùng tab và chia khung",
+      "body": "Bấm + để tìm máy chủ khác hoặc dùng phím tắt bên dưới để chia khung sang phải hoặc xuống dưới. Kéo máy chủ hoặc tab đến mép khung để chia tại đó rồi kéo đường chia để đổi kích thước."
+    },
+    "term-workspaces": {
+      "title": "Lưu workspace",
+      "body": "Dùng nút workspace để lưu các tab và cách chia khung đang mở. Chọn workspace đã lưu ở thanh bên hoặc chọn Khôi phục phiên trước khi terminal đang trống."
+    },
+    "term-header": {
+      "title": "Di chuyển, phóng to và theo dõi khung",
+      "body": "Trong tab đã chia khung, kéo thanh tiêu đề để di chuyển khung, bấm nút phóng to hoặc dùng nút tham gia khi đang gõ đồng thời. Bấm chuột phải vào thanh tiêu đề để bật báo khi có output hoặc khi im lặng 30 giây; chấm màu nhấn báo khung có output mới."
+    },
+    "term-layout": {
+      "title": "Sắp xếp khung và cuộn đồng bộ",
+      "body": "Mở menu Bố cục và theo dõi khung để xếp khung thành lưới đều, cân đều các đường chia hoặc bật cuộn đồng bộ. Sau khi xếp hoặc cân đều, bạn có năm giây để bấm Hoàn tác."
+    },
+    "term-broadcast": {
+      "title": "Gõ đồng thời trong nhiều khung",
+      "body": "Bật gõ đồng thời để gửi phím đến các khung tham gia có viền màu hổ phách. Tính năng này tạm dừng khi một khung được phóng to."
+    },
+    "term-footer": {
+      "title": "Xem các chỉ báo ở thanh dưới",
+      "body": "Xem trạng thái gõ đồng thời, theo dõi và cuộn đồng bộ ở thanh dưới. Khi chương trình từ xa yêu cầu dùng chuột, bấm chỉ báo chuột để chuyển giữa chọn văn bản và điều khiển ứng dụng."
+    },
+    "term-smart": {
+      "title": "Dùng gợi ý lệnh và thông báo",
+      "body": "Khi bật gợi ý, nhấn → để nhận phần lệnh hiện mờ tại dấu nhắc. Bật thông báo lệnh chạy lâu trong cài đặt Terminal để nhận thông báo khi lệnh hoàn tất ở khung đang ẩn hoặc khi cửa sổ không được chọn."
+    },
+    "term-shortcuts": {
+      "title": "Xem lại phím tắt",
+      "body": "Dùng các phím bên dưới để tìm máy chủ, sao chép và dán; màn hình terminal trống liệt kê các phím còn lại. Xem lại hướng dẫn này từ màn hình trống hoặc Cài đặt › Giới thiệu ở cửa sổ chính."
     }
-  },
-  "stepProgress": "Bước {{current}}/{{total}}",
-  "skip": "Bỏ qua",
-  "back": "Quay lại",
-  "next": "Tiếp theo",
-  "done": "Xong"
+  }
 }

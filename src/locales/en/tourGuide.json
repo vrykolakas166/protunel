@@ -1,97 +1,174 @@
 {
+  "chapters": {
+    "basics": "Basics",
+    "tunnels": "Tunnels",
+    "router": "Router",
+    "capture": "Apps through the router",
+    "terminal": "Terminal",
+    "settings": "Settings & backup",
+    "sessions": "Hosts & sessions",
+    "panes": "Panes & layout",
+    "keyboard": "Commands & shortcuts"
+  },
+  "stepProgress": "{{current}} of {{total}}",
+  "skipChapter": "Skip chapter",
+  "close": "Close tour (Esc)",
+  "loading": "Finding the next control…",
+  "back": "Back",
+  "next": "Next",
+  "done": "Done",
   "steps": {
     "welcome": {
       "title": "Welcome to protunel",
-      "body": "A quick pass over what everything does. Two minutes, and you can skip or replay it any time from the ? button."
+      "body": "This tour walks through tunnels, the Router, the terminal and settings. Press ← or → to move, Esc to close; replay it any time with F1 or from Settings › About."
     },
-    "add": {
-      "title": "Add a tunnel",
-      "body": "A tunnel is one SSH connection. This button opens the form — let's look at what's in it."
+    "mode": {
+      "title": "Choose your mode",
+      "body": "Switch modes in Settings › General. Simple mode gives you one Internal network switch, while Full mode gives you the tunnel, router, and terminal controls."
     },
-    "add-auth": {
-      "title": "How you authenticate",
-      "body": "Password, a private key file, or an SSH agent (Pageant on Windows, $SSH_AUTH_SOCK on Linux). Passwords and key passphrases go into the OS credential vault, never into the app's own database."
+    "appearance": {
+      "title": "Preview a theme",
+      "body": "Hover over a theme to preview it and click to keep it. Choose Follow system to set separate light and dark themes."
     },
-    "add-socks": {
-      "title": "What the tunnel exposes",
-      "body": "Turn on a local SOCKS5 proxy and point a browser or curl at that port. You can also add static port forwards later, from the tunnel's row in the list. A server you only want a shell on can leave SOCKS off."
+    "language": {
+      "title": "Change the language",
+      "body": "Open the globe menu and choose English or Tiếng Việt."
     },
-    "add-jump": {
-      "title": "Hopping through another tunnel",
-      "body": "\"Connect via\" makes this tunnel connect through another one's live session — the usual bastion setup. Connecting the inner tunnel dials the whole chain for you, outermost first."
-    },
-    "list": {
-      "title": "The tunnel list",
-      "body": "Toggle a tunnel with the switch. The dashed line animates while traffic can flow. Expand Forwards to add port forwards live — no reconnect needed. Tunnels that hop through another are indented under their parent; drag the grip on the left to reorder them."
-    },
-    "bulk": {
-      "title": "Search and bulk actions",
-      "body": "Ctrl+F drops in a search box to filter by name or host — Esc closes it. Connect or disconnect everything at once from here too."
-    },
-    "router": {
-      "title": "The proxy router",
-      "body": "Per-tunnel SOCKS ports make you pick a tunnel per application. The router flips that around: one local port, and rules choose a destination per connection."
-    },
-    "router-enable": {
-      "title": "Turning the router on",
-      "body": "It binds one SOCKS5 port on 127.0.0.1 only. A rule pointing at a tunnel that isn't up will connect that tunnel on demand, so you can leave everything disconnected and let traffic dial what it needs."
-    },
-    "router-rules": {
-      "title": "Rules decide where traffic goes",
-      "body": "Ordered top to bottom, first enabled match wins. Match on a host wildcard, a regex, or an IP range, then send it through a tunnel, straight out (direct), or block it. Anything unmatched takes the default action."
-    },
-    "router-proxy": {
-      "title": "Apps that use the system proxy",
-      "body": "Tick this and Windows points its system proxy at the router, so browsers and other apps that use the system proxy follow your rules with no per-app setup. Apps that ignore it can be launched through the router from Capture. It's undone when the router stops — including after a crash."
-    },
-    "router-log": {
-      "title": "Why did that go direct?",
-      "body": "Every proxied connection is logged with the rule that decided it. This is the first place to look when a rule doesn't fire the way you expected."
-    },
-    "capture": {
-      "title": "Capturing an app that has no proxy setting",
-      "body": "RDP clients, CLI tools, DB clients — most apps have nowhere to type a proxy address. Capture launches one with a small hook injected, so its traffic reaches the router anyway. Rules decide where it goes from there, same as anything else."
-    },
-    "capture-launch": {
-      "title": "Launching a captured process",
-      "body": "Point it at an .exe (Browse or paste a path), add arguments if it needs them. Recently launched targets show up as quick-relaunch buttons above the form."
-    },
-    "capture-active": {
-      "title": "What's running",
-      "body": "Every captured process stays listed here with its PID, so you can stop one without hunting for it in Task Manager."
-    },
-    "capture-log": {
-      "title": "Where its traffic actually went",
-      "body": "Each connection a captured process makes shows up here with the rule's decision — same idea as the router's own decision log, scoped to just this process."
-    },
-    "terminal": {
-      "title": "SSH terminal, in its own window",
-      "body": "Every tunnel is also a host here, sharing its saved login and live session. Drag a host or a tab onto the edge of a pane to split it, drag dividers to resize, and turn on broadcast to type into several servers at once. Ctrl+Shift+C / Ctrl+Shift+V copy and paste; selecting text copies it too."
-    },
-    "preferences": {
-      "title": "Theme & language",
-      "body": "The palette button at the right edge opens the theme panel; the globe next to it switches the language. Both apply instantly, no Save button."
-    },
-    "settings-theme": {
-      "title": "Themes",
-      "body": "Over a hundred and eighty colour themes. The panel slides in from the side without dimming the window, so hovering a card previews it on everything behind; click to keep it. \"Follow system\" switches between a light and a dark theme of your choice. The terminal window follows along."
-    },
-    "settings-reconnect": {
-      "title": "Staying connected",
-      "body": "Keepalives are how a dead connection gets noticed at all; retries back off so a flapping server isn't hammered. Local ports stay held during an outage so nothing else can take them."
-    },
-    "settings-config": {
-      "title": "Moving to another machine",
-      "body": "The Backup page holds two tiles. Export writes tunnels, router rules and settings to one file; passwords are only included, encrypted, if you set a passphrase. Import shows exactly what will change first, and asks for that passphrase right before you confirm."
+    "linux-setup": {
+      "title": "Finish Linux setup",
+      "body": "If this notice appears, follow the commands it shows to set up the credential vault or SSH agent."
     },
     "tray": {
-      "title": "It lives in the tray",
-      "body": "Closing the window only hides it — tunnels keep running. Reopen from the tray icon, toggle tunnels from its menu, and use the tray's Exit item when you actually want to quit."
+      "title": "Keep tunnels running in the tray",
+      "body": "Close the main window to hide it while tunnels keep running. Reopen it from the tray, or choose Exit in the tray menu to quit."
+    },
+    "add": {
+      "title": "Add an SSH tunnel",
+      "body": "Choose Add tunnel and enter the server address, SSH port, and username. Review the server’s key fingerprint when you first connect."
+    },
+    "add-auth": {
+      "title": "Choose how to sign in",
+      "body": "Choose a password, a private key file, or an SSH agent. Saved passwords and key passphrases go into your system credential vault."
+    },
+    "add-socks": {
+      "title": "Set up a local proxy",
+      "body": "Enable SOCKS5 and point an application at the local port shown here. For a host you only use for SSH shells, leave SOCKS5 off."
+    },
+    "add-jump": {
+      "title": "Connect through a jump host",
+      "body": "Choose a saved tunnel under Connect via to reach a private host through it. Connecting the destination brings up the jump chain for you."
+    },
+    "list": {
+      "title": "Manage tunnels and forwards",
+      "body": "Use a tunnel’s switch to connect it, or expand Forwards on its row to add a port forward while it’s running. Jump hosts group their dependent tunnels underneath them."
+    },
+    "bulk": {
+      "title": "Search and connect in bulk",
+      "body": "Press Ctrl+F to filter by name or host. The connect and disconnect buttons act on the entire list, including tunnels hidden by your search."
+    },
+    "router": {
+      "title": "Route through one local proxy",
+      "body": "Open Router to send traffic through one local SOCKS5 address. Rules choose a route for each connection."
+    },
+    "router-enable": {
+      "title": "Start the router and copy its address",
+      "body": "Flip the switch on the status card, then copy the local SOCKS5 address for your application. The router connects a tunnel on demand when a rule sends traffic through it."
+    },
+    "router-rules": {
+      "title": "Set rule priority",
+      "body": "Add a hostname wildcard, regex, or IP range and choose a tunnel, Direct, or Block. Move higher-priority rule cards up because the first enabled match wins."
+    },
+    "router-log": {
+      "title": "Trace a routing decision",
+      "body": "Open Log and find the destination to see the matched rule and where the connection went."
+    },
+    "router-settings": {
+      "title": "Set the default route",
+      "body": "Open the router’s Settings tab to change its port and choose what happens when no rule matches."
+    },
+    "router-proxy": {
+      "title": "Use the Windows system proxy",
+      "body": "Enable the system proxy to send compatible apps through the router via PAC. Add addresses to the bypass list if those apps should connect to them directly."
+    },
+    "router-pac": {
+      "title": "Copy the browser PAC URL",
+      "body": "Expand the Linux proxy instructions and copy the PAC URL into your browser’s automatic proxy settings. The instructions also show how to set up SOCKS5 for individual apps."
+    },
+    "capture-launch": {
+      "title": "Launch an app through the router",
+      "body": "Open Capture, select an executable, and add arguments if needed. Launch it from this form to send its traffic through the router."
+    },
+    "capture-monitor": {
+      "title": "Check apps and their traffic",
+      "body": "Use the active list to find or stop a process. Check the log below it to see where the router sent each connection."
+    },
+    "terminal": {
+      "title": "Open the SSH terminal",
+      "body": "Click Terminal to open a separate window with your saved hosts. Use its own ? button for the walkthrough on tabs, splits, and broadcast."
+    },
+    "settings": {
+      "title": "Find settings by subject",
+      "body": "Open Settings and use the side list to switch between General, Tunnels, Terminal, Backup, and About."
+    },
+    "settings-reconnect": {
+      "title": "Adjust reconnection",
+      "body": "Open Tunnels to set keepalives and reconnect behavior. Local ports stay reserved while a tunnel retries."
+    },
+    "settings-terminal": {
+      "title": "Tune the terminal",
+      "body": "Open Terminal settings to adjust rendering and mouse behavior, or set up command suggestions and long-command notifications here."
+    },
+    "settings-config": {
+      "title": "Export or import a configuration",
+      "body": "Use Export to create a configuration file and set a passphrase to include encrypted credentials. Use Import to review what will be applied before confirming."
+    },
+    "settings-hosts": {
+      "title": "Review trusted hosts",
+      "body": "Open the trusted hosts list on Backup to inspect saved SSH fingerprints. Forget a key here when you’re ready to verify its replacement on the next connection."
+    },
+    "settings-about": {
+      "title": "Find your version and updates",
+      "body": "Open About to check your installed version and see how updates are delivered for your installation."
+    },
+    "term-hosts": {
+      "title": "Open a host",
+      "body": "Choose a saved host in the sidebar to open its shell, or use + beside Hosts to add one. Expand a jump host to see the hosts that connect through it, or show the sidebar with Ctrl+Shift+S."
+    },
+    "term-select": {
+      "title": "Open several hosts together",
+      "body": "Turn on Select hosts beside the Hosts heading, choose your hosts, then open them in one tiled tab."
+    },
+    "term-tabs": {
+      "title": "Use tabs and splits",
+      "body": "Click + to find another host, or split the focused shell to the right or down with the shortcuts below. Drag a host or tab to a pane edge to split there, then drag the divider to resize."
+    },
+    "term-workspaces": {
+      "title": "Save a workspace",
+      "body": "Use the workspace button to save your open tabs and splits. Pick a saved workspace from the sidebar or choose Restore last session when the terminal is empty."
+    },
+    "term-header": {
+      "title": "Move, zoom, and watch panes",
+      "body": "In a split tab, drag a pane by its header, use its zoom button, or use its broadcast toggle while broadcast is on. Right-click the header to watch for output or 30 seconds of silence, and look for accent dots marking unread output."
+    },
+    "term-layout": {
+      "title": "Arrange panes and sync scrolling",
+      "body": "Open the Layout menu to tile panes evenly, equalize existing splits, or sync scrolling. After tiling or equalizing, you have five seconds to select Undo."
+    },
+    "term-broadcast": {
+      "title": "Type in several panes",
+      "body": "Toggle broadcast to send keystrokes to every included pane with an amber frame. Broadcasting pauses while a pane is zoomed."
+    },
+    "term-footer": {
+      "title": "Read the footer chips",
+      "body": "Check the footer for broadcast status, watches, and synced scrolling. When a remote program requests mouse input, click the mouse chip to switch between selection and app mouse control."
+    },
+    "term-smart": {
+      "title": "Use command suggestions and alerts",
+      "body": "With suggestions enabled, press → to accept the faded completion at the prompt. Enable long-command notifications in Terminal settings to get an alert when a long command finishes out of sight."
+    },
+    "term-shortcuts": {
+      "title": "Keep shortcuts handy",
+      "body": "Use the keys below to find hosts, copy and paste; the empty terminal lists the rest. Replay this tour from the empty terminal or from Settings › About in the main window."
     }
-  },
-  "stepProgress": "Step {{current}} of {{total}}",
-  "skip": "Skip",
-  "back": "Back",
-  "next": "Next",
-  "done": "Done"
+  }
 }

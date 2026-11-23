@@ -1,10 +1,17 @@
-import { useMemo, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import {
+  useMemo,
+  useRef,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type { ITheme } from "@xterm/xterm";
 import type { Tunnel } from "../types";
 import { computeLayout, type DividerRect, type DropSide, type PaneRect, type Rect } from "./layout";
 import type { DragSource, Tab } from "./tabs";
-import { TerminalView, type SessionInfo, type SessionPhase } from "./TerminalView";
+import { TerminalView, type PaneHandle, type SessionInfo, type SessionPhase } from "./TerminalView";
+import type { WatchMode } from "./paneWatch";
 import type { DragState } from "./useDragDrop";
 
 export const PHASE_DOT: Record<SessionPhase, string> = {
@@ -61,6 +68,22 @@ export const icons = {
       />
     </svg>
   ),
+  // An eye: this pane is watched for output or silence.
+  watch: (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="2" />
+    </svg>
+  ),
+  // Four tiles: the pane layout menu.
+  layout: (
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <rect x="2" y="2" width="5" height="5" rx="1" />
+      <rect x="9" y="2" width="5" height="5" rx="1" />
+      <rect x="2" y="9" width="5" height="5" rx="1" />
+      <rect x="9" y="9" width="5" height="5" rx="1" />
+    </svg>
+  ),
   close: (
     <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M2 2L14 14M14 2L2 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -85,7 +108,7 @@ function IconButton({
   children,
 }: {
   label: string;
-  onClick: () => void;
+  onClick: (e: ReactMouseEvent) => void;
   active?: boolean;
   children: ReactNode;
 }) {
@@ -93,7 +116,7 @@ function IconButton({
     <button
       onClick={(e) => {
         e.stopPropagation();
-        onClick();
+        onClick(e);
       }}
       onMouseDown={(e) => e.preventDefault()} // keep focus in the terminal
       title={label}
@@ -131,6 +154,18 @@ interface Props {
   suggestions: boolean;
   longCommandSecs: number;
   onAttention: (paneId: string) => void;
+  /** Dim panes without focus (`settings.terminalDimInactive`). */
+  dimInactive: boolean;
+  /** Panes with output you have not looked at yet. */
+  unread: Set<string>;
+  /** Panes whose watch has fired since you last focused them. */
+  alerted: Set<string>;
+  watches: Record<string, WatchMode>;
+  onPaneMenu: (e: ReactMouseEvent, tabKey: string, paneId: string) => void;
+  onBurst: (tabKey: string, paneId: string) => void;
+  onSilence: (paneId: string) => void;
+  onUserScroll: (tabKey: string, paneId: string, fromBottom: number) => void;
+  onHandle: (paneId: string, handle: PaneHandle | null) => void;
 }
 
 /**
@@ -161,6 +196,15 @@ export function PaneLayer({
   suggestions,
   longCommandSecs,
   onAttention,
+  dimInactive,
+  unread,
+  alerted,
+  watches,
+  onPaneMenu,
+  onBurst,
+  onSilence,
+  onUserScroll,
+  onHandle,
 }: Props) {
   const { t } = useTranslation("terminal");
   const areaRef = useRef<HTMLDivElement>(null);
@@ -208,7 +252,14 @@ export function PaneLayer({
     const shown = tabVisible && !hiddenByZoom;
     const box = tab.zoomed === id ? FULL : rect;
     const isFocused = tab.focused === id;
-    const included = tab.broadcast && !tab.excluded.includes(id);
+    // Broadcast pauses while a pane is zoomed: the hidden panes must not
+    // take keystrokes nobody can see landing.
+    const member = tab.broadcast && !tab.excluded.includes(id);
+    const included = member && !tab.zoomed;
+    const watch = watches[id];
+    const isAlerted = alerted.has(id);
+    const isUnread = unread.has(id);
+    const dimmed = dimInactive && multi && shown && !isFocused && tab.zoomed !== id && !included;
     const phase = infos[id]?.phase ?? "connecting";
     // Where the shell really is; the saved host may have been edited since.
     const saved = `${tunnel.username}@${tunnel.host}:${tunnel.port}`;
@@ -227,7 +278,8 @@ export function PaneLayer({
         key={id}
         data-drop-pane={shown ? id : undefined}
         data-tab-key={tab.key}
-        className={shown ? "absolute flex flex-col" : "hidden"}
+        data-pin-scroll
+        className={shown ? "absolute flex flex-col overflow-hidden" : "hidden"}
         style={{ left: pct(box.x), top: pct(box.y), width: pct(box.w), height: pct(box.h) }}
         onMouseDownCapture={(e) => {
           if (isFocused) return;
@@ -244,7 +296,9 @@ export function PaneLayer({
       >
         {showHeader && (
           <div
+            data-tour={shown && isFocused ? "term-header" : undefined}
             onPointerDown={beginDrag({ kind: "pane", tabKey: tab.key, paneId: id }, tunnel.name)}
+            onContextMenu={(e) => onPaneMenu(e, tab.key, id)}
             title={t("dragPaneHint")}
             className={`flex h-6 shrink-0 cursor-grab items-center gap-1.5 border-b border-border bg-surface px-1.5 text-[11px] ${
               isFocused ? "text-text" : "text-muted"
@@ -255,10 +309,32 @@ export function PaneLayer({
           >
             <span className="text-muted/70">{icons.grip}</span>
             <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PHASE_DOT[phase]}`} />
-            <span className="min-w-0 flex-1 truncate">
+            <span className="min-w-0 flex-1 truncate" title={`${tunnel.name} · ${target}`}>
               {tunnel.name}
               <span className="ml-1.5 font-mono text-[10px] text-muted">{target}</span>
             </span>
+            {isUnread && !isAlerted && (
+              <span
+                role="status"
+                title={t("watch.newOutput")}
+                aria-label={t("watch.newOutput")}
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent"
+              />
+            )}
+            {(watch || isAlerted) && (
+              // Shown only while a watch is armed; amber once it has fired.
+              <IconButton
+                label={
+                  isAlerted
+                    ? t(watch === "silence" ? "watch.firedSilence" : "watch.firedOutput")
+                    : t(watch === "silence" ? "watch.armedSilence" : "watch.armedOutput")
+                }
+                onClick={(e) => onPaneMenu(e, tab.key, id)}
+                active={isAlerted}
+              >
+                <span className={isAlerted ? "animate-pulse" : ""}>{icons.watch}</span>
+              </IconButton>
+            )}
             {stale && (
               <span
                 title={t("staleTargetHint", { saved })}
@@ -269,9 +345,9 @@ export function PaneLayer({
             )}
             {tab.broadcast && (
               <IconButton
-                label={included ? t("excludeFromBroadcast") : t("includeInBroadcast")}
+                label={member ? t("excludeFromBroadcast") : t("includeInBroadcast")}
                 onClick={() => onToggleExclude(tab.key, id)}
-                active={included}
+                active={member}
               >
                 {icons.broadcast}
               </IconButton>
@@ -290,7 +366,7 @@ export function PaneLayer({
             </IconButton>
           </div>
         )}
-        <div className={`relative min-h-0 flex-1 transition-opacity ${dragged ? "opacity-40" : ""}`}>
+        <div data-pin-scroll className={`relative min-h-0 flex-1 overflow-hidden transition-opacity ${dragged ? "opacity-40" : ""}`}>
           <TerminalView
             tunnel={tunnel}
             visible={shown}
@@ -307,7 +383,14 @@ export function PaneLayer({
             suggestions={suggestions}
             longCommandSecs={longCommandSecs}
             onAttention={() => onAttention(id)}
+            onBurst={() => onBurst(tab.key, id)}
+            outputWatch={watch === "output"}
+            silenceWatch={watch === "silence"}
+            onSilence={() => onSilence(id)}
+            onUserScroll={(fromBottom) => onUserScroll(tab.key, id, fromBottom)}
+            onHandle={(handle) => onHandle(id, handle)}
           />
+          {dimmed && <div className="pointer-events-none absolute inset-0 bg-bg/15" />}
           {frame && <div className="pointer-events-none absolute inset-0" style={{ boxShadow: frame }} />}
         </div>
         {preview && (
@@ -328,7 +411,7 @@ export function PaneLayer({
   };
 
   return (
-    <div ref={areaRef} className="absolute inset-0">
+    <div ref={areaRef} data-pin-scroll className="absolute inset-0 overflow-hidden">
       {layouts
         .flatMap(({ tab, panes }) => panes.map((pane) => ({ tab, pane, multi: panes.length > 1 })))
         // A fixed DOM order: rearranging panes only changes their coordinates,

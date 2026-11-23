@@ -269,6 +269,8 @@ export interface Settings {
   terminalSuggestions: boolean;
   /** Notify when a command this long ends out of sight; 0 = off. */
   terminalLongCommandSecs: number;
+  /** Dim the panes without focus in a tab with several panes. */
+  terminalDimInactive: boolean;
 }
 
 /** `terminal_memory.json`: learned per host, never exported. */

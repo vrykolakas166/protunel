@@ -121,6 +121,91 @@ export function layoutShape(node: unknown): string {
   return `(${String(n.dir)}:${ratio} ${layoutShape(n.a)} ${layoutShape(n.b)})`;
 }
 
+const leafCount = (node: LayoutNode): number =>
+  node.kind === "pane" ? 1 : leafCount(node.a) + leafCount(node.b);
+
+/** Panes as the eye reads them: top to bottom, then left to right. */
+export function readingOrder(root: LayoutNode): Extract<LayoutNode, { kind: "pane" }>[] {
+  const round = (n: number) => Math.round(n * 1000);
+  const rects = computeLayout(root).panes;
+  const order = [...rects].sort((p, q) => round(p.rect.y) - round(q.rect.y) || round(p.rect.x) - round(q.rect.x));
+  return order.map((p) => findPane(root, p.id)!);
+}
+
+/** Terminal cells read best a little wider than tall; the grid aims for this. */
+const IDEAL_CELL_ASPECT = 1.6;
+
+/**
+ * How many columns a grid of `n` panes gets in an area `aspect` (width /
+ * height) wide: the count whose cells come closest to `IDEAL_CELL_ASPECT`,
+ * fewer empty slots breaking ties.
+ */
+export function gridColumns(n: number, aspect: number): number {
+  let best = 1;
+  let bestScore = Infinity;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cell = (aspect / cols) * rows;
+    const score = Math.abs(Math.log(cell / IDEAL_CELL_ASPECT)) + (rows * cols - n) * 0.01;
+    if (score < bestScore - 1e-9) {
+      best = cols;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** `nodes` side by side (`dir` "row") or stacked ("col"), each the same size. */
+function evenChain(nodes: LayoutNode[], dir: SplitDir): LayoutNode {
+  if (nodes.length === 1) return nodes[0];
+  return {
+    kind: "split",
+    id: crypto.randomUUID(),
+    dir,
+    ratio: 1 / nodes.length,
+    a: nodes[0],
+    b: evenChain(nodes.slice(1), dir),
+  };
+}
+
+/**
+ * `panes` as an even grid, in the order given. Rows hold as close to the
+ * same number of panes as they can (5 → 3 + 2), the fuller rows first, each
+ * row's panes sharing its width. `aspect` is the area's width / height.
+ */
+export function gridOf(panes: LayoutNode[], aspect: number): LayoutNode {
+  const cols = gridColumns(panes.length, aspect > 0 && Number.isFinite(aspect) ? aspect : 1);
+  const rowCount = Math.ceil(panes.length / cols);
+  const rows: LayoutNode[] = [];
+  let at = 0;
+  for (let r = 0; r < rowCount; r++) {
+    const size = Math.ceil((panes.length - at) / (rowCount - r));
+    rows.push(evenChain(panes.slice(at, at + size), "row"));
+    at += size;
+  }
+  return evenChain(rows, "col");
+}
+
+/**
+ * The tab's panes as an even grid (`gridOf`) in reading order. Pane nodes
+ * are reused as they are, so every shell survives; tiling a tiled tab gives
+ * the same layout back.
+ */
+export function tileLayout(root: LayoutNode, aspect: number): LayoutNode {
+  return gridOf(readingOrder(root), aspect);
+}
+
+/** Same splits, each pane given an equal share of its split by pane count. */
+export function equalizeLayout(root: LayoutNode): LayoutNode {
+  if (root.kind === "pane") return root;
+  return {
+    ...root,
+    ratio: leafCount(root.a) / leafCount(root),
+    a: equalizeLayout(root.a),
+    b: equalizeLayout(root.b),
+  };
+}
+
 export function setRatio(root: LayoutNode, splitId: string, ratio: number): LayoutNode {
   if (root.kind === "pane") return root;
   if (root.id === splitId) return { ...root, ratio };

@@ -90,7 +90,8 @@
     "updates": "Updates",
     "links": "Links",
     "mode": "Mode",
-    "smart": "Suggestions & alerts"
+    "smart": "Suggestions & alerts",
+    "tours": "Guided tours"
   },
   "portRangeHint": "Local SOCKS ports suggested when you add a tunnel; the first free one is used.",
   "knownHostsHint": "Servers whose host key you have trusted. A changed key is flagged on the tunnel itself.",
@@ -99,6 +100,8 @@
   "portRange": "SOCKS port range",
   "terminalWebgl": "GPU rendering",
   "terminalWebglHint": "Faster with heavy output. Turn off for the system's own text rendering, often sharper on standard-DPI screens.",
+  "terminalDimInactive": "Dim panes without focus",
+  "terminalDimInactiveHint": "In a tab with several panes, the ones you are not typing into are slightly dimmed. Broadcast panes and their headers stay bright.",
   "knownHostsTitle": "Known hosts",
   "tagline": "SSH tunnels, SOCKS routing and terminals in one tray app.",
   "updatesTitle": "protunel updates",
@@ -131,5 +134,7 @@
   "terminalForget": "Forget remembered commands",
   "terminalForgetHint": "Clears what was learned on every host. Workspaces stay.",
   "terminalForgetButton": "Forget",
-  "terminalForgotten": "Forgotten"
+  "terminalForgotten": "Forgotten",
+  "tourMain": "Main window tour",
+  "tourTerminal": "Terminal window tour"
 }

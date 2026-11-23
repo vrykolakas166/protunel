@@ -26,6 +26,8 @@ export interface Tab {
   excluded: string[];
   /** The workspace this tab was opened from (or added to), saved back with it. */
   workspaceId: string | null;
+  /** Scrolling one pane's history scrolls the others to the same place. */
+  syncScroll: boolean;
 }
 
 export type DragSource =
@@ -49,6 +51,7 @@ export function makeTab(root: LayoutNode, focused?: string): Tab {
     broadcast: false,
     excluded: [],
     workspaceId: null,
+    syncScroll: false,
   };
 }
 

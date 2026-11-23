@@ -75,7 +75,7 @@ export function SetupNotice({ tunnels }: Props) {
   const hyprland = status.desktop.includes("hyprland");
 
   return (
-    <div className="space-y-2 border-b border-border bg-coral/10 px-4 py-2 text-xs text-text">
+    <div data-tour="linux-setup" className="space-y-2 border-b border-border bg-coral/10 px-4 py-2 text-xs text-text">
       <div className="flex items-start justify-between gap-3">
         <p className="font-medium text-coral">{t("setup.title")}</p>
         <button

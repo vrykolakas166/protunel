@@ -1,139 +1,42 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import type { RouterTab } from "./RouterPanel";
-import { useTranslation } from "react-i18next";
+import { useCallback } from "react";
 import { isWindows } from "../platform";
-
-/** Which modal the tour needs open for a step. `null` closes whatever is open. */
+import { GuidedTour, type TourStep } from "./GuidedTour";
+import type { RouterTab } from "./RouterPanel";
 import type { SettingsPage } from "./SettingsPanel";
 
-/** `settings:<page>` opens Settings on that page. */
 export type TourPanel = "add" | `router:${RouterTab}` | "capture" | "preferences" | `settings:${SettingsPage}`;
 
-interface StepDef {
-  /** Key into the `tourGuide` locale namespace's `steps` object. */
-  id: string;
-  /** Value of a `data-tour` attribute to spotlight. Omitted = centred card. */
-  target?: string;
-  /** Panel the step lives inside. The tour opens and closes these itself. */
-  panel?: TourPanel;
-  /** Feature does not exist off Windows, so neither does its target. */
-  windowsOnly?: boolean;
-}
-
-interface Step extends StepDef {
-  title: string;
-  body: string;
-}
-
-const STEP_DEFS: StepDef[] = [
-  {
-    id: "welcome",
-  },
-  {
-    id: "add",
-    target: "add",
-  },
-  {
-    id: "add-auth",
-    target: "add-auth",
-    panel: "add",
-  },
-  {
-    id: "add-socks",
-    target: "add-socks",
-    panel: "add",
-  },
-  {
-    id: "add-jump",
-    target: "add-jump",
-    panel: "add",
-  },
-  {
-    id: "list",
-    target: "list",
-  },
-  {
-    id: "bulk",
-    target: "bulk",
-  },
-  {
-    id: "router",
-    target: "router",
-  },
-  {
-    id: "router-enable",
-    target: "router-enable",
-    panel: "router:rules",
-  },
-  {
-    id: "router-rules",
-    target: "router-rules",
-    panel: "router:rules",
-  },
-  {
-    id: "router-proxy",
-    windowsOnly: true,
-    target: "router-proxy",
-    panel: "router:settings",
-  },
-  {
-    id: "router-log",
-    target: "router-log",
-    panel: "router:log",
-  },
-  {
-    id: "capture",
-    windowsOnly: true,
-    target: "capture",
-  },
-  {
-    id: "capture-launch",
-    windowsOnly: true,
-    target: "capture-launch",
-    panel: "capture",
-  },
-  {
-    id: "capture-active",
-    windowsOnly: true,
-    target: "capture-active",
-    panel: "capture",
-  },
-  {
-    id: "capture-log",
-    windowsOnly: true,
-    target: "capture-log",
-    panel: "capture",
-  },
-  {
-    id: "terminal",
-    target: "terminal",
-  },
-  {
-    id: "preferences",
-    target: "preferences",
-  },
-  {
-    id: "settings-theme",
-    target: "settings-theme",
-    panel: "preferences",
-  },
-  {
-    id: "settings-reconnect",
-    target: "settings-reconnect",
-    panel: "settings:tunnels",
-  },
-  {
-    id: "settings-config",
-    target: "settings-config",
-    panel: "settings:backup",
-  },
-  {
-    id: "tray",
-  },
+const stepDefinitions: (TourStep & { panel?: TourPanel; platform?: "windows" | "linux" })[] = [
+  { id: "welcome", chapter: "basics", target: null, keys: ["F1"] },
+  { id: "mode", chapter: "basics", target: "settings-mode", panel: "settings:general" },
+  { id: "appearance", chapter: "basics", target: "settings-theme", panel: "preferences" },
+  { id: "language", chapter: "basics", target: "language" },
+  { id: "linux-setup", chapter: "basics", target: "linux-setup", platform: "linux" },
+  { id: "tray", chapter: "basics", target: "settings-startup", panel: "settings:general" },
+  { id: "add", chapter: "tunnels", target: "add" },
+  { id: "add-auth", chapter: "tunnels", target: "add-auth", panel: "add" },
+  { id: "add-socks", chapter: "tunnels", target: "add-socks", panel: "add" },
+  { id: "add-jump", chapter: "tunnels", target: "add-jump", panel: "add" },
+  { id: "list", chapter: "tunnels", target: "list" },
+  { id: "bulk", chapter: "tunnels", target: "bulk", keys: ["Ctrl+F"] },
+  { id: "router", chapter: "router", target: "router" },
+  { id: "router-enable", chapter: "router", target: "router-enable", panel: "router:rules" },
+  { id: "router-rules", chapter: "router", target: "router-rules", panel: "router:rules" },
+  { id: "router-log", chapter: "router", target: "router-log", panel: "router:log" },
+  { id: "router-settings", chapter: "router", target: "router-settings", panel: "router:settings" },
+  { id: "router-proxy", chapter: "router", target: "router-proxy", panel: "router:settings", platform: "windows" },
+  { id: "router-pac", chapter: "router", target: "router-pac", panel: "router:settings", platform: "linux" },
+  { id: "capture-launch", chapter: "capture", target: "capture-launch", panel: "capture", platform: "windows" },
+  { id: "capture-monitor", chapter: "capture", target: "capture-active", panel: "capture", platform: "windows" },
+  { id: "terminal", chapter: "terminal", target: "terminal" },
+  { id: "settings", chapter: "settings", target: "settings" },
+  { id: "settings-reconnect", chapter: "settings", target: "settings-reconnect", panel: "settings:tunnels" },
+  { id: "settings-terminal", chapter: "settings", target: "settings-smart", panel: "settings:terminal" },
+  { id: "settings-config", chapter: "settings", target: "settings-config", panel: "settings:backup" },
+  { id: "settings-hosts", chapter: "settings", target: "settings-hosts", panel: "settings:backup" },
+  { id: "settings-about", chapter: "settings", target: "settings-updates", panel: "settings:about" },
 ];
-
-const PADDING = 6;
-const CARD_WIDTH = 360;
+const steps = stepDefinitions.filter(({ platform }) => !platform || platform === (isWindows ? "windows" : "linux"));
 
 interface Props {
   onFinish: () => void;
@@ -141,148 +44,9 @@ interface Props {
 }
 
 export function TourGuide({ onFinish, onRequestPanel }: Props) {
-  const { t } = useTranslation("tourGuide");
-  const [index, setIndex] = useState(0);
-  const [rect, setRect] = useState<DOMRect | null>(null);
-
-  const STEPS: Step[] = useMemo(
-    () =>
-      STEP_DEFS.filter((def) => isWindows || !def.windowsOnly).map((def) => ({
-        ...def,
-        title: t(`steps.${def.id}.title`),
-        body: t(`steps.${def.id}.body`),
-      })),
-    [t],
-  );
-
-  const step = STEPS[index];
-  const isLast = index === STEPS.length - 1;
-
-  // Ask for the panel first; the element to spotlight only exists once it mounts.
-  useEffect(() => {
-    onRequestPanel(step.panel ?? null);
-  }, [step.panel, onRequestPanel]);
-
-  useLayoutEffect(() => {
-    if (!step.target) {
-      setRect(null);
-      return;
-    }
-
-    let frame = 0;
-    let attempts = 0;
-    const measure = () => {
-      const el = document.querySelector(`[data-tour="${step.target}"]`);
-      if (el) {
-        el.scrollIntoView({ block: "nearest" });
-        setRect(el.getBoundingClientRect());
-        return;
-      }
-      // A panel opened by this same step mounts a frame or two later, so keep
-      // looking briefly instead of falling back to a centred card immediately.
-      if (attempts++ < 40) {
-        frame = requestAnimationFrame(measure);
-      } else {
-        setRect(null);
-      }
-    };
-    measure();
-
-    window.addEventListener("resize", measure);
-    return () => {
-      cancelAnimationFrame(frame);
-      window.removeEventListener("resize", measure);
-    };
-  }, [step.target, step.panel]);
-
-  const finish = () => {
+  const showStep = useCallback((index: number) => onRequestPanel(steps[index].panel ?? null), [onRequestPanel]);
+  return <GuidedTour steps={steps} onShowStep={showStep} onFinish={() => {
     onRequestPanel(null);
     onFinish();
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") finish();
-      else if (e.key === "ArrowRight") setIndex((i) => Math.min(i + 1, STEPS.length - 1));
-      else if (e.key === "ArrowLeft") setIndex((i) => Math.max(i - 1, 0));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
-
-  // Card sits below the highlight, or above it when there is no room below.
-  // Some targets (the tunnel list) span nearly the whole window, leaving no
-  // room on either side — pin to whichever edge has more clearance instead
-  // of letting the card render partly off-screen.
-  const CARD_HEIGHT_ESTIMATE = 200;
-  const left = rect ? Math.max(12, Math.min(rect.left, window.innerWidth - CARD_WIDTH - 12)) : 0;
-  let cardStyle: React.CSSProperties;
-  if (!rect) {
-    cardStyle = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
-  } else {
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    if (spaceBelow >= CARD_HEIGHT_ESTIMATE) {
-      cardStyle = { top: rect.bottom + 14, left };
-    } else if (spaceAbove >= CARD_HEIGHT_ESTIMATE) {
-      cardStyle = { bottom: window.innerHeight - rect.top + 14, left };
-    } else {
-      cardStyle = spaceAbove > spaceBelow ? { top: 12, left } : { bottom: 12, left };
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60]">
-      {/* One huge box-shadow is what cuts the hole in the dimmer. */}
-      {rect ? (
-        <div
-          className="pointer-events-none absolute rounded-md ring-2 ring-accent transition-all duration-200"
-          style={{
-            top: rect.top - PADDING,
-            left: rect.left - PADDING,
-            width: rect.width + PADDING * 2,
-            height: rect.height + PADDING * 2,
-            boxShadow: "0 0 0 9999px rgba(0,0,0,0.65)",
-          }}
-        />
-      ) : (
-        <div className="absolute inset-0 bg-black/65" />
-      )}
-
-      <div
-        className="absolute w-[360px] max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-surface p-4 shadow-xl"
-        style={cardStyle}
-      >
-        <p className="text-[11px] font-medium text-muted">
-          {t("stepProgress", { current: index + 1, total: STEPS.length })}
-        </p>
-        <h3 className="mt-1 font-display text-base font-semibold text-text">{step.title}</h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted">{step.body}</p>
-
-        <div className="mt-4 flex items-center gap-2">
-          <button
-            onClick={finish}
-            className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"
-          >
-            {t("skip")}
-          </button>
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => setIndex((i) => i - 1)}
-              disabled={index === 0}
-              className="rounded border border-border px-3 py-1.5 text-xs font-medium text-text hover:bg-surface-hover disabled:opacity-40"
-            >
-              {t("back")}
-            </button>
-            <button
-              onClick={() => (isLast ? finish() : setIndex((i) => i + 1))}
-              className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-on-accent hover:bg-accent-hover"
-            >
-              {isLast ? t("done") : t("next")}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  }} />;
 }

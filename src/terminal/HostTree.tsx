@@ -1,4 +1,4 @@
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TunnelRuntimeState } from "../hooks/useTunnelEvents";
 import type { Tunnel, TunnelStatus } from "../types";
@@ -59,6 +59,23 @@ export function hostRows(tunnels: Tunnel[], query: string, collapsed: Set<string
   return rows;
 }
 
+/**
+ * A host and every host that jumps through it, directly or not, in the
+ * tree's order: what "open this host and its children" opens.
+ */
+export function subtreeIds(tunnels: Tunnel[], rootId: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const walk = (id: string) => {
+    if (seen.has(id)) return; // a jump cycle in bad data
+    seen.add(id);
+    out.push(id);
+    for (const tun of tunnels) if (tun.jumpTunnelId === id) walk(tun.id);
+  };
+  if (tunnels.some((tun) => tun.id === rootId)) walk(rootId);
+  return out;
+}
+
 interface Props {
   rows: HostRow[];
   emptyText: string;
@@ -70,6 +87,12 @@ interface Props {
   onToggle: (id: string) => void;
   onOpen: (id: string) => void;
   beginDrag: (source: DragSource, label: string) => (e: ReactPointerEvent) => void;
+  /** Picking several hosts to open in one tab: rows show a checkbox. */
+  selecting: boolean;
+  selected: Set<string>;
+  /** A click that picks: in selection mode, or with Ctrl / Shift held. */
+  onPick: (id: string, range: boolean) => void;
+  onRowMenu: (e: ReactMouseEvent, row: HostRow) => void;
 }
 
 export function HostTree({
@@ -83,6 +106,10 @@ export function HostTree({
   onToggle,
   onOpen,
   beginDrag,
+  selecting,
+  selected,
+  onPick,
+  onRowMenu,
 }: Props) {
   const { t } = useTranslation("terminal");
   return (
@@ -92,17 +119,27 @@ export function HostTree({
         const open = panesPerHost[tun.id] ?? 0;
         const highlighted = tun.id === highlightId;
         const isCollapsed = collapsed.has(tun.id);
+        const picked = selected.has(tun.id);
         return (
-          <li key={tun.id} role="treeitem" aria-expanded={childCount > 0 ? !isCollapsed : undefined}>
+          <li
+            key={tun.id}
+            role="treeitem"
+            aria-expanded={childCount > 0 ? !isCollapsed : undefined}
+            aria-selected={selecting ? picked : undefined}
+          >
             <button
-              onClick={() => onHighlight(tun.id)}
-              onDoubleClick={() => onOpen(tun.id)}
+              onClick={(e) => {
+                if (selecting || e.ctrlKey || e.metaKey || e.shiftKey) onPick(tun.id, e.shiftKey);
+                else onHighlight(tun.id);
+              }}
+              onDoubleClick={() => !selecting && onOpen(tun.id)}
+              onContextMenu={(e) => onRowMenu(e, { tunnel: tun, depth, childCount })}
               onPointerDown={beginDrag({ kind: "host", tunnelId: tun.id }, tun.name)}
-              title={t("openHint")}
+              title={selecting ? undefined : t("openHint")}
               style={{ paddingLeft: 4 + depth * 14 }}
               className={`group flex w-full cursor-grab items-center gap-1.5 rounded py-1.5 pr-2 text-left ${
-                highlighted ? "bg-surface-hover" : "hover:bg-surface-hover"
-              }`}
+                picked ? "bg-accent/10" : highlighted ? "bg-surface-hover" : "hover:bg-surface-hover"
+              } ${highlighted && selecting ? "ring-1 ring-inset ring-border" : ""}`}
             >
               {childCount > 0 ? (
                 <span
@@ -130,6 +167,20 @@ export function HostTree({
               ) : (
                 <span className="w-4 shrink-0" />
               )}
+              {selecting && (
+                <span
+                  aria-hidden="true"
+                  className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-[3px] border ${
+                    picked ? "border-accent bg-accent text-on-accent" : "border-muted/60 bg-bg"
+                  }`}
+                >
+                  {picked && (
+                    <svg width="9" height="9" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
+              )}
               <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_DOT[status]}`} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-text">
@@ -147,7 +198,7 @@ export function HostTree({
                   {open}
                 </span>
               )}
-              <span
+              {!selecting && <span
                 role="button"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -168,7 +219,7 @@ export function HostTree({
                     strokeLinejoin="round"
                   />
                 </svg>
-              </span>
+              </span>}
             </button>
           </li>
         );

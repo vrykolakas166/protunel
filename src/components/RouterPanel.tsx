@@ -288,6 +288,7 @@ export function RouterPanel({ tunnels, runtime, tab: requestedTab = "rules", onC
       <div className="flex flex-col gap-4">
         {/* Status card: on/off, where to point apps, and live traffic. */}
         <div
+          data-tour="router-enable"
           className={`relative overflow-hidden rounded-xl border bg-surface shadow-sm ${
             running ? "border-accent/35" : "border-border"
           }`}
@@ -296,7 +297,7 @@ export function RouterPanel({ tunnels, runtime, tab: requestedTab = "rules", onC
             <div className="pointer-events-none absolute inset-0 bg-linear-to-r from-accent/14 via-accent/4 to-transparent" aria-hidden="true" />
           )}
           <div className="relative flex flex-wrap items-center gap-x-4 gap-y-2 px-3.5 py-3">
-            <div data-tour="router-enable" className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <Switch
                 label={t("runRouter")}
                 checked={config.enabled}
@@ -479,7 +480,7 @@ export function RouterPanel({ tunnels, runtime, tab: requestedTab = "rules", onC
               </p>
             </details>
 
-            <Group title={t("groups.router")}>
+            <Group title={t("groups.router")} tour="router-settings">
               <Row
                 title={t("listenPortLabel")}
                 disabled={off}
