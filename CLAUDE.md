@@ -40,6 +40,22 @@ Do not run `cargo clean -p protunel` — it evicts the whole dependency graph
 
 Release: see "Packaging & releases" below.
 
+### Testing
+
+`bun run test:changed` selects test groups from changes since the merge base
+with `origin/master`, including local edits and untracked files. Use `--dry-run`
+to preview the commands, `--base <ref>` to compare against a specific commit,
+or `--group <name>` to run one group. `bun run test:all` selects every group.
+
+`scripts/test-groups.json` defines the `frontend`, `rust`, `ssh-it`,
+and `windows` groups. `ssh-it` is a
+placeholder for Docker-backed SSH tests, and `windows` runs the Rust library
+suite on a Windows runner in CI.
+
+CI checks changed groups on branch pushes and pull requests. Dependency and
+workflow changes select every group. CI also runs the full suite nightly at
+19:00 UTC, before release builds, and by default on manual runs.
+
 ## Packaging & releases
 
 Release assets (per tag `vX.Y.Z`): `protunel_<v>_amd64.AppImage` (+ `.sig`),

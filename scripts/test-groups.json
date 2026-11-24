@@ -1,0 +1,58 @@
+{
+  "globalPaths": [
+    "Cargo.lock",
+    "Cargo.toml",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "bun.lock",
+    "package.json",
+    ".github/workflows/**",
+    "scripts/test-groups.json",
+    "scripts/test-changed.ts",
+    "scripts/testGroups.ts"
+  ],
+  "groups": {
+    "frontend": {
+      "paths": ["src/**", "tests/**", "package.json", "bun.lock", "tsconfig*.json", "vite.config.*"],
+      "commands": [
+        { "argv": ["bun", "x", "--no-install", "tsc", "--noEmit", "-p", "tsconfig.json"] },
+        { "argv": ["bun", "test", "tests"] }
+      ]
+    },
+    "rust": {
+      "paths": ["src-tauri/**"],
+      "commands": [
+        { "argv": ["bun", "run", "build"] },
+        { "cwd": "src-tauri", "argv": ["cargo", "check", "--locked"] },
+        { "cwd": "src-tauri", "argv": ["cargo", "test", "--lib", "--locked"] }
+      ]
+    },
+    "ssh-it": {
+      "paths": [
+        "src-tauri/src/ssh/**",
+        "src-tauri/src/router/**",
+        "src-tauri/src/tunnel.rs",
+        "src-tauri/src/commands/connection.rs",
+        "src-tauri/src/commands/files.rs",
+        "src-tauri/src/commands/terminal*.rs",
+        "src-tauri/tests/it/**"
+      ],
+      "filters": {
+        "it_copy": ["src-tauri/src/ssh/**/copy_across.rs"],
+        "it_sftp": ["src-tauri/src/ssh/sftp/**"],
+        "it_router": ["src-tauri/src/router/**"],
+        "it_tunnel": ["src-tauri/src/ssh/mod.rs", "src-tauri/src/tunnel.rs", "src-tauri/src/commands/connection.rs"]
+      },
+      "commands": [
+        { "argv": ["bun", "-e", "console.log('no integration tests yet')"] }
+      ]
+    },
+    "windows": {
+      "paths": ["src-tauri/src/ssh/drag_out/**", "src-tauri/src/router/system_proxy.rs", "src-tauri/src/secrets.rs"],
+      "commands": [
+        { "argv": ["bun", "run", "build"] },
+        { "cwd": "src-tauri", "argv": ["cargo", "test", "--lib", "--locked"] }
+      ]
+    }
+  }
+}

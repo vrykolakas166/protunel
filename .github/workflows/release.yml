@@ -7,7 +7,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+    with:
+      full: true
+
   publish-tauri:
+    needs: check
     permissions:
       contents: write
     strategy:

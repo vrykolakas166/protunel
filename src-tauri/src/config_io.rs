@@ -20,7 +20,7 @@ use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 use zeroize::Zeroize;
 
-use crate::db::{AuthMethod, PortForward, Tunnel};
+use crate::db::{AuthMethod, Db, PortForward, Tunnel};
 use crate::router::rules::RouterRule;
 use crate::secrets;
 use crate::settings::{RouterConfig, Settings};
@@ -238,8 +238,12 @@ fn build_bundle(
 
 fn read_bundle(path: &str) -> Result<ConfigBundle, String> {
     let data = std::fs::read_to_string(path).map_err(|e| format!("cannot read file: {e}"))?;
+    parse_bundle(&data)
+}
+
+fn parse_bundle(data: &str) -> Result<ConfigBundle, String> {
     let bundle: ConfigBundle =
-        serde_json::from_str(&data).map_err(|e| format!("not a valid config file: {e}"))?;
+        serde_json::from_str(data).map_err(|e| format!("not a valid config file: {e}"))?;
     if bundle.format != FORMAT {
         return Err("this is not a protunel config file".to_string());
     }
@@ -442,6 +446,94 @@ pub async fn preview_import(
     })
 }
 
+/// The tunnel half of `apply_import`, split out so it can be tested against a
+/// plain `Db`. Returns the file-id to final-id map.
+fn import_tunnels(
+    db: &Db,
+    tunnels: &[Tunnel],
+    overwrite_name_conflicts: bool,
+    result: &mut ImportResult,
+) -> Result<HashMap<Uuid, Uuid>, String> {
+    let mut id_map: HashMap<Uuid, Uuid> = HashMap::new();
+    let existing = db.list().map_err(|e| e.to_string())?;
+    for imported in tunnels {
+        let same_id = existing.iter().find(|e| e.id == imported.id);
+        let same_name = existing.iter().find(|e| e.name == imported.name);
+
+        let (target_id, is_update) = match (same_id, same_name) {
+            (Some(e), _) => (e.id, true),
+            (None, Some(e)) if overwrite_name_conflicts => (e.id, true),
+            (None, Some(_)) => (Uuid::new_v4(), false),
+            (None, None) => (imported.id, false),
+        };
+
+        let mut tunnel = imported.clone();
+        tunnel.id = target_id;
+        if !is_update && same_name.is_some() {
+            tunnel.name = format!("{} (imported)", imported.name);
+        }
+        tunnel.forwards = Vec::new();
+
+        if is_update {
+            db.update(&tunnel).map_err(|e| e.to_string())?;
+            db.set_bookmarks(tunnel.id, &tunnel.bookmarks).map_err(|e| e.to_string())?;
+            result.tunnels_updated += 1;
+        } else {
+            db.insert(&tunnel).map_err(|e| e.to_string())?;
+            result.tunnels_added += 1;
+        }
+
+        // Forwards always get fresh ids: importing a copy would otherwise
+        // collide with the original's rows on the primary key.
+        let forwards: Vec<PortForward> = imported
+            .forwards
+            .iter()
+            .map(|f| PortForward {
+                id: Uuid::new_v4(),
+                tunnel_id: target_id,
+                remote_host: f.remote_host.clone(),
+                remote_port: f.remote_port,
+                local_port: f.local_port,
+            })
+            .collect();
+        db.replace_forwards(target_id, &forwards)
+            .map_err(|e| e.to_string())?;
+
+        id_map.insert(imported.id, target_id);
+    }
+
+    // Second pass, once every row has its final id: a jump host imported
+    // under a new id (a name conflict made it a copy) must take its
+    // children with it, or they keep pointing at the original.
+    for imported in tunnels {
+        let Some(jump) = imported.jump_tunnel_id else { continue };
+        let Some(&jump_target) = id_map.get(&jump) else { continue };
+        let target_id = id_map[&imported.id];
+        if jump_target == jump {
+            continue;
+        }
+        if let Some(mut tunnel) = db.get(target_id).map_err(|e| e.to_string())? {
+            tunnel.jump_tunnel_id = Some(jump_target);
+            db.update(&tunnel).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(id_map)
+}
+
+/// Points each rule's tunnel target at the id that tunnel ended up under.
+fn remap_rules(rules: &[RouterRule], id_map: &HashMap<Uuid, Uuid>) -> Vec<RouterRule> {
+    rules
+        .iter()
+        .map(|r| {
+            let mut rule = r.clone();
+            rule.target_tunnel_id = r
+                .target_tunnel_id
+                .map(|id| id_map.get(&id).copied().unwrap_or(id));
+            rule
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub async fn apply_import(
     app: AppHandle,
@@ -472,70 +564,12 @@ pub async fn apply_import(
     let mut id_map: HashMap<Uuid, Uuid> = HashMap::new();
 
     if sections.tunnels {
-        let existing = state.db.list().map_err(|e| e.to_string())?;
-        for imported in &bundle.tunnels {
-            let same_id = existing.iter().find(|e| e.id == imported.id);
-            let same_name = existing.iter().find(|e| e.name == imported.name);
-
-            let (target_id, is_update) = match (same_id, same_name) {
-                (Some(e), _) => (e.id, true),
-                (None, Some(e)) if sections.overwrite_name_conflicts => (e.id, true),
-                (None, Some(_)) => (Uuid::new_v4(), false),
-                (None, None) => (imported.id, false),
-            };
-
-            let mut tunnel = imported.clone();
-            tunnel.id = target_id;
-            if !is_update && same_name.is_some() {
-                tunnel.name = format!("{} (imported)", imported.name);
-            }
-            tunnel.forwards = Vec::new();
-
-            if is_update {
-                state.db.update(&tunnel).map_err(|e| e.to_string())?;
-                state.db.set_bookmarks(tunnel.id, &tunnel.bookmarks).map_err(|e| e.to_string())?;
-                result.tunnels_updated += 1;
-            } else {
-                state.db.insert(&tunnel).map_err(|e| e.to_string())?;
-                result.tunnels_added += 1;
-            }
-
-            // Forwards always get fresh ids: importing a copy would otherwise
-            // collide with the original's rows on the primary key.
-            let forwards: Vec<PortForward> = imported
-                .forwards
-                .iter()
-                .map(|f| PortForward {
-                    id: Uuid::new_v4(),
-                    tunnel_id: target_id,
-                    remote_host: f.remote_host.clone(),
-                    remote_port: f.remote_port,
-                    local_port: f.local_port,
-                })
-                .collect();
-            state
-                .db
-                .replace_forwards(target_id, &forwards)
-                .map_err(|e| e.to_string())?;
-
-            id_map.insert(imported.id, target_id);
-        }
-
-        // Second pass, once every row has its final id: a jump host imported
-        // under a new id (a name conflict made it a copy) must take its
-        // children with it, or they keep pointing at the original.
-        for imported in &bundle.tunnels {
-            let Some(jump) = imported.jump_tunnel_id else { continue };
-            let Some(&jump_target) = id_map.get(&jump) else { continue };
-            let target_id = id_map[&imported.id];
-            if jump_target == jump {
-                continue;
-            }
-            if let Some(mut tunnel) = state.db.get(target_id).map_err(|e| e.to_string())? {
-                tunnel.jump_tunnel_id = Some(jump_target);
-                state.db.update(&tunnel).map_err(|e| e.to_string())?;
-            }
-        }
+        id_map = import_tunnels(
+            &state.db,
+            &bundle.tunnels,
+            sections.overwrite_name_conflicts,
+            &mut result,
+        )?;
     }
 
     if let Some(map) = secret_map {
@@ -552,17 +586,7 @@ pub async fn apply_import(
     }
 
     if sections.router {
-        let rules: Vec<RouterRule> = bundle
-            .router_rules
-            .iter()
-            .map(|r| {
-                let mut rule = r.clone();
-                rule.target_tunnel_id = r
-                    .target_tunnel_id
-                    .map(|id| id_map.get(&id).copied().unwrap_or(id));
-                rule
-            })
-            .collect();
+        let rules = remap_rules(&bundle.router_rules, &id_map);
         result.rules_replaced = rules.len();
         state
             .db
@@ -669,5 +693,228 @@ mod tests {
         };
         let json = serde_json::to_string(&bundle).unwrap();
         assert!(!json.contains("secrets"), "{json}");
+    }
+}
+
+/// The pure parts of `apply_import` against a real in-memory `Db`. Not covered
+/// (needs an `AppHandle`): the secret vault write, router restart, settings
+/// sync, autostart and tray rebuild.
+#[cfg(test)]
+mod import_tests {
+    use super::*;
+    use crate::router::rules::{RuleAction, RuleKind};
+    use crate::ssh::known_hosts::KnownHosts;
+    use std::path::Path;
+
+    fn mem_db() -> Db {
+        Db::open(Path::new(":memory:")).unwrap()
+    }
+
+    fn tunnel(name: &str, jump: Option<Uuid>) -> Tunnel {
+        let id = Uuid::new_v4();
+        Tunnel {
+            id,
+            name: name.to_string(),
+            host: format!("{name}.example.com"),
+            port: 22,
+            username: "root".to_string(),
+            auth: AuthMethod::Agent,
+            local_socks_port: 1080,
+            auto_connect: false,
+            forwards: vec![PortForward {
+                id: Uuid::new_v4(),
+                tunnel_id: id,
+                remote_host: "127.0.0.1".to_string(),
+                remote_port: 5432,
+                local_port: 15432,
+            }],
+            jump_tunnel_id: jump,
+            socks_enabled: true,
+            group: None,
+            bookmarks: Vec::new(),
+        }
+    }
+
+    /// bastion <- app <- inner
+    fn chain() -> Vec<Tunnel> {
+        let bastion = tunnel("bastion", None);
+        let app = tunnel("app", Some(bastion.id));
+        let inner = tunnel("inner", Some(app.id));
+        vec![bastion, app, inner]
+    }
+
+    fn by_name(db: &Db, name: &str) -> Tunnel {
+        db.list()
+            .unwrap()
+            .into_iter()
+            .find(|t| t.name == name)
+            .unwrap_or_else(|| panic!("no tunnel {name}"))
+    }
+
+    fn import(db: &Db, tunnels: &[Tunnel], overwrite: bool) -> (HashMap<Uuid, Uuid>, ImportResult) {
+        let mut result = ImportResult::default();
+        let map = import_tunnels(db, tunnels, overwrite, &mut result).unwrap();
+        (map, result)
+    }
+
+    fn rule(target: Option<Uuid>) -> RouterRule {
+        RouterRule {
+            id: Uuid::new_v4(),
+            position: 0,
+            enabled: true,
+            kind: RuleKind::HostWildcard,
+            pattern: "*.corp".to_string(),
+            port: None,
+            action: RuleAction::Tunnel,
+            target_tunnel_id: target,
+        }
+    }
+
+    fn bundle_json(format: &str, version: u32) -> String {
+        serde_json::to_string(&ConfigBundle {
+            format: format.to_string(),
+            version,
+            exported_at: 0,
+            app_version: "test".to_string(),
+            tunnels: Vec::new(),
+            router_config: RouterConfig::default(),
+            router_rules: Vec::new(),
+            settings: Settings::default(),
+            known_hosts: Vec::new(),
+            secrets: None,
+            ui_mode: None,
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn parse_bundle_accepts_current_and_refuses_newer_or_foreign() {
+        assert!(parse_bundle(&bundle_json(FORMAT, VERSION)).is_ok());
+        let newer = parse_bundle(&bundle_json(FORMAT, VERSION + 1)).err().unwrap();
+        assert!(newer.contains("newer version"), "{newer}");
+        let foreign = parse_bundle(&bundle_json("something-else", VERSION)).err().unwrap();
+        assert!(foreign.contains("not a protunel config"), "{foreign}");
+        let junk = parse_bundle("{}").err().unwrap();
+        assert!(junk.contains("not a valid config file"), "{junk}");
+    }
+
+    #[test]
+    fn import_into_empty_db_keeps_ids_chain_and_gives_forwards_fresh_ids() {
+        let tunnels = chain();
+        let db = mem_db();
+        let (map, result) = import(&db, &tunnels, false);
+        assert_eq!((result.tunnels_added, result.tunnels_updated), (3, 0));
+        for t in &tunnels {
+            assert_eq!(map[&t.id], t.id, "no conflict: ids unchanged");
+        }
+        let bastion = by_name(&db, "bastion");
+        let app = by_name(&db, "app");
+        assert_eq!(app.jump_tunnel_id, Some(bastion.id));
+        assert_eq!(by_name(&db, "inner").jump_tunnel_id, Some(app.id));
+
+        assert_eq!(app.forwards.len(), 1);
+        let f = &app.forwards[0];
+        assert_ne!(f.id, tunnels[1].forwards[0].id, "forward id must be fresh");
+        assert_eq!(f.tunnel_id, app.id);
+        assert_eq!((f.remote_port, f.local_port), (5432, 15432));
+    }
+
+    #[test]
+    fn name_conflict_import_makes_a_copy_and_moves_children() {
+        let tunnels = chain();
+        let db = mem_db();
+        let mut existing = tunnel("bastion", None);
+        existing.forwards.clear();
+        db.insert(&existing).unwrap();
+
+        let (map, result) = import(&db, &tunnels, false);
+        assert_eq!((result.tunnels_added, result.tunnels_updated), (3, 0));
+        let copy_id = map[&tunnels[0].id];
+        assert_ne!(copy_id, tunnels[0].id);
+        assert_ne!(copy_id, existing.id);
+        assert_eq!(db.get(copy_id).unwrap().unwrap().name, "bastion (imported)");
+        assert_eq!(db.get(existing.id).unwrap().unwrap().name, "bastion");
+
+        let app = by_name(&db, "app");
+        assert_eq!(app.jump_tunnel_id, Some(copy_id), "child follows the copy");
+        assert_eq!(by_name(&db, "inner").jump_tunnel_id, Some(app.id));
+    }
+
+    #[test]
+    fn overwrite_name_conflicts_updates_in_place() {
+        let tunnels = chain();
+        let db = mem_db();
+        let mut existing = tunnel("bastion", None);
+        existing.host = "stale.example.com".into();
+        existing.forwards.clear();
+        db.insert(&existing).unwrap();
+
+        let (map, result) = import(&db, &tunnels, true);
+        assert_eq!((result.tunnels_added, result.tunnels_updated), (2, 1));
+        assert_eq!(map[&tunnels[0].id], existing.id, "mapped onto the existing row");
+        assert_eq!(db.list().unwrap().len(), 3);
+        assert_eq!(db.get(existing.id).unwrap().unwrap().host, "bastion.example.com");
+        assert_eq!(by_name(&db, "app").jump_tunnel_id, Some(existing.id));
+    }
+
+    #[test]
+    fn reimporting_updates_and_does_not_duplicate_forwards() {
+        let tunnels = chain();
+        let db = mem_db();
+        import(&db, &tunnels, false);
+        let (map, result) = import(&db, &tunnels, false);
+        assert_eq!((result.tunnels_added, result.tunnels_updated), (0, 3));
+        for t in &tunnels {
+            assert_eq!(map[&t.id], t.id);
+        }
+        assert_eq!(db.list().unwrap().len(), 3);
+        assert_eq!(by_name(&db, "app").forwards.len(), 1, "forwards replaced, not appended");
+        assert_eq!(by_name(&db, "app").jump_tunnel_id, Some(tunnels[0].id));
+    }
+
+    #[test]
+    fn remap_rules_follows_the_id_map_and_leaves_unknown_targets() {
+        let old = Uuid::new_v4();
+        let new = Uuid::new_v4();
+        let stranger = Uuid::new_v4();
+        let rules = vec![rule(Some(old)), rule(Some(stranger)), rule(None)];
+        let map = HashMap::from([(old, new)]);
+        let out = remap_rules(&rules, &map);
+        assert_eq!(out[0].target_tunnel_id, Some(new));
+        assert_eq!(out[1].target_tunnel_id, Some(stranger));
+        assert_eq!(out[2].target_tunnel_id, None);
+    }
+
+    struct TempFile(std::path::PathBuf);
+    impl Drop for TempFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+
+    fn key(k: &str) -> TrustedKey {
+        TrustedKey {
+            openssh_key: k.to_string(),
+            fingerprint: "SHA256:x".to_string(),
+            algorithm: "ssh-ed25519".to_string(),
+            trusted_at: 0,
+        }
+    }
+
+    #[test]
+    fn known_hosts_merge_keeps_the_existing_key() {
+        let path = std::env::temp_dir().join(format!("protunel-known-{}.json", Uuid::new_v4()));
+        let _guard = TempFile(path.clone());
+        let known = KnownHosts::load(path);
+        known.trust("a:22", "ssh-ed25519 LOCAL", "SHA256:local", "ssh-ed25519");
+
+        let incoming = vec![
+            ("a:22".to_string(), key("ssh-ed25519 OTHER")),
+            ("b:22".to_string(), key("ssh-ed25519 NEW")),
+        ];
+        assert_eq!(known.merge(incoming.clone()), 1, "only the unknown host is added");
+        assert_eq!(known.openssh_key("a:22").as_deref(), Some("ssh-ed25519 LOCAL"));
+        assert_eq!(known.openssh_key("b:22").as_deref(), Some("ssh-ed25519 NEW"));
+        assert_eq!(known.merge(incoming), 0);
     }
 }
