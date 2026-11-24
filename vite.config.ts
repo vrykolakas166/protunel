@@ -11,7 +11,7 @@ export default defineConfig(async () => ({
   // One page per Tauri window: the terminal window is its own entry so the
   // main window never loads xterm.js.
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: "index.html",
         terminal: "terminal.html",
