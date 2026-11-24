@@ -76,11 +76,26 @@ Windows and AppImage (`platform.rs` `self_update`); `.deb`/`.rpm` are not update
 **Flow**
 
 ```sh
-bun run bump <x.y.z>   # package.json, tauri.conf.json, Cargo.toml, Cargo.lock, packaging/arch/PKGBUILD
+bun run bump <x.y.z>   # CHANGELOG*.md Unreleased -> [x.y.z]; package.json, tauri.conf.json, Cargo.toml, Cargo.lock, PKGBUILD
 git commit -am "Bump version to <x.y.z>"
 git tag v<x.y.z>
 git push origin master v<x.y.z>
 ```
+
+**Release notes** are `CHANGELOG.md` (English) and `CHANGELOG.vi.md`
+(Vietnamese), Keep a Changelog layout. Every user-visible change adds a line
+under `## [Unreleased]` in **both** files, in the same commit, written for
+users (what they see or can now do, not the implementation; Vietnamese per the
+glossary below). Groups: `### Highlights` / `### Improvements` / `### Fixes`.
+A fix to something new in the same release is not a fix. `bun run bump`
+turns Unreleased into `## [x.y.z] - date` and refuses when it is empty;
+`bun scripts/changelog.ts pending` lists commits since the last tag to check
+against it. `release.yml` joins the version's two sections
+(`scripts/changelog.ts notes`: English, then `<!-- lang: vi -->`, then
+Vietnamese) into the release body and `latest.json` `notes`, which is
+`update.body` in `updates.rs`; `ReleaseNotes.tsx` shows the app language's
+part (`src/releaseNotes.ts`, English when there is none). Editing a
+published version's notes means re-uploading `latest.json`.
 
 **In-app updates** live in Rust (`updates.rs`), not the JS updater plugin, so they
 work while the window is hidden for days: a check 20 s after launch then every

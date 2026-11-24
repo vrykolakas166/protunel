@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import { notesFor } from "../releaseNotes";
 
 /** `**bold**` and `` `code` `` inside a line; everything else stays text. */
 function inline(text: string): ReactNode[] {
@@ -24,9 +26,12 @@ function inline(text: string): ReactNode[] {
 /**
  * Release notes are Markdown written for GitHub. Only the handful of forms
  * they use (headings, bullets, bold, code) are rendered — as React elements,
- * never as HTML, so a release body can't inject markup into the app.
+ * never as HTML, so a release body can't inject markup into the app. Notes
+ * in both languages show only the app language's part (`releaseNotes.ts`).
  */
 export function ReleaseNotes({ markdown }: { markdown: string }) {
+  const { i18n } = useTranslation();
+  markdown = notesFor(markdown, i18n.language);
   const blocks: ReactNode[] = [];
   let bullets: string[] = [];
   const flush = () => {

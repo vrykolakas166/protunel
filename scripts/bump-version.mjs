@@ -12,6 +12,14 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
   process.exit(1);
 }
 
+// Release notes first: an empty "## [Unreleased]" stops the bump before any
+// file changes (scripts/changelog.ts, CHANGELOG.md + CHANGELOG.vi.md).
+try {
+  execFileSync("bun", ["scripts/changelog.ts", "release", version], { cwd: root, stdio: "inherit" });
+} catch {
+  process.exit(1);
+}
+
 const pkgPath = join(root, "package.json");
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
 pkg.version = version;
@@ -50,7 +58,8 @@ execFileSync("cargo", ["update", "-p", "protunel", "--precise", version], {
 
 console.log(`\nBumped to v${version}. Next:`);
 console.log(`  (after the release is built: cd packaging/arch && updpkgsums)`);
-console.log(`  git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock packaging/arch/PKGBUILD`);
+console.log(`  (check CHANGELOG.md / CHANGELOG.vi.md: their [${version}] sections are the release notes)`);
+console.log(`  git add CHANGELOG.md CHANGELOG.vi.md package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock packaging/arch/PKGBUILD`);
 console.log(`  git commit -m "Bump version to ${version}"`);
 console.log(`  git tag v${version}`);
 console.log(`  git push origin master v${version}`);

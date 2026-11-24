@@ -46,6 +46,22 @@ jobs:
       - name: install frontend dependencies
         run: bun install
 
+      # Release notes: the tag's section of CHANGELOG.md + CHANGELOG.vi.md
+      # (scripts/changelog.ts). They become the release body and latest.json
+      # `notes`, which the in-app "What's new" shows in the app's language.
+      # A tag without a section fails here, before anything is built.
+      - name: release notes from the changelog
+        id: notes
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            bun scripts/changelog.ts notes "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
+          else
+            echo 'See the assets below to download and install this version.' > "$RUNNER_TEMP/notes.md"
+          fi
+          delimiter="NOTES_$(date +%s%N)"
+          { echo "body<<${delimiter}"; cat "$RUNNER_TEMP/notes.md"; echo "${delimiter}"; } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -53,6 +69,6 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'protunel ${{ github.ref_name }}'
-          releaseBody: 'See the assets below to download and install this version.'
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: true
           prerelease: false

@@ -13,7 +13,7 @@
   ],
   "groups": {
     "frontend": {
-      "paths": ["src/**", "tests/**", "package.json", "bun.lock", "tsconfig*.json", "vite.config.*"],
+      "paths": ["src/**", "tests/**", "package.json", "bun.lock", "tsconfig*.json", "vite.config.*", "scripts/changelog.ts", "CHANGELOG*.md"],
       "commands": [
         { "argv": ["bun", "x", "--no-install", "tsc", "--noEmit", "-p", "tsconfig.json"] },
         { "argv": ["bun", "test", "tests"] }
