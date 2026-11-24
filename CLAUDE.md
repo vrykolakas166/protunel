@@ -253,6 +253,12 @@ match hostname targets. Never use the local result as the connect target.
 
 ### Terminal (`src-tauri/src/ssh/terminal.rs`, `src/terminal/`)
 
+`TerminalApp.tsx` is the window's shell; its state lives in hooks beside it
+(`useFilePanels`, `useUnsavedGuard`, `useWorkspaces`, `usePaneWatch`,
+`useLayoutUndo`, `useHostPicking`, `useTerminalWindowEvents`, `useWindowKeys`)
+and its chrome in `TabBar`, `TerminalSidebar`, `TerminalFooter`,
+`FilePanelsLayer` and `TerminalDialogs`.
+
 Interactive shells in a second window (label `terminal`, page `terminal.html`,
 its own Vite entry and `capabilities/terminal.json`). Hosts *are* tunnels — a
 terminal-only host is a tunnel with `socks_enabled = false` — so they share the
@@ -288,7 +294,7 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   notification, never output. Layout: `layout.ts` `tileLayout`/`gridOf`
   (even grid shaped by the area's aspect, reading order, pane nodes reused —
   shells survive) and `equalizeLayout`; Ctrl+Shift+G tiles. Either offers
-  "Undo" for 5 s (`layoutUndo`; Ctrl+Shift+G again undoes a tile), dropped
+  "Undo" for 5 s (`useLayoutUndo`; Ctrl+Shift+G again undoes a tile), dropped
   as soon as the tab's root changes any other way. Sync scroll
   (`Tab.syncScroll`) mirrors deliberate scrolls only (wheel, Shift+PgUp/PgDn,
   scrollbar, read a frame later as distance from the bottom) through each
@@ -303,7 +309,8 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   (`schedule_terminal_teardown`, cancelled by a reopen via a generation
   counter) it is destroyed to free memory. `Destroyed` still closes all
   terminals.
-- Window shortcuts live in `src/terminal/shortcuts.ts` and xterm is told to
+- Window shortcuts live in `src/terminal/shortcuts.ts` (wired by
+  `useWindowKeys.ts`) and xterm is told to
   ignore exactly those keys. Keep them off plain Ctrl+letter: the shell owns
   those (Ctrl+K kill-line, Ctrl+B tmux prefix).
 - No key or click may reach the webview's own features. `strayKeyAction`
@@ -403,7 +410,11 @@ no dropping files on a shell — only on the panel, which names the target.
   names host + paths, counts (`files_count`) and asks for the name typed at
   ≥100 items. Cut = rename; a name clash is skipped, never overwritten
   (copy into the same folder makes "name (copy)").
-- Panels: one per shell (up to `MAX_FILE_PANELS`, the least recently used
+- `FilePanel.tsx` is the panel's shell; listing (`useFileListing`, with the
+  `loadSeq` stale-listing guard), scroll (`useListScroll`), drops and
+  drag-out (`usePanelDrops`), move/resize (`usePanelGeometry`) and list keys
+  (`panelKeys.ts`) live beside it in `src/terminal/files/`.
+- Panels: one per shell (up to `MAX_FILE_PANELS` in `useFilePanels.ts`, the least recently used
   gives way), each owned by the pane that opened it; Ctrl+Shift+O in a shell
   opens or focuses that shell's panel. `filesOpen` (opening order) is also the
   DOM order and never changes — moving a node blurs what has focus in it —
@@ -413,7 +424,7 @@ no dropping files on a shell — only on the panel, which names the target.
   silently: closing the pane or its tab, the LRU eviction at `MAX_FILE_PANELS`
   and the terminal window's close button first ask (Cancel / Discard / Save
   and close, naming user@host and file; a failed save keeps everything).
-  `FileView` reports dirty up through `FilePanel` `onUnsaved`; `TerminalApp`
+  `FileView` reports dirty up through `FilePanel` `onUnsaved`; `useUnsavedGuard`
   probes `FilePanelHandle.unsaved()` (`files/unsaved.ts`, pure) in
   `guardUnsaved`. The window close is deferred to the page only while
   `terminal_set_unsaved(true)` is set (Rust `TERMINAL_UNSAVED`): the Rust
@@ -671,7 +682,8 @@ the feature stops applying.
   on top as their own state. Search lives in `useTunnelSearch`, restart-to-update
   in `useRestartToUpdate`.
 - `SettingsPanel` is one page per subject (General, Tunnels, Terminal, Backup,
-  About) with a side list, drawn in a `bare` `Modal` (own frame and close
+  About; bodies in `src/components/settings/*Page.tsx`, shared `Group`/`Row`/
+  `Switch`/`NumberControl` in `settings/parts.tsx`) with a side list, drawn in a `bare` `Modal` (own frame and close
   button); settings are `Group`/`Row` cards with a `Switch` on the right. Put a
   new option on the page of the thing it changes.
   Backup embeds `ConfigFlow` (export/import) inline: the hub routes to
