@@ -25,14 +25,14 @@ bun run tauri build      # installers under src-tauri/target/release/bundle/
 bun run bump 0.3.3       # rewrites version in package.json, tauri.conf.json, Cargo.toml, Cargo.lock, packaging/arch/PKGBUILD
 ```
 
-Verification (no linter; tests cover the router's rule matcher, SFTP path helpers and a few pure
-frontend helpers in `tests/`):
+Verification (no linter; see "Testing" below for the test groups):
 
 ```sh
+bun run test:changed                                 # the groups your changes touch
 ./node_modules/.bin/tsc --noEmit -p tsconfig.json    # frontend typecheck
 cd src-tauri && cargo check                          # backend typecheck (much faster than a full build)
-cd src-tauri && cargo test --lib router              # rule matcher + PAC tests
-bun test tests                                       # host ranges, terminal key handling
+cd src-tauri && cargo test --lib                     # Rust unit tests
+bun test tests                                       # frontend unit tests
 ```
 
 Do not run `cargo clean -p protunel` — it evicts the whole dependency graph

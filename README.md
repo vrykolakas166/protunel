@@ -39,6 +39,7 @@ Get the latest build from the [Releases page](https://github.com/vrykolakas166/p
 - Jump tunnels: a tunnel connects through another tunnel's live session. Connecting the inner one dials the whole chain.
 - Auto-reconnect with backoff, keepalive dead-peer detection, and local ports held across outages.
 - Live per-tunnel stats, connect/disconnect all, search, clone and drag to reorder.
+- Host groups, shown as sections in the tunnel list and the terminal; import sessions, folders and saved passwords from WinSCP.
 
 ### Proxy router
 
