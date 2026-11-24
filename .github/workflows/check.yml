@@ -31,6 +31,7 @@ jobs:
       frontend: ${{ steps.select.outputs.frontend }}
       rust: ${{ steps.select.outputs.rust }}
       ssh-it: ${{ steps.select.outputs.ssh-it }}
+      ssh-it-filter: ${{ steps.select.outputs.ssh-it-filter }}
       windows: ${{ steps.select.outputs.windows }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -110,8 +111,37 @@ jobs:
       - name: install bun
         uses: oven-sh/setup-bun@v2
 
-      - name: SSH integration tests placeholder
-        run: bun scripts/test-changed.ts --group ssh-it
+      - name: install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev xvfb xauth
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: build frontend
+        run: bun run build
+
+      - name: SSH integration tests
+        env:
+          SSH_IT_FILTER: ${{ needs.changes.outputs.ssh-it-filter }}
+        run: bun scripts/test-changed.ts --group ssh-it --filter "$SSH_IT_FILTER"
+
+      - name: upload Compose logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ssh-it-compose-logs
+          path: ssh-it-compose.log
+          if-no-files-found: ignore
 
   windows:
     needs: changes

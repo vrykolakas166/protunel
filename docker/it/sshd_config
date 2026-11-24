@@ -1,0 +1,10 @@
+HostKey /etc/ssh/ssh_host_ed25519_key
+PasswordAuthentication yes
+KbdInteractiveAuthentication no
+PermitRootLogin no
+AllowTcpForwarding yes
+SetEnv PATH=/usr/local/bin:/usr/bin:/bin
+Subsystem sftp internal-sftp
+
+Match User bob
+    AuthenticationMethods publickey

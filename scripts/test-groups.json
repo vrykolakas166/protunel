@@ -35,16 +35,23 @@
         "src-tauri/src/commands/connection.rs",
         "src-tauri/src/commands/files.rs",
         "src-tauri/src/commands/terminal*.rs",
-        "src-tauri/tests/it/**"
+        "src-tauri/tests/it/**",
+        "src-tauri/src/it/**",
+        "docker/it/**"
       ],
       "filters": {
-        "it_copy": ["src-tauri/src/ssh/**/copy_across.rs"],
-        "it_sftp": ["src-tauri/src/ssh/sftp/**"],
+        "it_copy": ["src-tauri/src/ssh/**/copy_across.rs", "src-tauri/src/it/copy.rs"],
+        "it_sftp": ["src-tauri/src/ssh/sftp/**", "src-tauri/src/it/sftp.rs"],
         "it_router": ["src-tauri/src/router/**"],
         "it_tunnel": ["src-tauri/src/ssh/mod.rs", "src-tauri/src/tunnel.rs", "src-tauri/src/commands/connection.rs"]
       },
+      "defaultFilter": "it_",
       "commands": [
-        { "argv": ["bun", "-e", "console.log('no integration tests yet')"] }
+        { "argv": ["bash", "-c", "mkdir -p docker/it/generated-keys && { [ -f docker/it/generated-keys/id_ed25519 ] || ssh-keygen -q -t ed25519 -N '' -C protunel-it -f docker/it/generated-keys/id_ed25519; }"] },
+        { "argv": ["docker", "compose", "-f", "docker/it/compose.yaml", "up", "-d", "--build", "--wait"] },
+        { "cwd": "src-tauri", "env": { "PROTUNEL_IT": "1" }, "argv": ["xvfb-run", "-a", "cargo", "test", "--lib", "--locked", "FILTER", "--", "--ignored", "--test-threads=1"] },
+        { "always": true, "argv": ["bash", "-c", "docker compose -f docker/it/compose.yaml logs --no-color > ssh-it-compose.log 2>&1"] },
+        { "always": true, "argv": ["docker", "compose", "-f", "docker/it/compose.yaml", "down"] }
       ]
     },
     "windows": {

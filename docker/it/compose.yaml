@@ -1,0 +1,59 @@
+name: protunel-ssh-it
+
+x-sshd: &sshd
+  build: .
+  healthcheck:
+    test: ["CMD-SHELL", "ssh-keyscan -T 2 -t ed25519 127.0.0.1 >/dev/null 2>&1"]
+    interval: 2s
+    timeout: 4s
+    retries: 15
+
+services:
+  srv-a:
+    <<: *sshd
+    environment:
+      SERVE_HTTP: "1"
+    ports: ["127.0.0.1:2201:22"]
+    networks: [default, inner]
+    healthcheck:
+      test: ["CMD-SHELL", "ssh-keyscan -T 2 -t ed25519 127.0.0.1 >/dev/null 2>&1 && python3 -c 'from urllib.request import urlopen; urlopen(\"http://127.0.0.1:8080/fixture.txt\", timeout=2).close()'"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+  srv-b:
+    <<: *sshd
+    ports: ["127.0.0.1:2202:22"]
+  srv-norsync:
+    <<: *sshd
+    build:
+      context: .
+      args:
+        WITH_RSYNC: "0"
+    ports: ["127.0.0.1:2203:22"]
+  srv-inner:
+    <<: *sshd
+    hostname: srv-inner
+    networks: [inner]
+  hang:
+    build: .
+    entrypoint:
+      - python3
+      - -u
+      - -c
+      - |
+        import socket
+        with socket.create_server(("0.0.0.0", 22)) as listener:
+            peers = []
+            while True:
+                peer, _ = listener.accept()
+                peers.append(peer)
+    ports: ["127.0.0.1:2209:22"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1', 22), 2).close()"]
+      interval: 2s
+      timeout: 4s
+      retries: 15
+
+networks:
+  inner:
+    internal: true

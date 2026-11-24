@@ -51,6 +51,9 @@ rand = "0.9.5"
 zeroize = { version = "1.9.0", features = ["derive"] }
 russh-sftp = "4.0.0"
 
+[dev-dependencies]
+tauri = { version = "2.12", features = ["test"] }
+
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55.0"
 # Same versions Tauri's wry uses, so `with_webview` hands us these exact types.

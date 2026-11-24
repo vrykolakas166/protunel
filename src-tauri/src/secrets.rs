@@ -3,6 +3,11 @@ use uuid::Uuid;
 
 const SERVICE: &str = "com.admin.protunel";
 
+#[cfg(test)]
+pub(crate) static TEST_SECRETS: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<Uuid, Option<String>>>,
+> = std::sync::LazyLock::new(Default::default);
+
 /// Store a tunnel's secret (password or key passphrase) in the OS credential vault.
 /// Never persisted in the SQLite database.
 pub fn set_secret(tunnel_id: Uuid, secret: &str) -> keyring::Result<()> {
@@ -11,6 +16,10 @@ pub fn set_secret(tunnel_id: Uuid, secret: &str) -> keyring::Result<()> {
 }
 
 pub fn get_secret(tunnel_id: Uuid) -> keyring::Result<Option<String>> {
+    #[cfg(test)]
+    if let Some(secret) = TEST_SECRETS.lock().unwrap().get(&tunnel_id).cloned() {
+        return Ok(secret);
+    }
     let entry = Entry::new(SERVICE, &tunnel_id.to_string())?;
     match entry.get_password() {
         Ok(pw) => Ok(Some(pw)),

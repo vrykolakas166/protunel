@@ -2,15 +2,18 @@ import config from "./test-groups.json";
 
 export type GroupName = keyof typeof config.groups;
 
-interface Command {
+export interface Command {
   argv: string[];
   cwd?: string;
+  env?: Record<string, string>;
+  always?: boolean;
 }
 
 interface TestGroup {
   paths: string[];
   commands: Command[];
   filters?: Record<string, string[]>;
+  defaultFilter?: string;
 }
 
 export interface SelectedGroup {
@@ -21,6 +24,29 @@ export interface SelectedGroup {
 
 const groups: Record<GroupName, TestGroup> = config.groups;
 export const groupNames = Object.keys(groups) as GroupName[];
+
+export function commandFilter({ name, filters }: SelectedGroup): string | undefined {
+  return filters.length === 1 ? filters[0] : groups[name].defaultFilter;
+}
+
+export function acceptsFilter(group: GroupName, filter: string): boolean {
+  return groups[group].defaultFilter === filter || Object.hasOwn(groups[group].filters ?? {}, filter);
+}
+
+export function runCommands(commands: Command[], execute: (command: Command) => number): number {
+  let status = 0;
+  for (const command of commands) {
+    if (status !== 0 && !command.always) continue;
+    try {
+      const result = execute(command);
+      status ||= result;
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      status ||= 1;
+    }
+  }
+  return status;
+}
 
 function matches(path: string, patterns: string[]): boolean {
   return patterns.some((pattern) => new Bun.Glob(pattern).match(path));

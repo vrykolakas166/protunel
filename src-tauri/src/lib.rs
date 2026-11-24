@@ -17,6 +17,9 @@ mod updates;
 mod window_anim;
 mod winscp;
 
+#[cfg(test)]
+mod it;
+
 use tauri::{Emitter, Manager, RunEvent};
 pub use tunnel::AppState;
 

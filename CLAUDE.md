@@ -48,9 +48,18 @@ to preview the commands, `--base <ref>` to compare against a specific commit,
 or `--group <name>` to run one group. `bun run test:all` selects every group.
 
 `scripts/test-groups.json` defines the `frontend`, `rust`, `ssh-it`,
-and `windows` groups. `ssh-it` is a
-placeholder for Docker-backed SSH tests, and `windows` runs the Rust library
-suite on a Windows runner in CI.
+and `windows` groups. `windows` runs the Rust library suite on a Windows
+runner in CI.
+
+`ssh-it` runs ignored integration tests against Docker-backed OpenSSH fixtures
+on Linux. With the frontend built, run `bun scripts/test-changed.ts --group ssh-it`
+to start Compose, run the tests under Xvfb, and tear down the fixtures. To run
+the Rust command directly, start the fixtures from the repo root with
+`docker compose -f docker/it/compose.yaml up -d --build --wait`, then from
+`src-tauri` run `PROTUNEL_IT=1 cargo test --lib it_ -- --ignored --test-threads=1`
+in a graphical session, or prefix `cargo` with `xvfb-run -a` on a headless machine.
+Tear down the fixtures from the repo root with
+`docker compose -f docker/it/compose.yaml down`.
 
 CI checks changed groups on branch pushes and pull requests. Dependency and
 workflow changes select every group. CI also runs the full suite nightly at

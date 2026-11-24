@@ -1,7 +1,7 @@
 import { appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { groupNames, selectGroups, type GroupName } from "./testGroups";
+import { acceptsFilter, commandFilter, groupNames, runCommands, selectGroups, type GroupName } from "./testGroups";
 
 const root = resolve(import.meta.dir, "..");
 
@@ -34,6 +34,7 @@ function run(): number {
       base: { type: "string" },
       all: { type: "boolean" },
       group: { type: "string" },
+      filter: { type: "string" },
       "dry-run": { type: "boolean" },
       "emit-github-outputs": { type: "boolean" },
     },
@@ -46,6 +47,9 @@ function run(): number {
   if (group && (values.base !== undefined || values.all)) {
     throw new Error("--group selects a single group and cannot be combined with --base or --all.");
   }
+  if (values.filter !== undefined && (!group || !acceptsFilter(group, values.filter))) {
+    throw new Error("--filter requires --group and a filter defined for that group.");
+  }
 
   const all = values.all || /^0{40}$/.test(values.base ?? "");
   const selection = selectGroups(all || group ? [] : changedPaths(values.base), { all, group });
@@ -57,6 +61,7 @@ function run(): number {
     appendFileSync(output, [
       `full=${selection.full}`,
       ...groupNames.map((name) => `${name}=${selected.has(name)}`),
+      ...selection.groups.map((group) => `${group.name}-filter=${commandFilter(group) ?? ""}`),
       "",
     ].join("\n"));
     return 0;
@@ -64,21 +69,29 @@ function run(): number {
 
   console.log(`Selected groups: ${selection.groups.map(({ name }) => name).join(", ") || "none"}`);
   const seen = new Set<string>();
-  for (const { name, commands, filters } of selection.groups) {
-    if (filters.length) console.log(`${name} filters: ${filters.join(", ")}`);
-    for (const { argv, cwd = "." } of commands) {
+  for (const group of selection.groups) {
+    const { name, commands } = group;
+    const filter = values.filter ?? commandFilter(group);
+    const status = runCommands(commands, ({ argv: template, cwd = ".", env, always }) => {
+      const argv = template.map((arg) => arg === "FILTER" && filter ? filter : arg);
       // Group overlap can select the same build or test command in the same directory.
-      const key = JSON.stringify([cwd, argv]);
-      if (seen.has(key)) continue;
+      const key = JSON.stringify([cwd, argv, env]);
+      if (!always && seen.has(key)) return 0;
       seen.add(key);
 
       const command = argv.map((arg) => /\s/.test(arg) ? JSON.stringify(arg) : arg).join(" ");
       console.log(`[${name}] ${cwd === "." ? command : `(cd ${cwd}) ${command}`}`);
       if (!values["dry-run"]) {
-        const result = Bun.spawnSync(argv, { cwd: resolve(root, cwd), stdio: ["inherit", "inherit", "inherit"] });
+        const result = Bun.spawnSync(argv, {
+          cwd: resolve(root, cwd),
+          env: { ...process.env, ...env },
+          stdio: ["inherit", "inherit", "inherit"],
+        });
         if (!result.success) return result.exitCode || 1;
       }
-    }
+      return 0;
+    });
+    if (status !== 0) return status;
   }
   return 0;
 }

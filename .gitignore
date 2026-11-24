@@ -28,3 +28,7 @@ packaging/arch/*
 !packaging/arch/PKGBUILD
 !packaging/arch/install.sh
 !packaging/arch/protunel-repo.asc
+
+# ssh-it fixture keys, generated per run
+docker/it/generated-keys/
+docker/it/keys/
