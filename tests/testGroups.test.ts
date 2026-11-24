@@ -87,16 +87,20 @@ describe("test group selection", () => {
   });
 
   test.each([
-    ["up", 19, ["up", "logs", "down"]],
-    ["test", 19, ["up", "test", "logs", "down"]],
-    ["logs", 19, ["up", "test", "logs", "down"]],
-    ["down", 19, ["up", "test", "logs", "down"]],
-    ["", 0, ["up", "test", "logs", "down"]],
+    ["keys", 19, ["keys", "logs", "down"]],
+    ["up", 19, ["keys", "up", "logs", "down"]],
+    ["test", 19, ["keys", "up", "test", "logs", "down"]],
+    ["logs", 19, ["keys", "up", "test", "logs", "down"]],
+    ["down", 19, ["keys", "up", "test", "logs", "down"]],
+    ["", 0, ["keys", "up", "test", "logs", "down"]],
   ] as const)("runs Compose teardown after %s", (failure, status, expected) => {
     const calls: string[] = [];
     const commands = selectGroups([], { group: "ssh-it" }).groups[0].commands;
     expect(runCommands(commands, ({ argv }) => {
-      const step = argv[0] === "xvfb-run" ? "test" : argv[0] === "bash" ? "logs" : argv[4];
+      const step =
+        argv[0] === "xvfb-run" ? "test"
+        : argv[0] === "bash" ? (argv[2].includes("ssh-keygen") ? "keys" : "logs")
+        : argv[4];
       calls.push(step);
       return step === failure ? 19 : 0;
     })).toBe(status);

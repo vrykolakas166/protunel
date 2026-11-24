@@ -35,7 +35,7 @@ const REPO: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
 
 #[cfg(target_os = "linux")]
 fn app() -> &'static AppHandle {
-    static APP: OnceLock<AppHandle> = OnceLock::new();
+    static APP: OnceLock<Option<AppHandle>> = OnceLock::new();
     APP.get_or_init(|| {
         // Menu operations dispatch to the Wry thread even with no tray installed.
         let (ready, receive) = mpsc::sync_channel(1);
@@ -54,17 +54,22 @@ fn app() -> &'static AppHandle {
                 .manage(Files::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
                 .expect("build the Wry test app (use xvfb-run on Linux)");
-            let mut ready = Some(ready);
-            app.run_return(move |app, event| match event {
-                tauri::RunEvent::Ready => ready.take().unwrap().send(app.clone()).unwrap(),
-                tauri::RunEvent::ExitRequested { api, .. } => api.prevent_exit(),
-                _ => {}
+            // The handle is usable as soon as the app is built; the event
+            // loop below only has to keep running for menu/tray calls.
+            // (RunEvent::Ready never arrives with the mock context.)
+            ready.send(app.handle().clone()).unwrap();
+            app.run_return(|_, event| {
+                if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                    api.prevent_exit();
+                }
             });
         });
-        receive
-            .recv_timeout(SHORT)
-            .expect("Wry test app did not start")
+        // GTK can be initialised only once per process: a failed start must
+        // fail every test the same way instead of retrying on a new thread.
+        receive.recv_timeout(Duration::from_secs(30)).ok()
     })
+    .as_ref()
+    .expect("Wry test app did not start")
 }
 
 #[cfg(target_os = "linux")]
