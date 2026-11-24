@@ -589,7 +589,10 @@ pub async fn apply_import(
     }
 
     // After the settings section, which would otherwise put the exporter's mode back.
-    if let (true, Some(mode)) = (sections.ui_mode, &bundle.ui_mode) {
+    if let (true, Some(mode)) = (
+        sections.ui_mode,
+        &crate::settings::normalize_ui_mode(bundle.ui_mode.clone()),
+    ) {
         let mut settings = state.settings.get();
         settings.ui_mode = Some(mode.clone());
         state.settings.update(settings.clone())?;

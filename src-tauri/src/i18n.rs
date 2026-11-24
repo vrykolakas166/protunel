@@ -22,6 +22,8 @@ pub enum Text {
     UpdateReadyBody,
     /// `{reason}`
     ConnectionLost,
+    /// A plain session close: no reason to quote.
+    ConnectionLostPlain,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -65,6 +67,8 @@ fn lookup(lang: Lang, text: Text) -> &'static str {
         (Lang::Vi, UpdateReadyBody) => "Khởi động lại protunel để hoàn tất cập nhật.",
         (Lang::En, ConnectionLost) => "Connection lost ({reason}) — reconnecting…",
         (Lang::Vi, ConnectionLost) => "Mất kết nối ({reason}) — đang kết nối lại…",
+        (Lang::En, ConnectionLostPlain) => "Connection lost — reconnecting…",
+        (Lang::Vi, ConnectionLostPlain) => "Mất kết nối — đang kết nối lại…",
     }
 }
 
@@ -91,6 +95,15 @@ mod tests {
     fn reason_placeholder_survives_translation() {
         for lang in [Lang::En, Lang::Vi] {
             assert!(lookup(lang, Text::ConnectionLost).contains("{reason}"), "{lang:?}");
+        }
+    }
+
+    #[test]
+    fn plain_connection_lost_has_no_placeholder() {
+        for lang in [Lang::En, Lang::Vi] {
+            let s = lookup(lang, Text::ConnectionLostPlain);
+            assert!(!s.contains('{'), "{lang:?}");
+            assert!(!s.contains("connection lost") && !s.contains("("), "{lang:?}");
         }
     }
 

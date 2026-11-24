@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{hash_map::Entry, HashMap};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::{Arc, Mutex};
@@ -134,9 +134,17 @@ impl AppState {
             .map(|h| (h.bytes_up.clone(), h.bytes_down.clone()))
     }
 
-    /// Registers a running tunnel's cancellation handle and byte counters.
-    pub fn start(&self, id: Uuid, handle: TunnelHandle) {
-        self.running.lock().unwrap().insert(id, handle);
+    /// Registers a tunnel handle if no run is already registered for `id`.
+    /// The caller may spawn the supervisor only when this returns `true`.
+    pub fn start(&self, id: Uuid, handle: TunnelHandle) -> bool {
+        let mut running = self.running.lock().unwrap();
+        match running.entry(id) {
+            Entry::Vacant(entry) => {
+                entry.insert(handle);
+                true
+            }
+            Entry::Occupied(_) => false,
+        }
     }
 
     /// Requests the tunnel's task to stop by cancelling its token.
@@ -168,5 +176,43 @@ impl AppState {
         if running.get(&id).is_some_and(|handle| handle.generation == generation) {
             running.remove(&id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn handle(generation: u64) -> TunnelHandle {
+        TunnelHandle {
+            cancel: CancellationToken::new(),
+            bytes_up: Arc::new(AtomicU64::new(0)),
+            bytes_down: Arc::new(AtomicU64::new(0)),
+            forward_tx: mpsc::unbounded_channel().0,
+            session: Arc::new(Mutex::new(None)),
+            finished: watch::channel(false).1,
+            generation,
+        }
+    }
+
+    #[test]
+    fn start_preserves_registered_handle_until_stopped() {
+        let id = Uuid::new_v4();
+        let data_dir = std::env::temp_dir().join(id.to_string());
+        let db = Db::open(std::path::Path::new(":memory:")).unwrap();
+        let state = AppState::new(&data_dir, db);
+        let first = handle(1);
+        let cancel = first.cancel.clone();
+
+        assert!(state.start(id, first));
+        assert!(!state.start(id, handle(2)));
+        state.stop(id);
+        assert!(cancel.is_cancelled());
+
+        assert!(state.start(id, handle(3)));
+        state.clear(id, 1);
+        assert!(state.is_connected(id));
+        state.clear(id, 3);
+        assert!(!state.is_connected(id));
     }
 }

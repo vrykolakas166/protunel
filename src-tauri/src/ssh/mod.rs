@@ -34,6 +34,10 @@ use crate::settings::Settings;
 use crate::tunnel::ForwardCommand;
 use crate::AppState;
 
+/// Reason of a plain session close (app-authored, not a server message);
+/// the reconnect toast shows it in the UI language instead of quoting it.
+const SESSION_CLOSED: &str = "connection lost";
+
 /// How often the supervisor asks the SSH session whether it is still alive. The
 /// session itself dies from keepalive timeouts; this is just how fast we notice.
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);
@@ -435,7 +439,11 @@ pub async fn run_tunnel(
                 // Toast the drop itself once, not every backoff tick — losing a
                 // tunnel silently is exactly the thing worth knowing about.
                 if attempt == 1 {
-                    let body = crate::i18n::t_reason(&app, crate::i18n::Text::ConnectionLost, &reason);
+                    let body = if reason == SESSION_CLOSED {
+                        crate::i18n::t(&app, crate::i18n::Text::ConnectionLostPlain)
+                    } else {
+                        crate::i18n::t_reason(&app, crate::i18n::Text::ConnectionLost, &reason)
+                    };
                     notify(&app, &tunnel.name, &body);
                 }
                 last_error = Some(reason);
@@ -517,7 +525,7 @@ async fn run_session(
                 // russh tears the session down once keepalives go unanswered, so a
                 // closed handle is how a dead VPN or a rebooted server shows up.
                 if session.is_closed() {
-                    break SessionEnd::Lost("connection lost".to_string());
+                    break SessionEnd::Lost(SESSION_CLOSED.to_string());
                 }
             }
             cmd = forward_rx.recv() => {

@@ -1,0 +1,53 @@
+name: Check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: install bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: frontend typecheck
+        run: ./node_modules/.bin/tsc --noEmit -p tsconfig.json
+
+      - name: frontend tests
+        run: bun test tests
+
+      # tauri's build script embeds frontendDist (../dist), which must exist.
+      - name: build frontend
+        run: bun run build
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --locked
+
+      - name: cargo test
+        working-directory: src-tauri
+        run: cargo test --lib --locked

@@ -75,7 +75,18 @@ pub async fn read_bytes(sftp: &SftpSession, path: &str) -> Result<Vec<u8>, Strin
     if attrs.size.unwrap_or(0) > MAX_IMAGE_BYTES {
         return Err("too-large".to_string());
     }
-    sftp.read(path).await.map_err(err)
+    let mut file = sftp.open(path).await.map_err(err)?;
+    let mut buf = Vec::new();
+    (&mut file)
+        .take(MAX_IMAGE_BYTES + 1)
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = file.close().await;
+    if buf.len() as u64 > MAX_IMAGE_BYTES {
+        return Err("too-large".to_string());
+    }
+    Ok(buf)
 }
 
 #[derive(Serialize)]

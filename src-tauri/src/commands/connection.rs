@@ -16,10 +16,9 @@ use crate::tunnel::TunnelHandle;
 use crate::AppState;
 
 /// Connects `id`, first auto-connecting any unconnected jump-tunnel chain it
-/// depends on (outermost jump first). `connect_single` returns as soon as the
-/// tunnel's task is *spawned*, not once its SSH session is authenticated, so each
-/// hop but the last is awaited via `wait_for_session` before the next hop (which
-/// needs a live session to open its jump channel through) is attempted.
+/// depends on (outermost jump first). `connect_single` starts or reuses a
+/// supervisor. Each hop before the last still needs `wait_for_session` to
+/// confirm authentication before the next hop can open its jump channel.
 pub async fn connect_one(app: &AppHandle, state: &AppState, id: Uuid) -> Result<(), String> {
     let mut chain = vec![id];
     let mut seen: HashSet<Uuid> = HashSet::new();
@@ -98,18 +97,18 @@ async fn connect_single(app: &AppHandle, state: &AppState, id: Uuid) -> Result<(
     let session_slot = Arc::new(Mutex::new(None));
     let (finished_tx, finished_rx) = tokio::sync::watch::channel(false);
     let generation = TUNNEL_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    state.start(
-        id,
-        TunnelHandle {
-            cancel: token.clone(),
-            bytes_up: bytes_up.clone(),
-            bytes_down: bytes_down.clone(),
-            forward_tx,
-            session: session_slot.clone(),
-            finished: finished_rx,
-            generation,
-        },
-    );
+    let handle = TunnelHandle {
+        cancel: token.clone(),
+        bytes_up: bytes_up.clone(),
+        bytes_down: bytes_down.clone(),
+        forward_tx,
+        session: session_slot.clone(),
+        finished: finished_rx,
+        generation,
+    };
+    if !state.start(id, handle) {
+        return Ok(());
+    }
 
     let known_hosts = state.known_hosts.clone();
     let pending = state.pending_host_key.clone();

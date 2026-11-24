@@ -160,9 +160,12 @@ names (`key_id` param → `{ keyId }` in the JS call).
   shell was opened with and flag it when the saved host differs.
 
 `AppState` (`tunnel.rs`) holds the `running` map of `TunnelHandle`s (cancel token, byte
-counters, forward sender, session slot) plus a `statuses` map. Status events are
-fire-and-forget, so `statuses` is what `list_tunnel_statuses` replays to seed a
-reloaded webview (`useTunnelEvents` merges the snapshot without clobbering live events).
+counters, forward sender, session slot) plus a `statuses` map. `AppState::start`
+atomically registers a handle only if the tunnel has no entry. Across all
+connection entry points, only the caller that registers the handle spawns the
+supervisor. Status events are fire-and-forget, so `list_tunnel_statuses` replays
+the `statuses` map to seed a reloaded webview (`useTunnelEvents` merges the
+snapshot without clobbering live events).
 
 **Jump tunnels**: a tunnel with `jump_tunnel_id` connects via a `direct-tcpip` channel
 on the parent's live session. `connect_one` walks the chain, connects outermost first,
@@ -184,10 +187,11 @@ connection instead of per application.
 - `listener.rs` — accept loop and dispatch. `dispatch` peeks the first byte:
   `G` goes to `serve_pac` (only an exact `GET /protunel.pac` is answered, so an
   app that mistook the port for an HTTP proxy is still refused), anything else
-  is SOCKS5 as before. On-demand dials lock the target and its jump chain so
-  concurrent `connect_one` calls cannot start duplicate tunnel tasks. A request
-  releases its locks before waiting for a busy tunnel. Disjoint chains dial in
-  parallel, and jump locks are released once the target starts.
+  is SOCKS5 as before. On-demand dials lock the target and its jump chain to
+  coordinate router dials. `AppState::start` prevents duplicate tunnel
+  supervisors across all connection entry points. A request releases its locks
+  before waiting for a busy tunnel. Disjoint chains dial in parallel, and jump
+  locks are released once the target starts.
 - `pac.rs` — loopback HTTP endpoint serving the PAC script. Required, not a
   convenience: WinINET's `ProxyServer = socks=host:port` means **SOCKS4**, which
   the SOCKS5 listener refuses, so the fixed-proxy setting cannot reach the router.

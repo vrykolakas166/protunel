@@ -60,7 +60,7 @@ pub struct Settings {
     /// people who only browse through tunnels an administrator set up) or "full".
     /// `None` until the user picks: the first launch, including the first
     /// launch after updating from a version without modes, asks.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_ui_mode")]
     pub ui_mode: Option<String>,
     /// Terminal suggestions: remember the commands typed per host (locally,
     /// never exported) to offer the usual opening sequence and fixes after
@@ -365,5 +365,59 @@ mod tests {
         let loaded: Option<RouterConfig> = load_json(&dir.join("router.json"));
         assert!(loaded.is_none());
         assert!(!dir.join("router.json.corrupt").exists());
+    }
+}
+
+/// Only "simple" and "full" are modes; anything else (a hand-edited file, a
+/// newer version's value) reads as "not chosen" so the chooser asks again.
+pub fn normalize_ui_mode(mode: Option<String>) -> Option<String> {
+    mode.filter(|m| m == "simple" || m == "full")
+}
+
+fn deserialize_ui_mode<'de, D>(d: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+    // Tolerate any JSON type, not just strings.
+    let v = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(match v {
+        Some(serde_json::Value::String(s)) => normalize_ui_mode(Some(s)),
+        _ => None,
+    })
+}
+
+#[cfg(test)]
+mod ui_mode_tests {
+    use super::*;
+
+    fn parse(json: &str) -> Settings {
+        let mut v = serde_json::to_value(Settings::default()).unwrap();
+        let patch: serde_json::Value = serde_json::from_str(json).unwrap();
+        match patch.get("uiMode") {
+            Some(m) => v["uiMode"] = m.clone(),
+            None => {
+                v.as_object_mut().unwrap().remove("uiMode");
+            }
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn ui_mode_normalizes_unknown_values() {
+        assert_eq!(parse(r#"{"uiMode":"simple"}"#).ui_mode.as_deref(), Some("simple"));
+        assert_eq!(parse(r#"{"uiMode":"full"}"#).ui_mode.as_deref(), Some("full"));
+        assert_eq!(parse(r#"{"uiMode":"expert"}"#).ui_mode, None);
+        assert_eq!(parse(r#"{"uiMode":""}"#).ui_mode, None);
+        assert_eq!(parse(r#"{"uiMode":5}"#).ui_mode, None);
+        assert_eq!(parse(r#"{"uiMode":null}"#).ui_mode, None);
+        assert_eq!(parse("{}").ui_mode, None);
+    }
+
+    #[test]
+    fn normalize_helper() {
+        assert_eq!(normalize_ui_mode(Some("Simple".into())), None);
+        assert_eq!(normalize_ui_mode(Some("full".into())).as_deref(), Some("full"));
+        assert_eq!(normalize_ui_mode(None), None);
     }
 }
