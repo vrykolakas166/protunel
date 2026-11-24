@@ -18,7 +18,7 @@ jobs:
         platform: [windows-latest, ubuntu-22.04]
     runs-on: ${{ matrix.platform }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
 
       - name: install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
