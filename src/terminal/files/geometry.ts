@@ -156,3 +156,49 @@ export function maximizedBox(bounds: Box): Box {
 export function paneBox(area: Box, rect: { x: number; y: number; w: number; h: number }): Box {
   return { x: area.x + rect.x * area.w, y: area.y + rect.y * area.h, w: rect.w * area.w, h: rect.h * area.h };
 }
+
+/** A file panel's remembered place and size. */
+export interface FilesGeometry {
+  placement: Placement;
+  size: Size;
+  maximized?: boolean;
+}
+
+/**
+ * A new panel's geometry: the last size used, snapped to its own shell's
+ * corner (the last snapped corner), never another panel's free spot,
+ * which would stack it exactly on top of that one.
+ */
+export function firstGeometry(last: FilesGeometry): FilesGeometry {
+  return {
+    placement: last.placement.kind === "snap" ? last.placement : { kind: "snap", corner: "br" },
+    size: last.size,
+  };
+}
+
+/** The stored geometry (JSON text), or null when missing or unusable. */
+export function parseFilesGeometry(raw: string | null): FilesGeometry | null {
+  try {
+    const geo = raw ? (JSON.parse(raw) as FilesGeometry) : null;
+    // 760x520 was the first default, found too big: take the new one.
+    if (geo?.placement?.kind && geo.size?.w > 0 && geo.size?.h > 0) {
+      return geo.size.w === 760 && geo.size.h === 520 ? { ...geo, size: DEFAULT_SIZE } : geo;
+    }
+  } catch {
+    // Unreadable: the default.
+  }
+  return null;
+}
+
+/** Position of a resize grip: G thick, straddling the panel's border; corner grips C square. */
+export function gripBox(h: Handle, box: Box, G = 8, C = 16): Record<string, number> {
+  const { x, y, w, h: ht } = box;
+  if (h === "n" || h === "s") return { left: x + C / 2, width: w - C, height: G, top: (h === "n" ? y : y + ht) - G / 2 };
+  if (h === "e" || h === "w") return { top: y + C / 2, height: ht - C, width: G, left: (h === "w" ? x : x + w) - G / 2 };
+  return {
+    width: C,
+    height: C,
+    left: (h.includes("w") ? x : x + w) - C / 2,
+    top: (h.includes("n") ? y : y + ht) - C / 2,
+  };
+}

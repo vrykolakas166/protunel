@@ -4,6 +4,7 @@
 
 import {
   MAX_PANES,
+  computeLayout,
   findPane,
   insertBeside,
   newPane,
@@ -156,4 +157,24 @@ export function detach(tabs: Tab[], tab: Tab, paneId: string): Tab[] {
         }
       : t,
   );
+}
+
+/** Removes panes whose host no longer exists; drops tabs left empty. The same array when nothing changed. */
+export function pruneTabs(tabs: Tab[], byId: Record<string, unknown>): Tab[] {
+  let next = tabs;
+  for (const tab of tabs) {
+    for (const { id, tunnelId } of computeLayout(tab.root).panes) {
+      if (byId[tunnelId]) continue;
+      const current = next.find((x) => x.key === tab.key);
+      if (current) next = detach(next, current, id);
+    }
+  }
+  return next;
+}
+
+/** Panes of the tab a keystroke in `paneId` should reach, or null for just that pane (no broadcast, zoomed, or left out). */
+export function broadcastPanes(tab: Tab | undefined, paneId: string): string[] | null {
+  // Paused while zoomed: the hidden panes would take keystrokes unseen.
+  if (!tab?.broadcast || tab.zoomed || tab.excluded.includes(paneId)) return null;
+  return paneIds(tab.root).filter((id) => !tab.excluded.includes(id));
 }

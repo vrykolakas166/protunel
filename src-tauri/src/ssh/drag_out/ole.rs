@@ -1,16 +1,13 @@
-//! Expose remote files as copy-only OLE virtual files.
-
-use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::{offset_of, size_of, ManuallyDrop, MaybeUninit};
 use std::ptr;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use russh_sftp::{client::SftpSession, protocol::FileAttributes};
-use tauri::{AppHandle, Manager, WebviewWindow};
+use russh_sftp::client::SftpSession;
+use tauri::AppHandle;
 use tokio::io::AsyncReadExt;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 use windows::core::{
@@ -18,366 +15,44 @@ use windows::core::{
 };
 use windows::Win32::{
     Foundation::{
-        GlobalFree, DATA_S_SAMEFORMATETC, DRAGDROP_S_CANCEL, DRAGDROP_S_DROP,
-        DRAGDROP_S_USEDEFAULTCURSORS, DV_E_CLIPFORMAT, DV_E_DVASPECT, DV_E_DVTARGETDEVICE,
-        DV_E_LINDEX, DV_E_TYMED, ERROR_CANCELLED, E_ABORT, E_NOTIMPL, E_OUTOFMEMORY, E_POINTER,
-        FILETIME, OLE_E_ADVISENOTSUPPORTED, STG_E_ACCESSDENIED, STG_E_READFAULT, S_FALSE, S_OK,
+        GlobalFree, DATA_S_SAMEFORMATETC, DRAGDROP_S_CANCEL, DV_E_CLIPFORMAT, DV_E_DVASPECT,
+        DV_E_DVTARGETDEVICE, DV_E_LINDEX, DV_E_TYMED, ERROR_CANCELLED, E_ABORT, E_NOTIMPL,
+        E_OUTOFMEMORY, E_POINTER, OLE_E_ADVISENOTSUPPORTED, STG_E_ACCESSDENIED,
+        STG_E_READFAULT, S_FALSE, S_OK,
     },
-    Storage::FileSystem::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL},
     System::{
         Com::{
-            CoInitializeEx, CoTaskMemAlloc, CoUninitialize, IAdviseSink, IBindCtx, IDataObject,
-            IDataObject_Impl, IEnumFORMATETC, IEnumSTATDATA, ISequentialStream_Impl, IStream,
-            IStream_Impl, COINIT_MULTITHREADED, DATADIR_GET, DVASPECT_CONTENT, FORMATETC, LOCKTYPE,
-            STATFLAG, STATFLAG_DEFAULT, STATSTG, STGC, STGMEDIUM, STGMEDIUM_0, STGM_READ,
-            STGTY_STREAM, STREAM_SEEK, STREAM_SEEK_CUR, TYMED_HGLOBAL, TYMED_ISTREAM,
+            CoTaskMemAlloc, IAdviseSink, IBindCtx, IDataObject, IDataObject_Impl, IEnumFORMATETC,
+            IEnumSTATDATA, ISequentialStream_Impl, IStream, IStream_Impl, DATADIR_GET,
+            DVASPECT_CONTENT, FORMATETC, LOCKTYPE, STATFLAG, STATFLAG_DEFAULT, STATSTG, STGC,
+            STGMEDIUM, STGMEDIUM_0, STGM_READ, STGTY_STREAM, STREAM_SEEK, STREAM_SEEK_CUR,
+            TYMED_HGLOBAL, TYMED_ISTREAM,
         },
         DataExchange::RegisterClipboardFormatW,
         Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE},
-        Ole::{
-            DoDragDrop, IDropSource, IDropSource_Impl, DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_NONE,
-        },
-        SystemServices::{MK_LBUTTON, MODIFIERKEYS_FLAGS},
+        Ole::{DROPEFFECT, DROPEFFECT_COPY, DROPEFFECT_NONE},
     },
-    UI::{
-        Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON},
-        Shell::{
-            IDataObjectAsyncCapability, IDataObjectAsyncCapability_Impl, SHCreateStdEnumFmtEtc,
-            CFSTR_FILECONTENTS, CFSTR_FILEDESCRIPTORW, CFSTR_PREFERREDDROPEFFECT, FD_ATTRIBUTES,
-            FD_FILESIZE, FD_PROGRESSUI, FD_UNICODE, FD_WRITESTIME, FILEDESCRIPTORW,
-            FILEGROUPDESCRIPTORW,
-        },
+    UI::Shell::{
+        IDataObjectAsyncCapability, IDataObjectAsyncCapability_Impl, SHCreateStdEnumFmtEtc,
+        CFSTR_FILECONTENTS, CFSTR_FILEDESCRIPTORW, CFSTR_PREFERREDDROPEFFECT, FILEDESCRIPTORW,
+        FILEGROUPDESCRIPTORW,
     },
 };
 
-use super::sftp::{self, Direction, Transfer, TransferState, CHUNK, PROGRESS_EVERY};
+use crate::ssh::sftp::{self, Direction, Transfer, TransferState, CHUNK, PROGRESS_EVERY};
 
-const ENTRY_LIMIT: usize = 20_000;
+use super::entries::Entry;
+
 const READ_AHEAD: usize = 32;
 
-struct Entry {
-    remote: String,
-    relative: String,
-    directory: bool,
-    size: u64,
-    mtime: Option<u32>,
-}
-
-/// Allocate a Windows-safe component among the files and folders of one parent.
-fn unique_name(name: &str, used: &mut HashMap<String, u32>) -> String {
-    let sanitized = sftp::sanitize(name);
-    let mut name = sanitized.trim_end_matches(['.', ' ']).to_owned();
-    if name.is_empty() {
-        name.push('_');
-    }
-    let device_end = name.find('.').unwrap_or(name.len());
-    let device = name[..device_end]
-        .trim_end_matches(' ')
-        .to_ascii_uppercase();
-    if matches!(
-        device.as_str(),
-        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-    ) || device
-        .strip_prefix("COM")
-        .or_else(|| device.strip_prefix("LPT"))
-        .is_some_and(|n| {
-            matches!(
-                n,
-                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"
-            )
-        })
-    {
-        name.insert(device_end, '_');
-    }
-
-    let key = name.to_uppercase();
-    if let std::collections::hash_map::Entry::Vacant(slot) = used.entry(key.clone()) {
-        slot.insert(1);
-        return name;
-    }
-    let (stem, ext) = sftp::stem_ext(&name);
-    let mut number = used[&key];
-    loop {
-        let candidate = format!("{stem} ({number}){ext}");
-        number += 1;
-        if let std::collections::hash_map::Entry::Vacant(slot) =
-            used.entry(candidate.to_uppercase())
-        {
-            slot.insert(1);
-            used.insert(key, number);
-            return candidate;
-        }
-    }
-}
-
-fn descriptor_name(relative: &str) -> Result<[u16; 260], String> {
-    let mut name = [0; 260];
-    for (i, unit) in relative.encode_utf16().enumerate() {
-        if i == name.len() - 1 {
-            return Err(format!("path-too-long:{relative}"));
-        }
-        name[i] = unit;
-    }
-    Ok(name)
-}
-
-fn filetime(unix_seconds: u32) -> FILETIME {
-    let ticks = (u64::from(unix_seconds) + 11_644_473_600) * 10_000_000;
-    FILETIME {
-        dwLowDateTime: ticks as u32,
-        dwHighDateTime: (ticks >> 32) as u32,
-    }
-}
-
-fn descriptor(entry: &Entry) -> Result<FILEDESCRIPTORW, String> {
-    Ok(FILEDESCRIPTORW {
-        dwFlags: (FD_ATTRIBUTES.0
-            | FD_FILESIZE.0
-            | FD_WRITESTIME.0
-            | FD_PROGRESSUI.0
-            | FD_UNICODE.0) as u32,
-        dwFileAttributes: if entry.directory {
-            FILE_ATTRIBUTE_DIRECTORY.0
-        } else {
-            FILE_ATTRIBUTE_NORMAL.0
-        },
-        ftLastWriteTime: entry.mtime.map(filetime).unwrap_or_default(),
-        nFileSizeHigh: (entry.size >> 32) as u32,
-        nFileSizeLow: entry.size as u32,
-        cFileName: descriptor_name(&entry.relative)?,
-        ..Default::default()
-    })
-}
-
-/// Appending before visiting makes the descriptor order a breadth-first walk.
-#[derive(Default)]
-struct Entries {
-    all: Vec<Entry>,
-    next: usize,
-}
-
-impl Entries {
-    fn push(
-        &mut self,
-        remote: String,
-        parent: &str,
-        used: &mut HashMap<String, u32>,
-        attrs: FileAttributes,
-    ) -> Result<(), String> {
-        let directory = attrs.is_dir();
-        if !directory && !attrs.is_regular() {
-            return Ok(());
-        }
-        if self.all.len() == ENTRY_LIMIT {
-            return Err("too-many".into());
-        }
-        let name = unique_name(sftp::split(&remote).1, used);
-        let relative = if parent.is_empty() {
-            name
-        } else {
-            format!("{parent}\\{name}")
-        };
-        descriptor_name(&relative)?;
-        let size = if directory {
-            0
-        } else {
-            attrs
-                .size
-                .ok_or_else(|| format!("{remote}: SFTP did not report the file size"))?
-        };
-        self.all.push(Entry {
-            remote,
-            relative,
-            directory,
-            size,
-            mtime: attrs.mtime,
-        });
-        Ok(())
-    }
-
-    fn next_directory(&mut self) -> Option<(String, String)> {
-        while let Some(entry) = self.all.get(self.next) {
-            self.next += 1;
-            if entry.directory {
-                return Some((entry.remote.clone(), entry.relative.clone()));
-            }
-        }
-        None
-    }
-}
-
-async fn enumerate(
-    sftp: &SftpSession,
-    paths: Vec<String>,
-    released: &CancellationToken,
-) -> Result<Vec<Entry>, String> {
-    let mut entries = Entries::default();
-    let mut roots = HashMap::new();
-    for path in paths {
-        if released.is_cancelled() {
-            return Ok(Vec::new());
-        }
-        // A trailing slash would make LSTAT dereference a directory symlink.
-        let path = if path == "/" {
-            path.as_str()
-        } else {
-            path.trim_end_matches('/')
-        };
-        let attrs = sftp.symlink_metadata(path).await.map_err(sftp::err)?;
-        entries.push(path.into(), "", &mut roots, attrs)?;
-    }
-    while let Some((remote, relative)) = entries.next_directory() {
-        let mut children = HashMap::new();
-        if released.is_cancelled() {
-            return Ok(Vec::new());
-        }
-        for child in sftp.read_dir(&remote).await.map_err(sftp::err)? {
-            if released.is_cancelled() {
-                return Ok(Vec::new());
-            }
-            let name = child.file_name();
-            let name = name.as_str();
-            // A directory entry must address a single child of the listed folder.
-            if matches!(name, "" | "." | "..") || name.contains(['/', '\0']) {
-                continue;
-            }
-            let path = sftp::join(&remote, name);
-            entries.push(path, &relative, &mut children, child.metadata())?;
-        }
-    }
-    Ok(entries.all)
-}
-
-fn left_button_down() -> bool {
-    // SAFETY: Querying a virtual key takes no pointers. The high bit reports whether it is down.
-    (unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) }) < 0
-}
-
-pub async fn start(
-    app: &AppHandle,
-    window: WebviewWindow,
-    tunnel: Uuid,
-    paths: Vec<String>,
-) -> Result<(), String> {
-    if !left_button_down() {
-        return Ok(());
-    }
-    let released = CancellationToken::new();
-    let stop = CancellationToken::new();
-    let stop_polling = stop.clone().drop_guard();
-    let release = released.clone();
-    std::thread::Builder::new()
-        .name("sftp-drag-out-button".into())
-        .spawn(move || {
-            while !stop.is_cancelled() {
-                if !left_button_down() {
-                    release.cancel();
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(16));
-            }
-        })
-        .map_err(|e| e.to_string())?;
-    let sftp = sftp::sftp_for(app, tunnel).await;
-    if released.is_cancelled() {
-        return Ok(());
-    }
-    let sftp = sftp?;
-    let entries = enumerate(&sftp, paths, &released).await;
-    if released.is_cancelled() {
-        return Ok(());
-    }
-    let entries = entries?;
-    if entries.is_empty() {
-        return Ok(());
-    }
-    let descriptors = entries
-        .iter()
-        .map(descriptor)
-        .collect::<Result<Vec<_>, _>>()?;
-    let formats = Formats::register().map_err(|e| e.to_string())?;
-    let (keep_mta, mta_lifetime) = std::sync::mpsc::channel();
-    let extraction = Arc::new(Extraction {
-        app: app.clone(),
-        tunnel,
-        sftp,
-        operation: Mutex::new(Operation::default()),
-        _keep_mta: keep_mta,
-    });
-    let (ready, data) = oneshot::channel();
-    let worker_extraction = extraction.clone();
-    std::thread::Builder::new()
-        .name("sftp-drag-out-com".into())
-        .spawn(move || {
-            // SAFETY: This fresh thread initializes COM once, as an MTA.
-            let initialized = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.ok();
-            if let Err(e) = initialized {
-                let _ = ready.send(Err(e));
-                return;
-            }
-            let data = make_data_object(formats, entries, descriptors, worker_extraction);
-            let _ = ready.send(data);
-            // COM can dispatch standard-marshaled calls while this thread waits.
-            // Keep the apartment alive until the data object and all streams are released.
-            let _ = mta_lifetime.recv();
-            // SAFETY: All apartment leases are gone and this balances initialization above.
-            unsafe { CoUninitialize() };
-        })
-        .map_err(|e| e.to_string())?;
-    let data = data
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
-    let (started, reply) = oneshot::channel();
-    let label = window.label().to_owned();
-    drop(window);
-    let ui_app = app.clone();
-    app.run_on_main_thread(move || {
-        let data = match data.resolve() {
-            Ok(data) => data,
-            Err(e) => {
-                let _ = started.send(Err(e.to_string()));
-                return;
-            }
-        };
-        let source: IDropSource = DropSource.into();
-        let mut effect = DROPEFFECT_NONE;
-        let _ = started.send(Ok(()));
-        if ui_app.get_webview_window(&label).is_none()
-            || !left_button_down()
-            || released.is_cancelled()
-        {
-            return;
-        }
-        drop(stop_polling);
-        // SAFETY: OLE is initialized on Tauri's main thread. Both interface references and
-        // the writable effect live for the duration of the synchronous call.
-        let result = unsafe { DoDragDrop(&data, &source, DROPEFFECT_COPY, &mut effect) };
-        let op_started = {
-            let operation = extraction.operation.lock().unwrap();
-            // EndOperation may already have run before DoDragDrop returned.
-            operation.running || operation.ended
-        };
-        if should_finish_after_drag(result, effect, op_started) {
-            extraction.finish(result, effect);
-        }
-    })
-    .map_err(|e| e.to_string())?;
-    reply.await.map_err(|e| e.to_string())?
-}
-
-fn should_finish_after_drag(result: HRESULT, effect: DROPEFFECT, op_started: bool) -> bool {
-    !op_started && (result != DRAGDROP_S_DROP || effect == DROPEFFECT_NONE)
-}
-
-struct Formats {
+pub(super) struct Formats {
     descriptor: u16,
     contents: u16,
     preferred: u16,
 }
 
 impl Formats {
-    fn register() -> ComResult<Self> {
+    pub(super) fn register() -> ComResult<Self> {
         fn register(name: windows::core::PCWSTR) -> ComResult<u16> {
             // SAFETY: Each call uses a static, NUL-terminated shell format constant.
             let id = unsafe { RegisterClipboardFormatW(name) };
@@ -395,26 +70,7 @@ impl Formats {
     }
 }
 
-#[implement(IDropSource)]
-struct DropSource;
-
-impl IDropSource_Impl for DropSource_Impl {
-    fn QueryContinueDrag(&self, escape: BOOL, keys: MODIFIERKEYS_FLAGS) -> HRESULT {
-        if escape.as_bool() {
-            DRAGDROP_S_CANCEL
-        } else if !keys.contains(MK_LBUTTON) {
-            DRAGDROP_S_DROP
-        } else {
-            S_OK
-        }
-    }
-
-    fn GiveFeedback(&self, _: DROPEFFECT) -> HRESULT {
-        DRAGDROP_S_USEDEFAULTCURSORS
-    }
-}
-
-fn make_data_object(
+pub(super) fn make_data_object(
     formats: Formats,
     entries: Vec<Entry>,
     descriptors: Vec<FILEDESCRIPTORW>,
@@ -633,19 +289,19 @@ impl IDataObjectAsyncCapability_Impl for DataObject_Impl {
 }
 
 #[derive(Default)]
-struct Operation {
+pub(super) struct Operation {
     async_mode: bool,
-    running: bool,
-    ended: bool,
+    pub(super) running: bool,
+    pub(super) ended: bool,
     streams: Vec<Arc<DragTransfer>>,
 }
 
-struct Extraction {
-    app: AppHandle,
-    tunnel: Uuid,
-    sftp: Arc<SftpSession>,
-    operation: Mutex<Operation>,
-    _keep_mta: std::sync::mpsc::Sender<()>,
+pub(super) struct Extraction {
+    pub(super) app: AppHandle,
+    pub(super) tunnel: Uuid,
+    pub(super) sftp: Arc<SftpSession>,
+    pub(super) operation: Mutex<Operation>,
+    pub(super) _keep_mta: std::sync::mpsc::Sender<()>,
 }
 
 impl Extraction {
@@ -684,7 +340,7 @@ impl Extraction {
         .into())
     }
 
-    fn finish(&self, result: HRESULT, effect: DROPEFFECT) {
+    pub(super) fn finish(&self, result: HRESULT, effect: DROPEFFECT) {
         let streams = {
             let mut op = self.operation.lock().unwrap();
             if op.ended {
@@ -1076,177 +732,5 @@ impl IStream_Impl for FileStream_Impl {
 
     fn Clone(&self) -> ComResult<IStream> {
         Err(E_NOTIMPL.into())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn finishes_after_drag_only_when_no_target_owns_completion() {
-        assert!(!should_finish_after_drag(
-            DRAGDROP_S_DROP,
-            DROPEFFECT_NONE,
-            true
-        ));
-        assert!(!should_finish_after_drag(
-            DRAGDROP_S_DROP,
-            DROPEFFECT_COPY,
-            false
-        ));
-        assert!(should_finish_after_drag(
-            DRAGDROP_S_CANCEL,
-            DROPEFFECT_NONE,
-            false
-        ));
-        assert!(should_finish_after_drag(
-            DRAGDROP_S_DROP,
-            DROPEFFECT_NONE,
-            false
-        ));
-    }
-
-    #[test]
-    fn checks_utf16_units_and_keeps_the_terminator() {
-        let fits = format!("a{}", "😀".repeat(129));
-        assert_eq!(descriptor_name(&fits).unwrap()[259], 0);
-        let long = format!(r"parent\{}", "😀".repeat(127));
-        assert_eq!(descriptor_name(&long), Err(format!("path-too-long:{long}")));
-    }
-
-    #[test]
-    fn describes_files_and_directories_with_the_shell_layout() {
-        let mut entry = Entry {
-            remote: "/tree/file".into(),
-            relative: r"tree\file".into(),
-            directory: false,
-            size: (5 << 32) | 42,
-            mtime: Some(1),
-        };
-        let file = descriptor(&entry).unwrap();
-        assert_eq!((file.nFileSizeHigh, file.nFileSizeLow), (5, 42));
-        assert_eq!({ file.cFileName }, descriptor_name(r"tree\file").unwrap());
-        assert_eq!(
-            { file.dwFlags },
-            (FD_ATTRIBUTES.0 | FD_FILESIZE.0 | FD_WRITESTIME.0 | FD_PROGRESSUI.0 | FD_UNICODE.0)
-                as u32
-        );
-        assert_eq!({ file.dwFileAttributes }, FILE_ATTRIBUTE_NORMAL.0);
-        assert_eq!({ file.ftLastWriteTime }, filetime(1));
-        entry.directory = true;
-        assert_eq!(
-            { descriptor(&entry).unwrap().dwFileAttributes },
-            FILE_ATTRIBUTE_DIRECTORY.0
-        );
-        assert_eq!(offset_of!(FILEGROUPDESCRIPTORW, fgd), 4);
-    }
-
-    #[test]
-    fn converts_unix_seconds_to_windows_ticks() {
-        let ticks =
-            |time: FILETIME| u64::from(time.dwHighDateTime) << 32 | u64::from(time.dwLowDateTime);
-        assert_eq!(ticks(filetime(0)), 116_444_736_000_000_000);
-        assert_eq!(ticks(filetime(1)) - ticks(filetime(0)), 10_000_000);
-        assert_eq!(ticks(filetime(u32::MAX)), 159_394_408_950_000_000);
-    }
-
-    #[test]
-    fn allocates_safe_names_and_resolves_case_insensitive_collisions() {
-        let mut used = HashMap::new();
-        for (name, expected) in [
-            ("CON", "CON_"),
-            ("con.TXT ", "con_.TXT"),
-            ("Con_.txt.", "Con_ (1).txt"),
-            ("prn.tar.gz", "prn_.tar.gz"),
-            ("aux.ext", "aux_.ext"),
-            ("NUL. ", "NUL_"),
-            ("COM9", "COM9_"),
-            ("Lpt1.log", "Lpt1_.log"),
-            ("COM0", "COM0"),
-            ("LPT10", "LPT10"),
-            (" ... ", "_"),
-            ("a?b.TXT", "a_b.TXT"),
-            ("a_b (1).txt", "a_b (1).txt"),
-            ("A:B.txt", "A_B (2).txt"),
-            ("a*b.TXT", "a_b (3).TXT"),
-        ] {
-            assert_eq!(unique_name(name, &mut used), expected);
-        }
-    }
-
-    #[test]
-    fn enumerates_parents_first_and_skips_non_regular_entries() {
-        let dir = FileAttributes {
-            permissions: Some(0o040755),
-            ..Default::default()
-        };
-        let file = FileAttributes {
-            permissions: Some(0o100644),
-            size: Some(7),
-            ..Default::default()
-        };
-        let link = FileAttributes {
-            permissions: Some(0o120777),
-            ..Default::default()
-        };
-        let socket = FileAttributes {
-            permissions: Some(0o140777),
-            ..Default::default()
-        };
-        let mut entries = Entries::default();
-        let mut roots = HashMap::new();
-        entries
-            .push("/a".into(), "", &mut roots, file.clone())
-            .unwrap();
-        entries
-            .push("/A".into(), "", &mut roots, dir.clone())
-            .unwrap();
-        let (parent, relative) = entries.next_directory().unwrap();
-        assert_eq!(parent, "/A");
-        let mut children = HashMap::new();
-        entries
-            .push("/A/CON.".into(), &relative, &mut children, dir)
-            .unwrap();
-        entries
-            .push("/A/link".into(), &relative, &mut children, link)
-            .unwrap();
-        entries
-            .push("/A/socket".into(), &relative, &mut children, socket)
-            .unwrap();
-        entries
-            .push("/A/a".into(), &relative, &mut children, file.clone())
-            .unwrap();
-        let (parent, relative) = entries.next_directory().unwrap();
-        assert_eq!(parent, "/A/CON.");
-        entries
-            .push("/A/CON./a".into(), &relative, &mut HashMap::new(), file)
-            .unwrap();
-        assert!(entries.next_directory().is_none());
-        let paths: Vec<&str> = entries.all.iter().map(|e| e.relative.as_str()).collect();
-        assert_eq!(
-            paths,
-            ["a", "A (1)", r"A (1)\CON_", r"A (1)\a", r"A (1)\CON_\a"]
-        );
-    }
-
-    #[test]
-    fn rejects_entry_twenty_thousand_and_one() {
-        let file = FileAttributes {
-            permissions: Some(0o100644),
-            size: Some(0),
-            ..Default::default()
-        };
-        let mut entries = Entries::default();
-        let mut roots = HashMap::new();
-        for _ in 0..ENTRY_LIMIT {
-            entries
-                .push("/file".into(), "", &mut roots, file.clone())
-                .unwrap();
-        }
-        assert_eq!(
-            entries.push("/extra".into(), "", &mut roots, file),
-            Err("too-many".into())
-        );
     }
 }

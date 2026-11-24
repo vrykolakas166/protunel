@@ -49,6 +49,7 @@ import {
   afterResize,
   cornerPosition,
   freeAt,
+  gripBox,
   keepInside,
   resizedFrom,
   snapCorner,
@@ -59,6 +60,17 @@ import {
   type Size,
 } from "./geometry";
 import { applySelection } from "./selection";
+import {
+  canPasteClip,
+  deleteConfirmed,
+  deleteNeedsTyping,
+  jumpIndex,
+  knownErrorCode,
+  nextSort,
+  pageRows,
+  pathsIn,
+  stepCursor,
+} from "./panelLogic";
 import {
   baseName,
   crumbs,
@@ -243,8 +255,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   const errorText = useCallback(
     (e: unknown) => {
-      const code = String(e);
-      return KNOWN_ERRORS.has(code) ? t(`files.err.${code}`, { where }) : code;
+      const code = knownErrorCode(e);
+      return code ? t(`files.err.${code}`, { where }) : String(e);
     },
     [t, where],
   );
@@ -394,7 +406,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   // ---- actions ------------------------------------------------------------
 
-  const pathsOf = (names: Iterable<string>) => (path ? [...names].map((n) => joinPath(path, n)) : []);
+  const pathsOf = (names: Iterable<string>) => pathsIn(path, names);
   const current = visible[cursor];
   const targets = (): string[] => {
     if (selected.size > 0) return pathsOf(selected);
@@ -454,7 +466,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   };
 
   // Cut stays on one server; a copy can be pasted on any other server.
-  const canPaste = clipboard !== null && (clipboard.tunnelId === tunnelId || !clipboard.cut);
+  const canPaste = canPasteClip(clipboard, tunnelId);
 
   /** Server-to-server copy into `dir`; the queue shows progress, and a relayed one offers the key hint. */
   const copyAcross = async (from: string, fromPaneId: string, paths: string[], dir: string) => {
@@ -491,7 +503,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const paste = async () => {
     // Re-read the store: this panel's render may predate another panel's Copy/Cut.
     const clip = getClipboard();
-    if (!path || !clip || !(clip.tunnelId === tunnelId || !clip.cut)) return;
+    if (!path || !clip || !canPasteClip(clip, tunnelId)) return;
     if (clip.tunnelId !== tunnelId) return void (await copyAcross(clip.tunnelId, clip.paneId, clip.paths, path));
     if ((await pasteHere(clip.paths, path, clip.cut)) && clip.cut && getClipboard() === clip) {
       setClipboard(null);
@@ -854,7 +866,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     const mod = e.ctrlKey || e.metaKey;
     const step = (delta: number) => {
       e.preventDefault();
-      const next = Math.min(visible.length - 1, Math.max(0, cursor + delta));
+      const next = stepCursor(cursor, delta, visible.length);
       selectAt(next, e.shiftKey ? "range" : "only");
     };
     switch (true) {
@@ -863,9 +875,9 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
       case e.key === "ArrowUp" && !e.altKey:
         return step(-1);
       case e.key === "PageDown":
-        return step(Math.max(1, Math.floor(listHeight / ROW) - 1));
+        return step(pageRows(listHeight, ROW));
       case e.key === "PageUp":
-        return step(-Math.max(1, Math.floor(listHeight / ROW) - 1));
+        return step(-pageRows(listHeight, ROW));
       case e.key === "Home":
         return step(-visible.length);
       case e.key === "End":
@@ -925,11 +937,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
       case !mod && !e.altKey && e.key.length === 1 && e.key !== " ":
         // Type to jump: the next name starting with that letter.
         {
-          const k = e.key.toLowerCase();
-          const from = cursor + 1;
-          const order = [...visible.slice(from), ...visible.slice(0, from)];
-          const hit = order.find((x) => x.name.toLowerCase().startsWith(k));
-          if (hit) selectAt(visible.indexOf(hit), "only");
+          const hit = jumpIndex(visible.map((x) => x.name), cursor, e.key);
+          if (hit >= 0) selectAt(hit, "only");
         }
         return;
     }
@@ -970,18 +979,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const G = 8;
   const C = 16;
   const gripStyle = (h: Handle): React.CSSProperties => {
-    const { x, y, w, h: ht } = box;
-    const style: React.CSSProperties = { position: "fixed", zIndex: z + 1 };
-    if (h === "n" || h === "s") Object.assign(style, { left: x + C / 2, width: w - C, height: G, top: (h === "n" ? y : y + ht) - G / 2 });
-    else if (h === "e" || h === "w") Object.assign(style, { top: y + C / 2, height: ht - C, width: G, left: (h === "w" ? x : x + w) - G / 2 });
-    else
-      Object.assign(style, {
-        width: C,
-        height: C,
-        left: (h.includes("w") ? x : x + w) - C / 2,
-        top: (h.includes("n") ? y : y + ht) - C / 2,
-      });
-    return style;
+    return { position: "fixed", zIndex: z + 1, ...gripBox(h, box, G, C) };
   };
   const gripCursor: Record<Handle, string> = {
     n: "cursor-ns-resize",
@@ -1499,10 +1497,9 @@ function DeleteConfirm({
 }) {
   const { t } = useTranslation("terminal");
   const { paths, count, typed } = confirm;
-  const total = count ? count.files + count.dirs : 0;
-  const needsTyping = count !== null && (total >= TYPE_TO_CONFIRM || count.more);
+  const needsTyping = deleteNeedsTyping(count, TYPE_TO_CONFIRM);
   const word = baseName(paths[0]);
-  const ok = count !== null && (!needsTyping || typed.trim() === word);
+  const ok = deleteConfirmed(count, typed, word, TYPE_TO_CONFIRM);
   return (
     <form
       onSubmit={(e) => {
@@ -1570,7 +1567,7 @@ function SortHead({
   const active = sort.key === k;
   return (
     <button
-      onClick={() => setSort({ key: k, desc: active ? !sort.desc : false })}
+      onClick={() => setSort(nextSort(sort, k))}
       className={`${className} shrink-0 truncate text-left uppercase hover:text-text ${active ? "text-text" : ""}`}
     >
       {label}
@@ -1595,8 +1592,6 @@ function EntryIcon({ entry }: { entry: FileEntry }) {
     </svg>
   );
 }
-
-const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large"]);
 
 const HIDDEN_KEY = "protunel.files.showHidden";
 function readFlag(key: string): boolean {

@@ -346,7 +346,7 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   tabs back (a closed one leaves the workspace). Local only: never
   add it to config export — commands can carry secrets.
 
-### File panel (`src-tauri/src/ssh/sftp.rs`, `commands/files.rs`, `src/terminal/files/`)
+### File panel (`src-tauri/src/ssh/sftp/`, `commands/files.rs`, `src/terminal/files/`)
 
 SFTP for one shell at a time, in a non-modal panel over the terminal window
 (header folder icon, toolbar button, Ctrl+Shift+O). No side-by-side view and
@@ -443,7 +443,7 @@ no dropping files on a shell — only on the panel, which names the target.
 - Download to folder…: Rust folder dialog, last folder in
   `settings.files_download_dir` (re-read after the dialog, then
   `settings-changed`). The Linux substitute for drag-out.
-- Drag-out (Windows only, `ssh/drag_out.rs`; `files_drag_out` returns
+- Drag-out (Windows only, `ssh/drag_out/`; `files_drag_out` returns
   `"unsupported"` elsewhere and the UI never calls it): leaving the window
   during a row drag (`onRowDragLeaveWindow`) lists the rows recursively
   (no symlinks, ≤20 000 entries, relative names ≤259 UTF-16 units, made

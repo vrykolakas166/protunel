@@ -60,7 +60,9 @@ import { markTerminalTourSeen, onTerminalTourRequest, shouldShowTerminalTour, Te
 import { useDragDrop } from "./useDragDrop";
 import { FilePanel, type FilePanelHandle, type PaneFiles } from "./files/FilePanel";
 import { collectUnsaved, describeUnsaved, type Unsaved } from "./files/unsaved";
-import { DEFAULT_SIZE, maximizedBox, paneBox, place, type Box, type Placement, type Size } from "./files/geometry";
+import { DEFAULT_SIZE, firstGeometry, maximizedBox, paneBox, parseFilesGeometry, place, type Box, type FilesGeometry } from "./files/geometry";
+import { broadcastPanes, pruneTabs } from "./tabs";
+import { panesPerHost as countPanesPerHost, tabHostsLabel, toggleId, withId, without, workspaceShapeChanged, workspaceTabTitle } from "./tabTitle";
 import { TransferList } from "./files/TransferList";
 import { isActive, overallProgress, useTransfers } from "./files/useTransfers";
 
@@ -120,15 +122,6 @@ interface LayoutUndo {
   at: number;
 }
 
-/** `set` without `ids`; the same object when none of them was in it. */
-function without(set: Set<string>, ids: string[]): Set<string> {
-  return ids.some((id) => set.has(id)) ? new Set([...set].filter((id) => !ids.includes(id))) : set;
-}
-
-function withId<T>(set: Set<T>, value: T): Set<T> {
-  return set.has(value) ? set : new Set(set).add(value);
-}
-
 /** Per-window convenience only, so browser storage (and failing quietly) is fine. */
 function loadSidebarHidden(): boolean {
   try {
@@ -147,50 +140,16 @@ function isTextField(el: EventTarget | null): boolean {
   );
 }
 
-/** Removes panes whose host no longer exists; drops tabs left empty. */
-function pruneTabs(tabs: Tab[], byId: Record<string, Tunnel>): Tab[] {
-  let next = tabs;
-  for (const tab of tabs) {
-    for (const { id, tunnelId } of computeLayout(tab.root).panes) {
-      if (byId[tunnelId]) continue;
-      const current = next.find((x) => x.key === tab.key);
-      if (current) next = detach(next, current, id);
-    }
-  }
-  return next;
-}
-
-interface FilesGeometry {
-  placement: Placement;
-  size: Size;
-  maximized?: boolean;
-}
-/**
- * A new panel's geometry: the last size used, snapped to its own shell's
- * corner (the last snapped corner) — never another panel's free spot,
- * which would stack it exactly on top of that one.
- */
-function firstGeometry(last: FilesGeometry): FilesGeometry {
-  return {
-    placement: last.placement.kind === "snap" ? last.placement : { kind: "snap", corner: "br" },
-    size: last.size,
-  };
-}
-
 /** Open file panels at once; opening one more closes the oldest. */
 const MAX_FILE_PANELS = 8;
 const FILES_GEOMETRY_KEY = "protunel.files.geometry";
 /** The file panel's last place and size, for a pane that has none yet. */
 function loadFilesGeometry(): FilesGeometry {
   try {
-    const raw = localStorage.getItem(FILES_GEOMETRY_KEY);
-    const geo = raw ? (JSON.parse(raw) as FilesGeometry) : null;
-    // 760×520 was the first default, found too big: take the new one.
-    if (geo?.placement?.kind && geo.size?.w > 0 && geo.size?.h > 0) {
-      return geo.size.w === 760 && geo.size.h === 520 ? { ...geo, size: DEFAULT_SIZE } : geo;
-    }
+    const geo = parseFilesGeometry(localStorage.getItem(FILES_GEOMETRY_KEY));
+    if (geo) return geo;
   } catch {
-    // Unreadable or blocked: the default.
+    // Blocked: the default.
   }
   return { placement: { kind: "snap", corner: "br" }, size: DEFAULT_SIZE };
 }
@@ -365,7 +324,7 @@ export function TerminalApp() {
     const tab = tabs.find((x) => x.key === activeKey);
     if (!tab) return;
     const ids = paneIds(tab.root);
-    setAttention((prev) => (ids.some((id) => prev.has(id)) ? new Set([...prev].filter((id) => !ids.includes(id))) : prev));
+    setAttention((prev) => without(prev, ids));
   }, [activeKey, tabs]);
 
   // Looking at a pane (focused, in the active tab, window in front) clears
@@ -699,7 +658,7 @@ export function TerminalApp() {
         const b = visible.indexOf(id);
         if (a >= 0 && b >= 0) return [...new Set([...prev, ...visible.slice(Math.min(a, b), Math.max(a, b) + 1)])];
       }
-      return prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      return toggleId(prev, id);
     });
     anchorRef.current = id;
   };
@@ -821,8 +780,7 @@ export function TerminalApp() {
   const workspaceChanged = (workspace: Workspace) => {
     const open = linkedTabs(workspace);
     if (open.length === 0) return false;
-    const now = open.map((tab) => layoutShape(tab.root)).join("|");
-    return now !== workspace.tabs.map(layoutShape).join("|");
+    return workspaceShapeChanged(open.map((tab) => tab.root), workspace.tabs);
   };
 
   /** Saves a workspace as its open tabs now look; a closed tab leaves it. */
@@ -1189,18 +1147,15 @@ export function TerminalApp() {
   const toggleExclude = (tabKey: string, paneId: string) =>
     updateTab(tabKey, (tab) => ({
       ...tab,
-      excluded: tab.excluded.includes(paneId)
-        ? tab.excluded.filter((id) => id !== paneId)
-        : [...tab.excluded, paneId],
+      excluded: toggleId(tab.excluded, paneId),
     }));
 
   /** Open terminals a keystroke typed in `paneId` should reach. */
   const inputTargets = (tabKey: string, paneId: string, ownId: string): string[] => {
     const tab = tabsRef.current.find((x) => x.key === tabKey);
-    // Paused while zoomed: the hidden panes would take keystrokes unseen.
-    if (!tab?.broadcast || tab.zoomed || tab.excluded.includes(paneId)) return [ownId];
-    return paneIds(tab.root)
-      .filter((id) => !tab.excluded.includes(id))
+    const panes = broadcastPanes(tab, paneId);
+    if (!panes) return [ownId];
+    return panes
       .map((id) => terminalIds.current.get(id))
       .filter((id): id is string => !!id);
   };
@@ -1442,30 +1397,17 @@ export function TerminalApp() {
     openHost(created.id);
   };
 
-  const panesPerHost = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const tab of tabs) {
-      for (const { tunnelId } of computeLayout(tab.root).panes) {
-        counts[tunnelId] = (counts[tunnelId] ?? 0) + 1;
-      }
-    }
-    return counts;
-  }, [tabs]);
+  const panesPerHost = useMemo(() => countPanesPerHost(tabs.map((tab) => tab.root)), [tabs]);
 
   /** What the tab's panes are: the focused host, "+N" for the others. */
-  const tabHosts = (tab: Tab) => {
-    const pane = findPane(tab.root, tab.focused);
-    const name = pane ? (byId[pane.tunnelId]?.name ?? "") : "";
-    const count = paneIds(tab.root).length;
-    return count > 1 ? `${name} +${count - 1}` : name;
-  };
+  const tabHosts = (tab: Tab) => tabHostsLabel(tab.root, tab.focused, (id) => byId[id]?.name);
   /** A workspace's tabs carry its name ("name 2/3" when it has several);
    * other tabs are named after their hosts. */
   const tabTitle = (tab: Tab) => {
     const workspace = workspaceOf(tab);
     if (!workspace) return tabHosts(tab);
     const linked = linkedTabs(workspace);
-    return linked.length > 1 ? `${workspace.name} ${linked.indexOf(tab) + 1}/${linked.length}` : workspace.name;
+    return workspaceTabTitle(workspace.name, linked.length, linked.indexOf(tab));
   };
 
   const tabTarget = drag?.target?.kind === "tab" ? drag.target : null;
