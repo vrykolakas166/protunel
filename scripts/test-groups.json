@@ -58,6 +58,7 @@
       "paths": ["src-tauri/src/ssh/drag_out/**", "src-tauri/src/router/system_proxy.rs", "src-tauri/src/secrets.rs"],
       "commands": [
         { "argv": ["bun", "run", "build"] },
+        { "cwd": "src-tauri", "argv": ["cargo", "test", "--lib", "--locked", "win_"] },
         { "cwd": "src-tauri", "argv": ["cargo", "test", "--lib", "--locked"] }
       ]
     }

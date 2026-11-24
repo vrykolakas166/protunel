@@ -17,7 +17,7 @@ pub(super) struct Entry {
     pub(super) relative: String,
     pub(super) directory: bool,
     pub(super) size: u64,
-    mtime: Option<u32>,
+    pub(super) mtime: Option<u32>,
 }
 
 /// Allocate a Windows-safe component among the files and folders of one parent.
@@ -205,14 +205,14 @@ pub(super) async fn enumerate(
     Ok(entries.all)
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
     use std::mem::offset_of;
     use windows::Win32::UI::Shell::FILEGROUPDESCRIPTORW;
 
     #[test]
-    fn checks_utf16_units_and_keeps_the_terminator() {
+    fn win_checks_utf16_units_and_keeps_the_terminator() {
         let fits = format!("a{}", "😀".repeat(129));
         assert_eq!(descriptor_name(&fits).unwrap()[259], 0);
         let long = format!(r"parent\{}", "😀".repeat(127));
@@ -220,7 +220,7 @@ mod tests {
     }
 
     #[test]
-    fn describes_files_and_directories_with_the_shell_layout() {
+    fn win_describes_files_and_directories_with_the_shell_layout() {
         let mut entry = Entry {
             remote: "/tree/file".into(),
             relative: r"tree\file".into(),
@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn converts_unix_seconds_to_windows_ticks() {
+    fn win_converts_unix_seconds_to_windows_ticks() {
         let ticks =
             |time: FILETIME| u64::from(time.dwHighDateTime) << 32 | u64::from(time.dwLowDateTime);
         assert_eq!(ticks(filetime(0)), 116_444_736_000_000_000);
@@ -256,7 +256,7 @@ mod tests {
     }
 
     #[test]
-    fn allocates_safe_names_and_resolves_case_insensitive_collisions() {
+    fn win_allocates_safe_names_and_resolves_case_insensitive_collisions() {
         let mut used = HashMap::new();
         for (name, expected) in [
             ("CON", "CON_"),
@@ -280,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn enumerates_parents_first_and_skips_non_regular_entries() {
+    fn win_enumerates_parents_first_and_skips_non_regular_entries() {
         let dir = FileAttributes {
             permissions: Some(0o040755),
             ..Default::default()
@@ -321,6 +321,9 @@ mod tests {
         entries
             .push("/A/a".into(), &relative, &mut children, file.clone())
             .unwrap();
+        entries
+            .push("/A/A".into(), &relative, &mut children, file.clone())
+            .unwrap();
         let (parent, relative) = entries.next_directory().unwrap();
         assert_eq!(parent, "/A/CON.");
         entries
@@ -330,12 +333,19 @@ mod tests {
         let paths: Vec<&str> = entries.all.iter().map(|e| e.relative.as_str()).collect();
         assert_eq!(
             paths,
-            ["a", "A (1)", r"A (1)\CON_", r"A (1)\a", r"A (1)\CON_\a"]
+            [
+                "a",
+                "A (1)",
+                r"A (1)\CON_",
+                r"A (1)\a",
+                r"A (1)\A (1)",
+                r"A (1)\CON_\a"
+            ]
         );
     }
 
     #[test]
-    fn rejects_entry_twenty_thousand_and_one() {
+    fn win_rejects_entry_twenty_thousand_and_one() {
         let file = FileAttributes {
             permissions: Some(0o100644),
             size: Some(0),

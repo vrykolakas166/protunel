@@ -50,6 +50,7 @@ or `--group <name>` to run one group. `bun run test:all` selects every group.
 `scripts/test-groups.json` defines the `frontend`, `rust`, `ssh-it`,
 and `windows` groups. `windows` runs the Rust library suite on a Windows
 runner in CI.
+`cargo test --lib win_` in `src-tauri` selects Windows OLE drag-out, system proxy, and Credential Manager tests.
 
 `ssh-it` runs ignored integration tests against Docker-backed OpenSSH fixtures
 on Linux. With the frontend built, run `bun scripts/test-changed.ts --group ssh-it`

@@ -46,6 +46,13 @@ describe("test group selection", () => {
     expect(namesFor()).toEqual([]);
   });
 
+  test("builds the frontend before the focused Windows library tests", () => {
+    const { commands } = selectGroups([], { group: "windows" }).groups[0];
+    expect(commands[0].argv).toEqual(["bun", "run", "build"]);
+    expect(commands[1].cwd).toBe("src-tauri");
+    expect(commands[1].argv).toEqual(["cargo", "test", "--lib", "--locked", "win_"]);
+  });
+
   test("combines SSH filters when each SSH path has a filter", () => {
     const selection = selectGroups([
       "src/App.tsx",

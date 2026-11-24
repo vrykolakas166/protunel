@@ -3,7 +3,7 @@
 mod entries;
 mod ole;
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, WebviewWindow};
@@ -24,7 +24,7 @@ use windows::Win32::{
 use super::sftp;
 
 use entries::{descriptor, enumerate};
-use ole::{make_data_object, Extraction, Formats, Operation};
+use ole::{make_data_object, Extraction, Formats};
 
 fn left_button_down() -> bool {
     // SAFETY: Querying a virtual key takes no pointers. The high bit reports whether it is down.
@@ -75,13 +75,7 @@ pub async fn start(
         .collect::<Result<Vec<_>, _>>()?;
     let formats = Formats::register().map_err(|e| e.to_string())?;
     let (keep_mta, mta_lifetime) = std::sync::mpsc::channel();
-    let extraction = Arc::new(Extraction {
-        app: app.clone(),
-        tunnel,
-        sftp,
-        operation: Mutex::new(Operation::default()),
-        _keep_mta: keep_mta,
-    });
+    let extraction = Arc::new(Extraction::new(app.clone(), tunnel, sftp, keep_mta));
     let (ready, data) = oneshot::channel();
     let worker_extraction = extraction.clone();
     std::thread::Builder::new()

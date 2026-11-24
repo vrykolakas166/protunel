@@ -297,33 +297,89 @@ pub(super) struct Operation {
 }
 
 pub(super) struct Extraction {
-    pub(super) app: AppHandle,
-    pub(super) tunnel: Uuid,
-    pub(super) sftp: Arc<SftpSession>,
+    tunnel: Uuid,
+    source: Arc<dyn ExtractionSource>,
     pub(super) operation: Mutex<Operation>,
-    pub(super) _keep_mta: std::sync::mpsc::Sender<()>,
+    _keep_mta: std::sync::mpsc::Sender<()>,
+}
+
+trait ExtractionSource: Send + Sync {
+    fn open(
+        &self,
+        entry: &Entry,
+        transfer: Arc<DragTransfer>,
+        stop: CancellationToken,
+        send: mpsc::Sender<Vec<u8>>,
+    );
+    fn track(&self, transfer: &Transfer, cancel: &CancellationToken);
+    fn publish(&self, transfer: &Transfer);
+    fn finish(&self, transfer: &Transfer);
+}
+
+struct SftpSource {
+    app: AppHandle,
+    sftp: Arc<SftpSession>,
+}
+
+impl ExtractionSource for SftpSource {
+    fn open(
+        &self,
+        entry: &Entry,
+        transfer: Arc<DragTransfer>,
+        stop: CancellationToken,
+        send: mpsc::Sender<Vec<u8>>,
+    ) {
+        tauri::async_runtime::spawn(pump(
+            self.sftp.clone(),
+            transfer,
+            stop,
+            entry.remote.clone(),
+            entry.size,
+            send,
+        ));
+    }
+
+    fn track(&self, transfer: &Transfer, cancel: &CancellationToken) {
+        sftp::track_drag_out(&self.app, transfer, cancel);
+    }
+
+    fn publish(&self, transfer: &Transfer) {
+        sftp::publish(&self.app, transfer);
+    }
+
+    fn finish(&self, transfer: &Transfer) {
+        sftp::finish_drag_out(&self.app, transfer);
+    }
 }
 
 impl Extraction {
+    pub(super) fn new(
+        app: AppHandle,
+        tunnel: Uuid,
+        sftp: Arc<SftpSession>,
+        keep_mta: std::sync::mpsc::Sender<()>,
+    ) -> Self {
+        Self {
+            tunnel,
+            source: Arc::new(SftpSource { app, sftp }),
+            operation: Mutex::new(Operation::default()),
+            _keep_mta: keep_mta,
+        }
+    }
+
     fn open_stream(self: &Arc<Self>, entry: &Entry) -> ComResult<IStream> {
         let mut operation = self.operation.lock().unwrap();
         if operation.ended {
             return Err(E_ABORT.into());
         }
-        let transfer = Arc::new(DragTransfer::new(&self.app, self.tunnel, entry));
+        let transfer = Arc::new(DragTransfer::new(self.source.clone(), self.tunnel, entry));
         operation.streams.push(transfer.clone());
         drop(operation);
 
         let (send, recv) = mpsc::channel(READ_AHEAD);
         let stop_reader = transfer.cancel.child_token();
-        tauri::async_runtime::spawn(pump(
-            self.sftp.clone(),
-            transfer.clone(),
-            stop_reader.clone(),
-            entry.remote.clone(),
-            entry.size,
-            send,
-        ));
+        self.source
+            .open(entry, transfer.clone(), stop_reader.clone(), send);
         Ok(FileStream {
             transfer,
             stop_reader,
@@ -381,13 +437,13 @@ struct Progress {
 }
 
 struct DragTransfer {
-    app: AppHandle,
+    source: Arc<dyn ExtractionSource>,
     cancel: CancellationToken,
     progress: Mutex<Progress>,
 }
 
 impl DragTransfer {
-    fn new(app: &AppHandle, tunnel: Uuid, entry: &Entry) -> Self {
+    fn new(source: Arc<dyn ExtractionSource>, tunnel: Uuid, entry: &Entry) -> Self {
         let cancel = CancellationToken::new();
         let transfer = Transfer {
             id: Uuid::new_v4(),
@@ -404,9 +460,9 @@ impl DragTransfer {
             error: None,
             open_when_done: false,
         };
-        sftp::track_drag_out(app, &transfer, &cancel);
+        source.track(&transfer, &cancel);
         Self {
-            app: app.clone(),
+            source,
             cancel,
             progress: Mutex::new(Progress {
                 transfer,
@@ -427,7 +483,7 @@ impl DragTransfer {
                 || progress.last.elapsed() >= PROGRESS_EVERY
             {
                 progress.last = Instant::now();
-                sftp::publish(&self.app, &progress.transfer);
+                self.source.publish(&progress.transfer);
             }
         }
     }
@@ -468,7 +524,7 @@ impl DragTransfer {
             if progress.transfer.state == TransferState::Failed {
                 progress.transfer.error = error;
             }
-            sftp::finish_drag_out(&self.app, &progress.transfer);
+            self.source.finish(&progress.transfer);
         }
     }
 
@@ -732,5 +788,400 @@ impl IStream_Impl for FileStream_Impl {
 
     fn Clone(&self) -> ComResult<IStream> {
         Err(E_NOTIMPL.into())
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+    use crate::ssh::drag_out::entries::descriptor;
+    use windows::Win32::{
+        Foundation::E_FAIL,
+        Storage::FileSystem::{FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL},
+        System::{
+            Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED},
+            Memory::GlobalSize,
+            Ole::ReleaseStgMedium,
+        },
+        UI::Shell::{FD_ATTRIBUTES, FD_FILESIZE, FD_WRITESTIME},
+    };
+
+    const FIRST: &[u8] = b"remote bytes spanning chunks\0";
+    const SECOND: &[u8] = &[255, 128, 0, 42];
+    const MODIFIED: u32 = 1_700_000_000;
+
+    struct Mta;
+
+    impl Mta {
+        fn initialize() -> Self {
+            // SAFETY: Initialize on the test thread before creating any COM objects.
+            unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
+                .ok()
+                .unwrap();
+            Self
+        }
+    }
+
+    impl Drop for Mta {
+        fn drop(&mut self) {
+            // SAFETY: The fixture releases its interfaces first, on this same thread.
+            unsafe { CoUninitialize() };
+        }
+    }
+
+    struct Medium(STGMEDIUM);
+
+    impl Medium {
+        fn stream(&self) -> &IStream {
+            assert_eq!(self.0.tymed, TYMED_ISTREAM.0 as u32);
+            // SAFETY: TYMED_ISTREAM selects pstm, owned by this medium.
+            unsafe { self.0.u.pstm.as_ref().unwrap() }
+        }
+    }
+
+    impl Drop for Medium {
+        fn drop(&mut self) {
+            // SAFETY: GetData transferred ownership of this medium to the caller.
+            unsafe { ReleaseStgMedium(&mut self.0) };
+        }
+    }
+
+    struct Fixture {
+        data: IDataObject,
+        extraction: Arc<Extraction>,
+        readers: Arc<Mutex<Vec<CancellationToken>>>,
+        formats: Formats,
+        _mta: Mta,
+    }
+
+    struct MemorySource(Arc<Mutex<Vec<CancellationToken>>>);
+
+    impl ExtractionSource for MemorySource {
+        fn open(
+            &self,
+            entry: &Entry,
+            _: Arc<DragTransfer>,
+            stop: CancellationToken,
+            send: mpsc::Sender<Vec<u8>>,
+        ) {
+            let bytes = match entry.remote.as_str() {
+                "/tree/first.bin" => FIRST,
+                "/tree/nested/second.bin" => SECOND,
+                path => panic!("unexpected file requested: {path}"),
+            };
+            self.0.lock().unwrap().push(stop);
+            for chunk in bytes.chunks(3) {
+                send.try_send(chunk.to_vec()).unwrap();
+            }
+        }
+
+        fn track(&self, _: &Transfer, _: &CancellationToken) {}
+
+        fn publish(&self, _: &Transfer) {}
+
+        fn finish(&self, _: &Transfer) {}
+    }
+
+    impl Fixture {
+        fn new() -> Self {
+            let mta = Mta::initialize();
+            let (keep_mta, _) = std::sync::mpsc::channel();
+            let readers = Arc::new(Mutex::new(Vec::new()));
+            let extraction = Arc::new(Extraction {
+                tunnel: Uuid::new_v4(),
+                source: Arc::new(MemorySource(readers.clone())),
+                operation: Mutex::new(Operation::default()),
+                _keep_mta: keep_mta,
+            });
+            let entries: Vec<_> = [
+                ("/tree", "tree", true, 0),
+                ("/tree/first.bin", r"tree\first.bin", false, FIRST.len()),
+                ("/tree/nested", r"tree\nested", true, 0),
+                (
+                    "/tree/nested/second.bin",
+                    "tree\\nested\\\u{1f600}.bin",
+                    false,
+                    SECOND.len(),
+                ),
+            ]
+            .into_iter()
+            .map(|(remote, relative, directory, size)| Entry {
+                remote: remote.into(),
+                relative: relative.into(),
+                directory,
+                size: size as u64,
+                mtime: Some(MODIFIED),
+            })
+            .collect();
+            let descriptors = entries
+                .iter()
+                .map(descriptor)
+                .collect::<Result<_, _>>()
+                .unwrap();
+            let agile = make_data_object(
+                Formats::register().unwrap(),
+                entries,
+                descriptors,
+                extraction.clone(),
+            )
+            .unwrap();
+            let data = agile.resolve().unwrap();
+            Self {
+                data,
+                extraction,
+                readers,
+                formats: Formats::register().unwrap(),
+                _mta: mta,
+            }
+        }
+
+        fn contents(&self, index: i32) -> FORMATETC {
+            format_etc(self.formats.contents, index, TYMED_ISTREAM.0 as u32)
+        }
+
+        fn get(&self, format: &FORMATETC) -> Medium {
+            // SAFETY: The interface and the requested FORMATETC are live.
+            unsafe {
+                assert_eq!(self.data.QueryGetData(format), S_OK);
+                Medium(self.data.GetData(format).unwrap())
+            }
+        }
+
+        fn transfer(&self, index: usize) -> Arc<DragTransfer> {
+            self.extraction.operation.lock().unwrap().streams[index].clone()
+        }
+    }
+
+    fn format_etc(format: u16, index: i32, medium: u32) -> FORMATETC {
+        FORMATETC {
+            cfFormat: format,
+            lindex: index,
+            tymed: medium,
+            dwAspect: DVASPECT_CONTENT.0,
+            ..Default::default()
+        }
+    }
+
+    fn read(stream: &IStream, buffer: &mut [u8]) -> (HRESULT, usize) {
+        let mut count = u32::MAX;
+        // SAFETY: The buffer and the separate count pointer are writable.
+        let result = unsafe {
+            stream.Read(
+                buffer.as_mut_ptr().cast(),
+                buffer.len() as u32,
+                Some(&mut count),
+            )
+        };
+        (result, count as usize)
+    }
+
+    fn read_all(stream: &IStream) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut buffer = [0; 5];
+        loop {
+            match read(stream, &mut buffer) {
+                (S_FALSE, 0) => return bytes,
+                (S_OK, count) if (1..=buffer.len()).contains(&count) => {
+                    bytes.extend_from_slice(&buffer[..count]);
+                }
+                result => panic!("unexpected Read result: {result:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn win_ole_file_group_descriptor() {
+        let fixture = Fixture::new();
+        let medium = fixture.get(&format_etc(
+            fixture.formats.descriptor,
+            -1,
+            TYMED_HGLOBAL.0 as u32,
+        ));
+        assert_eq!(medium.0.tymed, TYMED_HGLOBAL.0 as u32);
+        let offset = offset_of!(FILEGROUPDESCRIPTORW, fgd);
+        // SAFETY: TYMED_HGLOBAL selects hGlobal. Check the allocation length before
+        // copying the count and packed descriptors out of the locked memory.
+        let (count, descriptors) = unsafe {
+            let handle = medium.0.u.hGlobal;
+            assert!(GlobalSize(handle) >= offset + 4 * size_of::<FILEDESCRIPTORW>());
+            let bytes = GlobalLock(handle).cast::<u8>();
+            assert!(!bytes.is_null());
+            let count = bytes.cast::<u32>().read_unaligned();
+            let first = bytes.add(offset).cast::<FILEDESCRIPTORW>();
+            let descriptors: [_; 4] = std::array::from_fn(|i| first.add(i).read_unaligned());
+            let _ = GlobalUnlock(handle);
+            (count, descriptors)
+        };
+        assert_eq!(count, 4);
+        for (actual, (name, attr, size)) in descriptors.into_iter().zip([
+            ("tree", FILE_ATTRIBUTE_DIRECTORY, 0),
+            (r"tree\first.bin", FILE_ATTRIBUTE_NORMAL, FIRST.len()),
+            (r"tree\nested", FILE_ATTRIBUTE_DIRECTORY, 0),
+            (
+                "tree\\nested\\\u{1f600}.bin",
+                FILE_ATTRIBUTE_NORMAL,
+                SECOND.len(),
+            ),
+        ]) {
+            let filename = actual.cFileName;
+            let end = filename.iter().position(|&unit| unit == 0).unwrap();
+            assert_eq!(String::from_utf16(&filename[..end]).unwrap(), name);
+            let flags = (FD_ATTRIBUTES.0 | FD_FILESIZE.0 | FD_WRITESTIME.0) as u32;
+            assert_eq!(actual.dwFlags & flags, flags);
+            assert_eq!({ actual.dwFileAttributes }, attr.0);
+            assert_eq!({ actual.nFileSizeHigh }, 0);
+            assert_eq!({ actual.nFileSizeLow }, size as u32);
+            let time = actual.ftLastWriteTime;
+            let ticks = (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+            assert_eq!(ticks, 133_444_736_000_000_000);
+        }
+        assert!(fixture.readers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn win_ole_enumerates_formats_and_rejects_unsupported_requests() {
+        let fixture = Fixture::new();
+        let formats = &fixture.formats;
+        // SAFETY: The interfaces are live and all output buffers are writable.
+        unsafe {
+            let enumerator = fixture.data.EnumFormatEtc(DATADIR_GET.0 as u32).unwrap();
+            let mut entries = [FORMATETC::default(); 4];
+            let mut count = 0;
+            assert_eq!(enumerator.Next(&mut entries, Some(&mut count)), S_OK);
+            assert_eq!(count, 4);
+            assert_eq!(
+                entries.map(|f| (f.cfFormat, f.lindex, f.tymed)),
+                [
+                    (formats.descriptor, -1, TYMED_HGLOBAL.0 as u32),
+                    (formats.contents, 1, TYMED_ISTREAM.0 as u32),
+                    (formats.contents, 3, TYMED_ISTREAM.0 as u32),
+                    (formats.preferred, -1, TYMED_HGLOBAL.0 as u32),
+                ]
+            );
+            assert_eq!(
+                enumerator.Next(&mut entries[..1], Some(&mut count)),
+                S_FALSE
+            );
+            assert_eq!(count, 0);
+            for (request, error) in [
+                (format_etc(1, -1, TYMED_HGLOBAL.0 as u32), DV_E_CLIPFORMAT),
+                (fixture.contents(0), DV_E_LINDEX),
+                (fixture.contents(4), DV_E_LINDEX),
+                (
+                    format_etc(formats.contents, 1, TYMED_HGLOBAL.0 as u32),
+                    DV_E_TYMED,
+                ),
+            ] {
+                assert_eq!(fixture.data.QueryGetData(&request), error);
+                match fixture.data.GetData(&request) {
+                    Err(actual) => assert_eq!(actual.code(), error),
+                    Ok(medium) => {
+                        let _medium = Medium(medium);
+                        panic!("unsupported request unexpectedly succeeded");
+                    }
+                }
+            }
+        }
+        assert!(fixture.readers.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn win_ole_reads_each_index_and_completes_on_end_operation() {
+        let fixture = Fixture::new();
+        let operation = fixture.data.cast::<IDataObjectAsyncCapability>().unwrap();
+        // SAFETY: The interface is live and bind contexts are optional.
+        unsafe {
+            assert!(operation.GetAsyncMode().unwrap().as_bool());
+            assert!(!operation.InOperation().unwrap().as_bool());
+            operation.StartOperation(None::<&IBindCtx>).unwrap();
+            assert!(operation.InOperation().unwrap().as_bool());
+        }
+
+        let first = fixture.get(&fixture.contents(1));
+        let second = fixture.get(&fixture.contents(3));
+        assert_eq!(read_all(first.stream()), FIRST);
+        assert_eq!(read_all(second.stream()), SECOND);
+        let transfers = [fixture.transfer(0), fixture.transfer(1)];
+        drop(first);
+        for transfer in &transfers {
+            let progress = transfer.progress.lock().unwrap();
+            assert_eq!(progress.transfer.done, progress.transfer.total);
+            assert_eq!(progress.transfer.state, TransferState::Running);
+        }
+
+        // SAFETY: The interface is live and bind contexts are optional.
+        unsafe {
+            operation
+                .EndOperation(S_OK, None::<&IBindCtx>, DROPEFFECT_COPY.0)
+                .unwrap();
+            assert!(!operation.InOperation().unwrap().as_bool());
+            assert_eq!(
+                operation
+                    .StartOperation(None::<&IBindCtx>)
+                    .unwrap_err()
+                    .code(),
+                E_ABORT
+            );
+            operation
+                .EndOperation(E_FAIL, None::<&IBindCtx>, DROPEFFECT_NONE.0)
+                .unwrap();
+        }
+        for transfer in &transfers {
+            assert_eq!(
+                transfer.progress.lock().unwrap().transfer.state,
+                TransferState::Done
+            );
+        }
+    }
+
+    #[test]
+    fn win_ole_read_after_cancel_returns_abort() {
+        let fixture = Fixture::new();
+        let medium = fixture.get(&fixture.contents(1));
+        assert_eq!(read(medium.stream(), &mut [0; 2]), (S_OK, 2));
+        fixture.transfer(0).cancel.cancel();
+        assert_eq!(read(medium.stream(), &mut [0; 2]), (E_ABORT, 0));
+    }
+
+    #[test]
+    fn win_ole_releasing_medium_cancels_reader() {
+        let fixture = Fixture::new();
+        let medium = fixture.get(&fixture.contents(3));
+        let reader = fixture.readers.lock().unwrap()[0].clone();
+        let transfer = fixture.transfer(0);
+        assert!(!reader.is_cancelled());
+        drop(medium);
+        assert!(reader.is_cancelled());
+        assert!(!transfer.cancel.is_cancelled());
+        assert_eq!(
+            transfer.progress.lock().unwrap().transfer.state,
+            TransferState::Cancelled
+        );
+    }
+
+    #[test]
+    fn win_ole_end_operation_records_failure_and_cancellation() {
+        for (result, state) in [
+            (E_FAIL, TransferState::Failed),
+            (E_ABORT, TransferState::Cancelled),
+        ] {
+            let fixture = Fixture::new();
+            let operation = fixture.data.cast::<IDataObjectAsyncCapability>().unwrap();
+            // SAFETY: The interface is live and the bind context is optional.
+            unsafe { operation.StartOperation(None::<&IBindCtx>) }.unwrap();
+            let _medium = fixture.get(&fixture.contents(1));
+            let transfer = fixture.transfer(0);
+            // SAFETY: The interface is live and the bind context is optional.
+            unsafe { operation.EndOperation(result, None::<&IBindCtx>, DROPEFFECT_NONE.0) }
+                .unwrap();
+            assert!(!unsafe { operation.InOperation() }.unwrap().as_bool());
+            let progress = transfer.progress.lock().unwrap();
+            assert_eq!(progress.transfer.state, state);
+            assert_eq!(
+                progress.transfer.error.is_some(),
+                state == TransferState::Failed
+            );
+            assert!(transfer.cancel.is_cancelled());
+        }
     }
 }
