@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { updateSettings } from "../api";
+import { settingsPatch } from "../settingsPatch";
 import type { Settings } from "../types";
 import { Drawer } from "./Drawer";
 import { ThemePicker } from "./ThemePicker";
@@ -21,7 +22,7 @@ export function PreferencesPanel({ settings, onClose, onSettingsChange }: Props)
     setBusy(true);
     setError(null);
     try {
-      onSettingsChange(await updateSettings(next));
+      onSettingsChange(await updateSettings(settingsPatch(settings, next)));
     } catch (err) {
       setError(String(err));
     } finally {

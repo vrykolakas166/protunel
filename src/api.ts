@@ -108,8 +108,8 @@ export const debugFailTunnel = (id: string, kind: DebugTunnelFailure) =>
 
 export const getSettings = () => invoke<Settings>("get_settings");
 
-export const updateSettings = (settings: Settings) =>
-  invoke<Settings>("update_settings", { settings });
+export const updateSettings = (patch: Partial<Settings>): Promise<Settings> =>
+  invoke<Settings>("update_settings", { patch });
 
 export const getRouterConfig = () => invoke<RouterConfig>("get_router_config");
 

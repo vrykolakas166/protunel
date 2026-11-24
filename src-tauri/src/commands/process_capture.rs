@@ -24,7 +24,7 @@ pub async fn pick_capture_target(app: AppHandle) -> Result<Option<String>, Strin
     let (tx, rx) = oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("Executables", &["exe"])
+        .add_filter(crate::i18n::t(&app, crate::i18n::Text::FilterExecutables), &["exe"])
         .pick_file(move |path| {
             let _ = tx.send(path);
         });

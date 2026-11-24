@@ -45,7 +45,8 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
     try {
       await action();
     } catch (err) {
-      setError(String(err));
+      const text = String(err);
+      setError(text === "not-a-config" ? t("import.notConfig") : text);
     } finally {
       setBusy(false);
     }

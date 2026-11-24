@@ -43,6 +43,7 @@
     "simpleModeDetail": "Dành cho QA, tester, PO chỉ cần vào trang nội bộ: người nhập tệp này chỉ thấy một công tắc Mạng nội bộ thay vì toàn bộ ứng dụng."
   },
   "import": {
+    "notConfig": "Đây không phải tệp cấu hình protunel.",
     "heading": "Nhập cấu hình",
     "changeFile": "Đổi tệp…",
     "writtenBy": "Xuất bởi v{{version}} lúc {{date}}",

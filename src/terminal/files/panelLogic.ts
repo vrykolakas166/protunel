@@ -4,12 +4,17 @@ import type { FileCount } from "../../types";
 import { joinPath, type SortKey } from "./paths";
 
 /** Error codes the backend sends that have a translation (`files.err.*`). */
-export const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large"]);
+export const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large", "same-tunnel", "invalid-path"]);
 
 /** The code of an error when it is a known one, else null (show its text as is). */
 export function knownErrorCode(e: unknown): string | null {
   const code = String(e);
   return KNOWN_ERRORS.has(code) ? code : null;
+}
+
+/** Whether response `seq` is still the newest request issued (stale ones are ignored). */
+export function isCurrentRequest(seq: number, latest: number): boolean {
+  return seq === latest;
 }
 
 /** Cut stays on one server; a copy can be pasted on any other. */

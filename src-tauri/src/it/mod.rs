@@ -43,9 +43,7 @@ fn app() -> &'static AppHandle {
             let data = std::env::temp_dir().join(format!("protunel-it-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&data).unwrap();
             let state = AppState::new(&data, Db::open(Path::new(":memory:")).unwrap());
-            let mut settings = state.settings.get();
-            settings.notifications_enabled = false;
-            state.settings.update(settings).unwrap();
+            state.settings.modify(|settings| settings.notifications_enabled = false).unwrap();
 
             let app = tauri::Builder::default()
                 .any_thread()

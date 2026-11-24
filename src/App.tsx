@@ -191,7 +191,7 @@ function App() {
   const chooseMode = async (mode: UiMode) => {
     if (!settings) return;
     try {
-      const saved = await updateSettings({ ...settings, uiMode: mode });
+      const saved = await updateSettings({ uiMode: mode });
       setSettings(saved);
       if (mode === "full" && !saved.tourCompleted) setShowTour(true);
     } catch (err) {
@@ -231,7 +231,7 @@ function App() {
     setShowTour(false);
     if (!settings || settings.tourCompleted) return;
     try {
-      setSettings(await updateSettings({ ...settings, tourCompleted: true }));
+      setSettings(await updateSettings({ tourCompleted: true }));
     } catch {
       // Not worth interrupting anyone over; worst case the tour offers itself
       // again next launch.
@@ -619,7 +619,7 @@ function App() {
                 onAskMode={() => {
                   if (!settings) return;
                   closePanel();
-                  updateSettings({ ...settings, uiMode: null })
+                  updateSettings({ uiMode: null })
                     .then(setSettings)
                     .catch((err) => setMessage({ text: String(err), isError: true }));
                 }}

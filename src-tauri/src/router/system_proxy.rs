@@ -285,7 +285,7 @@ mod platform {
             }
         }
 
-        fn values(key: &RegKey) -> BTreeMap<String, RegValue> {
+        fn values(key: &RegKey) -> BTreeMap<String, RegValue<'_>> {
             key.enum_values().collect::<Result<_, _>>().unwrap()
         }
 

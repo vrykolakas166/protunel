@@ -338,7 +338,9 @@
       "exists": "Tên này đã có.",
       "conflict": "Tệp trên máy chủ đã bị sửa.",
       "timeout": "{{where}} không trả lời kịp.",
-      "too-large": "Quá lớn để mở ở đây."
+      "too-large": "Quá lớn để mở ở đây.",
+      "same-tunnel": "Nguồn và đích là cùng một máy chủ.",
+      "invalid-path": "Không dùng được đường dẫn này."
     },
     "maximize": "Phóng to (nhấp đúp header)",
     "restore": "Về cỡ cũ (nhấp đúp header)",

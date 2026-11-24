@@ -88,7 +88,7 @@ export function ModeChooser({ settings, afterUpdate, onChoose, onSettingsChange 
   const setLanguage = async (language: string) => {
     if (language === settings.language) return;
     try {
-      onSettingsChange(await updateSettings({ ...settings, language }));
+      onSettingsChange(await updateSettings({ language }));
     } catch {
       // Stays on the current language.
     }

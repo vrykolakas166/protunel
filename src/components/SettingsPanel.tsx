@@ -4,6 +4,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { checkForUpdates, clearTerminalCommands, downloadUpdate, getSettings, updateSettings } from "../api";
+import { settingsPatch } from "../settingsPatch";
 import type { Settings, Tunnel, UiMode, UpdateSnapshot } from "../types";
 import { REPO_URL } from "../updates";
 import { ReleaseNotes } from "./ReleaseNotes";
@@ -198,6 +199,13 @@ function timeAgo(at: number, language: string): string {
   return rtf.format(Math.round(seconds / 86400), "day");
 }
 
+type NumericSetting =
+  | "keepaliveIntervalSecs"
+  | "reconnectMaxAttempts"
+  | "portRangeMin"
+  | "portRangeMax"
+  | "terminalLongCommandSecs";
+
 /**
  * Settings, one page per subject (General, Tunnels, Terminal, Backup, About)
  * picked from a side list — the layout of Windows Terminal or Docker Desktop.
@@ -223,6 +231,7 @@ export function SettingsPanel({
   const { t: tc } = useTranslation("common");
   const [page, setPage] = useState<SettingsPage>(requestedPage);
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [numberDraft, setNumberDraft] = useState<{ key: NumericSetting; value: number; base: Settings } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotten, setForgotten] = useState(false);
@@ -249,8 +258,7 @@ export function SettingsPanel({
   useEffect(() => {
     getSettings().then(setSettings);
     getVersion().then(setVersion);
-    // An import on the Backup page can replace settings while this is open;
-    // without this, the next toggle would save the stale copy over them.
+    // Keep the controls in sync with imports and saves from other windows.
     const unlisten = listen<Settings>("settings-changed", (e) => setSettings(e.payload));
     return () => {
       unlisten.then((f) => f());
@@ -265,20 +273,6 @@ export function SettingsPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, inBackupFlow]);
 
-  const save = async (next: Settings) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const saved = await updateSettings(next);
-      setSettings(saved);
-      onSettingsChange(saved);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const checkNow = async () => {
     setUpToDate(false);
     try {
@@ -291,7 +285,20 @@ export function SettingsPanel({
 
   if (!settings) return null;
 
-  const commit = () => void save(settings);
+  const save = async (next: Settings, base = settings) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const saved = await updateSettings(settingsPatch(base, next));
+      setSettings(saved);
+      onSettingsChange(saved);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const simple = settings.uiMode === "simple";
   const pages = [...(simple ? SIMPLE_PAGES : PAGES), ...(devTools ? (["devtools"] as const) : [])];
   // Switching to Simple while on a page it hides lands on General.
@@ -342,17 +349,29 @@ export function SettingsPanel({
       </button>
     );
   };
-  const numberControl = (value: number, set: (value: number) => void, tooltip: string) => (
-    <input
-      type="number"
-      title={tooltip}
-      className={numberInputClass}
-      value={value}
-      disabled={busy}
-      onChange={(e) => set(Number(e.target.value))}
-      onBlur={commit}
-    />
-  );
+  const numberControl = (key: NumericSetting, tooltip: string) => {
+    const draft = numberDraft?.key === key ? numberDraft : null;
+    return (
+      <input
+        type="number"
+        title={tooltip}
+        className={numberInputClass}
+        value={draft?.value ?? settings[key]}
+        disabled={busy}
+        onChange={(e) => {
+          const input = Number(e.target.value);
+          const value = key === "terminalLongCommandSecs" ? Math.max(0, Math.round(input)) : input;
+          setNumberDraft({ key, value, base: draft?.base ?? settings });
+        }}
+        onBlur={() => {
+          if (!draft) return;
+          void save({ ...draft.base, [key]: draft.value }, draft.base).finally(() => {
+            setNumberDraft((current) => (current === draft ? null : current));
+          });
+        }}
+      />
+    );
+  };
 
   const pageBody = (): ReactNode => {
     switch (shownPage) {
@@ -457,20 +476,12 @@ export function SettingsPanel({
               <Row
                 title={t("keepaliveLabel")}
                 description={t("keepaliveTooltip")}
-                control={numberControl(
-                  settings.keepaliveIntervalSecs,
-                  (v) => setSettings({ ...settings, keepaliveIntervalSecs: v }),
-                  t("keepaliveTooltip"),
-                )}
+                control={numberControl("keepaliveIntervalSecs", t("keepaliveTooltip"))}
               />
               <Row
                 title={t("retriesLabel")}
                 description={t("retriesTooltip")}
-                control={numberControl(
-                  settings.reconnectMaxAttempts,
-                  (v) => setSettings({ ...settings, reconnectMaxAttempts: v }),
-                  t("retriesTooltip"),
-                )}
+                control={numberControl("reconnectMaxAttempts", t("retriesTooltip"))}
               />
             </Group>
             <Group title={t("groups.newTunnels")}>
@@ -479,17 +490,9 @@ export function SettingsPanel({
                 description={t("portRangeHint")}
                 control={
                   <div className="flex items-center gap-1.5">
-                    {numberControl(
-                      settings.portRangeMin,
-                      (v) => setSettings({ ...settings, portRangeMin: v }),
-                      t("portMinTooltip"),
-                    )}
+                    {numberControl("portRangeMin", t("portMinTooltip"))}
                     <span className="text-muted">–</span>
-                    {numberControl(
-                      settings.portRangeMax,
-                      (v) => setSettings({ ...settings, portRangeMax: v }),
-                      t("portMaxTooltip"),
-                    )}
+                    {numberControl("portRangeMax", t("portMaxTooltip"))}
                   </div>
                 }
               />
@@ -556,11 +559,7 @@ export function SettingsPanel({
               <Row
                 title={t("terminalLongCommand")}
                 description={t("terminalLongCommandHint")}
-                control={numberControl(
-                  settings.terminalLongCommandSecs,
-                  (v) => setSettings({ ...settings, terminalLongCommandSecs: Math.max(0, Math.round(v)) }),
-                  t("terminalLongCommandHint"),
-                )}
+                control={numberControl("terminalLongCommandSecs", t("terminalLongCommandHint"))}
               />
               <Row
                 title={t("terminalForget")}

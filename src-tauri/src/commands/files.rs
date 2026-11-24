@@ -267,11 +267,9 @@ pub async fn files_pick_download(
         return Ok(Vec::new());
     };
     let dir = picked.into_path().map_err(|e| e.to_string())?;
-    // Re-read: the dialog may have been open a long time and other windows
-    // may have saved settings meanwhile.
-    let mut fresh = state.settings.get();
-    fresh.files_download_dir = Some(dir.to_string_lossy().into_owned());
-    state.settings.update_or_log(fresh.clone());
+    let fresh = state.settings.modify_or_log(|settings| {
+        settings.files_download_dir = Some(dir.to_string_lossy().into_owned());
+    });
     let _ = tauri::Emitter::emit(&app, crate::events::SETTINGS_CHANGED_EVENT, &fresh);
     Ok(remote_paths
         .into_iter()

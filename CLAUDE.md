@@ -471,7 +471,7 @@ no dropping files on a shell — only on the panel, which names the target.
   (`terminalWrite`, that pane only, never Enter). protunel never handles
   keys or passwords for this.
 - Download to folder…: Rust folder dialog, last folder in
-  `settings.files_download_dir` (re-read after the dialog, then
+  `settings.files_download_dir` (updated under the store lock after the dialog, then
   `settings-changed`). The Linux substitute for drag-out.
 - Drag-out (Windows only, `ssh/drag_out/`; `files_drag_out` returns
   `"unsupported"` elsewhere and the UI never calls it): leaving the window
@@ -572,10 +572,11 @@ not TS — that keeps file contents off the IPC boundary and out of
   `settings::load_json`, which moves an unreadable file to `<name>.json.corrupt`
   before falling back to defaults — never plain `fs::write` (a crash mid-write
   would truncate the file, and a truncated `known_hosts.json` silently forgets
-  every trusted key). `JsonStore::update` returns the write error: propagate it
-  from commands, `update_or_log` only for background bookkeeping. Router config is a
-  *separate* store on purpose: the settings panel writes back a whole `Settings`
-  object and would otherwise clobber router state edited in the other panel.
+  every trusted key). `JsonStore::update` replaces the value and `modify` edits
+  it under the store lock. Propagate write errors from commands and use
+  `update_or_log` or `modify_or_log` for background bookkeeping. `update_settings`
+  validates and merges top-level settings patches under the same lock. Router
+  config is stored separately.
 
 ### Host-key TOFU
 
@@ -639,8 +640,8 @@ the feature stops applying.
   `themeDark`); legacy `"light"`/`"dark"` map to the two `protunel_*` themes.
   The picker previews on hover via `setThemePreview`. `settings-changed` keeps
   every window's copy in step (`App`, `SettingsPanel`, `TerminalApp` all
-  listen): saves send the whole `Settings` object, so a window holding a stale
-  copy would revert another window's change on its next save.
+  listen). Saves send only the changed fields as a settings patch and use the
+  merged `Settings` returned by Rust.
 - Groups (`src/groups.ts`, `tests/groups.test.ts`): once any host has one,
   the tunnel list and the terminal host tree (`HostTree.tsx` `hostTree`) show
   sections sorted by name, ungrouped last. A host nests under its jump host
@@ -676,8 +677,7 @@ the feature stops applying.
   Backup embeds `ConfigFlow` (export/import) inline: the hub routes to
   `components/config/{ExportView,ImportView,ImportedView}` (shared pieces in
   `config/parts.tsx`); each import pick remounts `ImportView` so its choices
-  start over. It listens to
-  `settings-changed` so an import can't be overwritten by its stale copy.
+  start over. It listens to `settings-changed` to show imported settings.
 - Every modal surface (`Modal`, `Drawer`) uses `useDialogFocus`
   (`src/dialogFocus.ts`): focus moves in on open, Tab wraps inside, focus
   returns on close, and the panel is named by its title (`aria-labelledby`).

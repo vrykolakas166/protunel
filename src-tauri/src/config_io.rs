@@ -13,7 +13,7 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine as _;
-use rand::TryRngCore;
+use rand::TryRng;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::DialogExt;
@@ -75,7 +75,7 @@ fn now_secs() -> u64 {
 
 fn random_bytes(len: usize) -> Result<Vec<u8>, String> {
     let mut buf = vec![0u8; len];
-    rand::rngs::OsRng
+    rand::rngs::SysRng
         .try_fill_bytes(&mut buf)
         .map_err(|e| format!("failed to gather randomness: {e}"))?;
     Ok(buf)
@@ -245,7 +245,7 @@ fn parse_bundle(data: &str) -> Result<ConfigBundle, String> {
     let bundle: ConfigBundle =
         serde_json::from_str(data).map_err(|e| format!("not a valid config file: {e}"))?;
     if bundle.format != FORMAT {
-        return Err("this is not a protunel config file".to_string());
+        return Err("not-a-config".to_string());
     }
     if bundle.version > VERSION {
         return Err(format!(
@@ -272,7 +272,7 @@ pub async fn export_config(
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("protunel config", &["json"])
+        .add_filter(crate::i18n::t(&app, crate::i18n::Text::FilterConfig), &["json"])
         .set_file_name("protunel-config.json")
         .save_file(move |path| {
             let _ = tx.send(path);
@@ -293,7 +293,7 @@ pub async fn pick_import_file(app: AppHandle) -> Result<Option<String>, String> 
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog()
         .file()
-        .add_filter("protunel config", &["json"])
+        .add_filter(crate::i18n::t(&app, crate::i18n::Text::FilterConfig), &["json"])
         .pick_file(move |path| {
             let _ = tx.send(path);
         });
@@ -599,12 +599,14 @@ pub async fn apply_import(
     if sections.settings {
         // The mode belongs to the person, not the file: only `ui_mode` below
         // (an explicit choice by the exporter) changes it.
-        let settings = Settings {
-            ui_mode: state.settings.get().ui_mode,
-            ..bundle.settings.clone()
-        };
-        state.settings.update(settings.clone())?;
-        crate::commands::sync_autostart(&app, settings.autostart_enabled)?;
+        let settings = state.settings.try_modify(|current| {
+            let settings = Settings {
+                ui_mode: current.ui_mode.clone(),
+                ..bundle.settings.clone()
+            };
+            crate::commands::sync_autostart(&app, settings.autostart_enabled)?;
+            Ok(settings)
+        })?;
         let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &settings);
     }
 
@@ -617,9 +619,7 @@ pub async fn apply_import(
         sections.ui_mode,
         &crate::settings::normalize_ui_mode(bundle.ui_mode.clone()),
     ) {
-        let mut settings = state.settings.get();
-        settings.ui_mode = Some(mode.clone());
-        state.settings.update(settings.clone())?;
+        let settings = state.settings.modify(|settings| settings.ui_mode = Some(mode.clone()))?;
         let _ = app.emit(crate::events::SETTINGS_CHANGED_EVENT, &settings);
         crate::tray::rebuild_menu(&app);
     }
@@ -793,7 +793,7 @@ mod import_tests {
         let newer = parse_bundle(&bundle_json(FORMAT, VERSION + 1)).err().unwrap();
         assert!(newer.contains("newer version"), "{newer}");
         let foreign = parse_bundle(&bundle_json("something-else", VERSION)).err().unwrap();
-        assert!(foreign.contains("not a protunel config"), "{foreign}");
+        assert!(foreign == "not-a-config", "{foreign}");
         let junk = parse_bundle("{}").err().unwrap();
         assert!(junk.contains("not a valid config file"), "{junk}");
     }

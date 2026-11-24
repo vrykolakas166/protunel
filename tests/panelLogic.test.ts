@@ -10,6 +10,7 @@ import {
   canPasteClip,
   deleteConfirmed,
   deleteNeedsTyping,
+  isCurrentRequest,
   jumpIndex,
   knownErrorCode,
   nextSort,
@@ -113,5 +114,22 @@ describe("panel geometry", () => {
     expect(gripBox("e", box)).toEqual({ top: 58, height: 184, width: 8, left: 396 });
     expect(gripBox("nw", box)).toEqual({ width: 16, height: 16, left: 92, top: 42 });
     expect(gripBox("se", box)).toEqual({ width: 16, height: 16, left: 392, top: 242 });
+  });
+});
+
+describe("isCurrentRequest", () => {
+  test("only the newest request is current", () => {
+    let latest = 0;
+    const first = ++latest;
+    expect(isCurrentRequest(first, latest)).toBe(true);
+    const second = ++latest;
+    expect(isCurrentRequest(first, latest)).toBe(false);
+    expect(isCurrentRequest(second, latest)).toBe(true);
+  });
+  test("invalidating (unmount) makes every request stale", () => {
+    let latest = 0;
+    const seq = ++latest;
+    latest++;
+    expect(isCurrentRequest(seq, latest)).toBe(false);
   });
 });

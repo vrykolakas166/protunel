@@ -1,5 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use uuid::Uuid;
@@ -202,7 +203,39 @@ impl<T: Clone + Serialize + DeserializeOwned + Default> JsonStore<T> {
     pub fn update(&self, value: T) -> Result<(), String> {
         let mut current = self.current.lock().unwrap();
         *current = value;
-        let data = serde_json::to_string_pretty(&*current).map_err(|e| e.to_string())?;
+        self.save(&current)
+    }
+
+    /// Mutates and persists the current value under one lock, with the same
+    /// write-failure behavior as `update`.
+    pub fn modify(&self, f: impl FnOnce(&mut T)) -> Result<T, String> {
+        let mut current = self.current.lock().unwrap();
+        f(&mut current);
+        self.save(&current)?;
+        Ok(current.clone())
+    }
+
+    /// Logs a write failure and still returns the value installed in memory.
+    pub fn modify_or_log(&self, f: impl FnOnce(&mut T)) -> T {
+        let mut current = self.current.lock().unwrap();
+        f(&mut current);
+        if let Err(e) = self.save(&current) {
+            eprintln!("protunel: {e}");
+        }
+        current.clone()
+    }
+
+    /// Replaces the value only if the callback succeeds. Once accepted, the
+    /// replacement has the same write-failure behavior as `update`.
+    pub fn try_modify(&self, f: impl FnOnce(&T) -> Result<T, String>) -> Result<T, String> {
+        let mut current = self.current.lock().unwrap();
+        *current = f(&current)?;
+        self.save(&current)?;
+        Ok(current.clone())
+    }
+
+    fn save(&self, value: &T) -> Result<(), String> {
+        let data = serde_json::to_string_pretty(value).map_err(|e| e.to_string())?;
         write_atomic(&self.path, data.as_bytes())
             .map_err(|e| format!("cannot save {}: {e}", self.path.display()))
     }
@@ -261,6 +294,25 @@ pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
 
 pub type SettingsStore = JsonStore<Settings>;
 pub type RouterStore = JsonStore<RouterConfig>;
+
+impl JsonStore<Settings> {
+    pub fn apply_patch(
+        &self,
+        patch: Map<String, Value>,
+        before_save: impl FnOnce(&Settings) -> Result<(), String>,
+    ) -> Result<Settings, String> {
+        self.try_modify(|current| {
+            let mut merged = serde_json::to_value(current).map_err(|e| e.to_string())?;
+            merged
+                .as_object_mut()
+                .expect("Settings serializes as an object")
+                .extend(patch);
+            let settings = serde_json::from_value(merged).map_err(|e| e.to_string())?;
+            before_save(&settings)?;
+            Ok(settings)
+        })
+    }
+}
 
 /// One entry in the recent-captures MRU list — enough to relaunch the same
 /// target without re-browsing for it.
@@ -346,6 +398,94 @@ mod tests {
         store.update(config).unwrap();
         assert_eq!(JsonStore::<RouterConfig>::load(path.clone()).get().port, 4321);
         assert!(!path.with_extension("json.tmp").exists());
+    }
+
+    #[test]
+    fn settings_patch_preserves_other_fields_and_ignores_unknown_keys() {
+        let path = scratch("patch-preserve").join("settings.json");
+        let store = SettingsStore::load(path.clone());
+        let original = store.modify(|settings| settings.theme = "custom".into()).unwrap();
+        let saved = store
+            .apply_patch(
+                Map::from_iter([
+                    ("language".into(), Value::from("vi")),
+                    ("futureSetting".into(), Value::from(true)),
+                ]),
+                |_| Ok(()),
+            )
+            .unwrap();
+
+        let mut expected = serde_json::to_value(original).unwrap();
+        expected["language"] = Value::from("vi");
+        assert_eq!(serde_json::to_value(saved).unwrap(), expected);
+        assert_eq!(serde_json::to_value(SettingsStore::load(path).get()).unwrap(), expected);
+    }
+
+    #[test]
+    fn settings_patch_bad_type_changes_nothing() {
+        let path = scratch("patch-invalid").join("settings.json");
+        let store = SettingsStore::load(path.clone());
+        let original = store.modify(|settings| settings.language = "vi".into()).unwrap();
+        let bytes = std::fs::read(&path).unwrap();
+
+        let result = store.apply_patch(
+            Map::from_iter([
+                ("theme".into(), Value::from("custom")),
+                ("portRangeMin".into(), Value::from("invalid")),
+            ]),
+            |_| panic!("invalid settings must not reach the pre-save callback"),
+        );
+
+        assert!(result.is_err());
+        assert_eq!(serde_json::to_value(store.get()).unwrap(), serde_json::to_value(original).unwrap());
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
+
+    #[test]
+    fn settings_patch_normalizes_unknown_ui_mode() {
+        let store = SettingsStore::load(scratch("patch-mode").join("settings.json"));
+        store.modify(|settings| settings.ui_mode = Some("full".into())).unwrap();
+        let saved = store
+            .apply_patch(Map::from_iter([("uiMode".into(), Value::from("future"))]), |_| Ok(()))
+            .unwrap();
+
+        assert_eq!(saved.ui_mode, None);
+        assert_eq!(store.get().ui_mode, None);
+    }
+
+    #[test]
+    fn settings_patches_to_different_fields_both_survive() {
+        let path = scratch("patch-sequential").join("settings.json");
+        let store = SettingsStore::load(path.clone());
+        store
+            .apply_patch(Map::from_iter([("language".into(), Value::from("vi"))]), |_| Ok(()))
+            .unwrap();
+        let saved = store
+            .apply_patch(Map::from_iter([("terminalAppMouse".into(), Value::from(true))]), |_| Ok(()))
+            .unwrap();
+
+        assert_eq!(saved.language, "vi");
+        assert!(saved.terminal_app_mouse);
+        let persisted = SettingsStore::load(path).get();
+        assert_eq!(persisted.language, "vi");
+        assert!(persisted.terminal_app_mouse);
+    }
+
+    #[test]
+    fn settings_patch_aborts_if_autostart_sync_fails() {
+        let path = scratch("patch-autostart").join("settings.json");
+        let store = SettingsStore::load(path.clone());
+        let result = store.apply_patch(
+            Map::from_iter([("autostartEnabled".into(), Value::from(true))]),
+            |settings| {
+                assert!(settings.autostart_enabled);
+                Err("autostart unavailable".into())
+            },
+        );
+
+        assert_eq!(result.err().as_deref(), Some("autostart unavailable"));
+        assert!(!store.get().autostart_enabled);
+        assert!(!path.exists());
     }
 
     #[test]

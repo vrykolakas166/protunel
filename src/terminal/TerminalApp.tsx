@@ -1212,8 +1212,7 @@ export function TerminalApp() {
   const toggleAppMouse = async () => {
     if (!settings) return;
     try {
-      // settings-changed brings the saved value back to this window.
-      setSettings(await updateSettings({ ...settings, terminalAppMouse: !settings.terminalAppMouse }));
+      setSettings(await updateSettings({ terminalAppMouse: !settings.terminalAppMouse }));
     } catch {
       // Nothing changed; the chip keeps showing the current state.
     }

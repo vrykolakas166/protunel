@@ -39,7 +39,7 @@ export function LanguageMenu({ settings, onSettingsChange }: Props) {
     setOpen(false);
     if (language === settings.language) return;
     try {
-      onSettingsChange(await updateSettings({ ...settings, language }));
+      onSettingsChange(await updateSettings({ language }));
     } catch {
       // The menu stays on the old language; nothing else to roll back.
     }

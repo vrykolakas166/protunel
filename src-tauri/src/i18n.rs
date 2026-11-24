@@ -24,6 +24,10 @@ pub enum Text {
     ConnectionLost,
     /// A plain session close: no reason to quote.
     ConnectionLostPlain,
+    /// File dialog filter for `.exe` files.
+    FilterExecutables,
+    /// File dialog filter for protunel config files.
+    FilterConfig,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -69,6 +73,10 @@ fn lookup(lang: Lang, text: Text) -> &'static str {
         (Lang::Vi, ConnectionLost) => "Mất kết nối ({reason}) — đang kết nối lại…",
         (Lang::En, ConnectionLostPlain) => "Connection lost — reconnecting…",
         (Lang::Vi, ConnectionLostPlain) => "Mất kết nối — đang kết nối lại…",
+        (Lang::En, FilterExecutables) => "Executables",
+        (Lang::Vi, FilterExecutables) => "Tệp thực thi",
+        (Lang::En, FilterConfig) => "protunel config",
+        (Lang::Vi, FilterConfig) => "Tệp cấu hình protunel",
     }
 }
 

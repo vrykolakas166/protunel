@@ -1,5 +1,6 @@
 //! Settings, autostart, and the Simple-mode network switch.
 
+use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -43,9 +44,10 @@ pub fn sync_autostart(app: &AppHandle, enabled: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn update_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<Settings, String> {
-    sync_autostart(&app, settings.autostart_enabled)?;
-    state.settings.update(settings.clone())?;
+pub fn update_settings(app: AppHandle, state: State<AppState>, patch: Map<String, Value>) -> Result<Settings, String> {
+    let settings = state.settings.apply_patch(patch, |settings| {
+        sync_autostart(&app, settings.autostart_enabled)
+    })?;
     let _ = app.emit(SETTINGS_CHANGED_EVENT, &settings);
     // The tray menu differs between Simple and Full mode.
     crate::tray::rebuild_menu(&app);

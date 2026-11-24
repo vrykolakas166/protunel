@@ -338,7 +338,9 @@
       "exists": "That name is already taken.",
       "conflict": "The file changed on the server.",
       "timeout": "{{where}} did not answer in time.",
-      "too-large": "Too big to open here."
+      "too-large": "Too big to open here.",
+      "same-tunnel": "Source and destination are the same server.",
+      "invalid-path": "That path can't be used."
     },
     "maximize": "Maximize (double-click the header)",
     "restore": "Restore size (double-click the header)",

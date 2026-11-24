@@ -64,6 +64,7 @@ import {
   canPasteClip,
   deleteConfirmed,
   deleteNeedsTyping,
+  isCurrentRequest,
   jumpIndex,
   knownErrorCode,
   nextSort,
@@ -276,7 +277,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
       setError(null);
       try {
         const listing = await filesList(tunnelId, dir);
-        if (seq !== loadSeq.current) return;
+        if (!isCurrentRequest(seq, loadSeq.current)) return;
         setPath(listing.path);
         setEntries(listing.entries);
         onMemory({ path: listing.path });
@@ -289,10 +290,10 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
         setScrollTop(0);
         if (listRef.current) listRef.current.scrollTop = 0;
       } catch (e) {
-        if (seq !== loadSeq.current) return;
+        if (!isCurrentRequest(seq, loadSeq.current)) return;
         setError(errorText(e));
       } finally {
-        if (seq === loadSeq.current) setLoading(false);
+        if (isCurrentRequest(seq, loadSeq.current)) setLoading(false);
       }
     },
     [tunnelId, errorText, onMemory],
@@ -311,36 +312,39 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   // First open: where this pane's panel last was, else the shell's folder,
   // else the login folder.
   useEffect(() => {
-    let alive = true;
+    // Shares `loadSeq` with `load`: a listing the user's navigation (or the
+    // fallback below) has superseded never lands, and unmounting invalidates.
+    const seq = ++loadSeq.current;
+    const alive = () => isCurrentRequest(seq, loadSeq.current);
     void (async () => {
       let homeDir = "/";
       try {
         homeDir = await filesHome(tunnelId);
       } catch (e) {
-        if (!alive) return;
+        if (!alive()) return;
         setError(errorText(e));
         setLoading(false);
         return;
       }
-      if (!alive) return;
+      if (!alive()) return;
       setHome(homeDir);
       const guess = memory?.path ?? shellDir();
       const start = guess ? resolvePath(guess, homeDir, homeDir) : homeDir;
       try {
         const listing = await filesList(tunnelId, start);
-        if (!alive) return;
+        if (!alive()) return;
         setPath(listing.path);
         setEntries(listing.entries);
         onMemory({ path: listing.path });
         setScrollTop(0);
       } catch {
-        if (alive) await load(homeDir);
+        if (alive()) await load(homeDir);
       } finally {
-        if (alive) setLoading(false);
+        if (alive()) setLoading(false);
       }
     })();
     return () => {
-      alive = false;
+      loadSeq.current++;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tunnelId]);

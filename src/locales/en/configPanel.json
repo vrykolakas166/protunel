@@ -43,6 +43,7 @@
     "simpleModeDetail": "For QA, testers and POs who only browse internal sites: whoever imports this file sees one Internal network switch instead of the full app."
   },
   "import": {
+    "notConfig": "This is not a protunel config file.",
     "heading": "Import config",
     "changeFile": "Change file…",
     "writtenBy": "Exported by v{{version}} on {{date}}",
