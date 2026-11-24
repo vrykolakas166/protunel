@@ -106,6 +106,24 @@ describe("panel geometry", () => {
     expect(parseFilesGeometry(JSON.stringify(ok))).toEqual(ok as never);
     expect(parseFilesGeometry(JSON.stringify({ ...ok, size: { w: 760, h: 520 } }))?.size).toEqual(DEFAULT_SIZE);
   });
+  test("parseFilesGeometry rejects bad placements and sizes, keeps only known fields", () => {
+    const size = { w: 400, h: 300 };
+    const bad = [
+      { placement: { kind: "snap", corner: "middle" }, size },
+      { placement: { kind: "free", fx: 1.5, fy: 0.2 }, size },
+      { placement: { kind: "free", fx: "0.2", fy: 0.2 }, size },
+      { placement: { kind: "float" }, size },
+      { placement: { kind: "snap", corner: "tl" }, size: { w: "400", h: 300 } },
+      { placement: { kind: "snap", corner: "tl" }, size: { w: 400, h: -1 } },
+      { placement: { kind: "snap", corner: "tl" } },
+      [1, 2],
+    ];
+    for (const geo of bad) expect(parseFilesGeometry(JSON.stringify(geo))).toBeNull();
+    expect(parseFilesGeometry("null")).toBeNull();
+    const free = { placement: { kind: "free", fx: 0, fy: 1, extra: 1 }, size, maximized: true, junk: "x" };
+    expect(parseFilesGeometry(JSON.stringify(free))).toEqual({ placement: { kind: "free", fx: 0, fy: 1 }, size, maximized: true });
+    expect(parseFilesGeometry(JSON.stringify({ ...free, maximized: "yes" }))?.maximized).toBeUndefined();
+  });
   test("gripBox straddles each edge and corner", () => {
     const box: Box = { x: 100, y: 50, w: 300, h: 200 };
     expect(gripBox("n", box)).toEqual({ left: 108, width: 284, height: 8, top: 46 });

@@ -41,7 +41,7 @@ function ThemeCard({
       title={theme.name}
       aria-pressed={selected}
       className={`group flex min-w-0 items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs transition-transform hover:-translate-y-px ${
-        selected ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "ring-1 ring-black/10"
+        selected ? "ring-2 ring-accent ring-offset-1 ring-offset-surface" : "ring-1 ring-border"
       }`}
       style={{ background: bg, color: text }}
     >
@@ -160,7 +160,7 @@ export function ThemePicker({ settings, disabled, onChange, fill = false }: Prop
         }`}
       >
         <span
-          className="h-5 w-5 shrink-0 rounded border border-black/10"
+          className="h-5 w-5 shrink-0 rounded border border-border"
           style={{ background: theme.swatch.bg, boxShadow: `inset -8px 0 0 ${theme.swatch.main}` }}
         />
         <span className="min-w-0">

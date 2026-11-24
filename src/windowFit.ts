@@ -1,5 +1,5 @@
 import { currentMonitor, getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { animateWindow as animateWindowTo } from "./api";
 
 // Grows the window when an open popup needs more room than it has, and puts
 // it back when the last popup closes. One controller per window: nested popups
@@ -41,8 +41,7 @@ interface Frame {
  * per frame and shows the in-between states of size and position separately.
  * Sizes are inner, positions outer top-left, all logical px.
  */
-const animateWindow = (to: Frame) =>
-  invoke<void>("animate_window", { ...to, durationMs: ANIMATION_MS });
+const animateWindow = (to: Frame) => animateWindowTo(to, ANIMATION_MS);
 
 export function popupOpened() {
   openPopups += 1;

@@ -176,18 +176,38 @@ export function firstGeometry(last: FilesGeometry): FilesGeometry {
   };
 }
 
-/** The stored geometry (JSON text), or null when missing or unusable. */
+const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+const fraction = (n: unknown): n is number => finite(n) && n >= 0 && n <= 1;
+
+function validPlacement(p: unknown): p is Placement {
+  if (!p || typeof p !== "object") return false;
+  const placement = p as Record<string, unknown>;
+  if (placement.kind === "snap") return CORNERS.includes(placement.corner as Corner);
+  return placement.kind === "free" && fraction(placement.fx) && fraction(placement.fy);
+}
+
+/**
+ * The stored geometry (JSON text), or null when missing or unusable: an
+ * unknown placement, a corner or fraction out of range, or a size that is not
+ * a positive finite number. Only the known fields are kept.
+ */
 export function parseFilesGeometry(raw: string | null): FilesGeometry | null {
+  let geo: Record<string, unknown> | null;
   try {
-    const geo = raw ? (JSON.parse(raw) as FilesGeometry) : null;
-    // 760x520 was the first default, found too big: take the new one.
-    if (geo?.placement?.kind && geo.size?.w > 0 && geo.size?.h > 0) {
-      return geo.size.w === 760 && geo.size.h === 520 ? { ...geo, size: DEFAULT_SIZE } : geo;
-    }
+    geo = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
   } catch {
-    // Unreadable: the default.
+    return null;
   }
-  return null;
+  if (!geo || typeof geo !== "object" || !validPlacement(geo.placement)) return null;
+  const size = geo.size as Record<string, unknown> | null;
+  if (!size || !finite(size.w) || !finite(size.h) || size.w <= 0 || size.h <= 0) return null;
+  const placement: Placement =
+    geo.placement.kind === "snap"
+      ? { kind: "snap", corner: geo.placement.corner }
+      : { kind: "free", fx: geo.placement.fx, fy: geo.placement.fy };
+  // 760x520 was the first default, found too big: take the new one.
+  const kept = size.w === 760 && size.h === 520 ? DEFAULT_SIZE : { w: size.w, h: size.h };
+  return { placement, size: kept, ...(geo.maximized === true ? { maximized: true } : {}) };
 }
 
 /** Position of a resize grip: G thick, straddling the panel's border; corner grips C square. */

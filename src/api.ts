@@ -266,3 +266,7 @@ export const filesCancelTransfer = (id: string) => invoke<void>("files_cancel_tr
 export const filesClearTransfers = () => invoke<void>("files_clear_transfers");
 export const filesReveal = (id: string) => invoke<void>("files_reveal", { id });
 export const filesSaveDraft = (name: string, text: string) => invoke<string | null>("files_save_draft", { name, text });
+
+/** Animates the window to an inner size and outer position (logical px) in Rust (`window_anim.rs`). */
+export const animateWindow = (frame: { width: number; height: number; x: number; y: number }, durationMs: number) =>
+  invoke<void>("animate_window", { ...frame, durationMs });
