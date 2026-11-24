@@ -1,3 +1,4 @@
+mod dial_locks;
 pub mod listener;
 pub mod pac;
 pub mod rules;
@@ -16,6 +17,7 @@ use uuid::Uuid;
 use crate::db::Db;
 use crate::events::{RouterStatus, RouterStatusEvent, ROUTER_STATUS_EVENT};
 use crate::settings::{RouterConfig, RouterStore};
+use dial_locks::DialLocks;
 use rules::{CompiledRule, MatchOutcome, RuleAction};
 
 /// How many recent routing decisions the panel can show. Bounded because this
@@ -56,9 +58,7 @@ pub struct RouterState {
     compile_errors: RwLock<Vec<String>>,
     decisions: Mutex<VecDeque<RoutingDecision>>,
     running: Mutex<Option<RunningRouter>>,
-    /// Serializes on-demand tunnel dials. Several concurrent requests for the
-    /// same not-yet-connected tunnel must produce one connect, not one each.
-    pub connect_lock: tokio::sync::Mutex<()>,
+    dial_locks: DialLocks,
     pub bytes_up: Arc<AtomicU64>,
     pub bytes_down: Arc<AtomicU64>,
     pub active_connections: Arc<AtomicU64>,
@@ -72,7 +72,7 @@ impl RouterState {
             compile_errors: RwLock::new(Vec::new()),
             decisions: Mutex::new(VecDeque::with_capacity(DECISION_LOG_CAPACITY)),
             running: Mutex::new(None),
-            connect_lock: tokio::sync::Mutex::new(()),
+            dial_locks: DialLocks::default(),
             bytes_up: Arc::new(AtomicU64::new(0)),
             bytes_down: Arc::new(AtomicU64::new(0)),
             active_connections: Arc::new(AtomicU64::new(0)),

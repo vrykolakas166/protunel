@@ -20,6 +20,8 @@
   --color-amber: #c97a12;
   --color-coral: #c7373d;
   --color-slate: #9ca3af;
+  /* Dim layer behind modal surfaces; black reads the same on every theme. */
+  --color-scrim: rgb(0 0 0 / 0.5);
 }
 
 /* Bare "r, g, b" triplets for use inside rgba(var(--x-rgb), a) — kept out of

@@ -20,6 +20,8 @@ pub enum Text {
     /// `{version}`
     UpdateReadyTitle,
     UpdateReadyBody,
+    /// `{reason}`
+    ConnectionLost,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -61,6 +63,8 @@ fn lookup(lang: Lang, text: Text) -> &'static str {
         (Lang::Vi, UpdateReadyTitle) => "protunel {version} đã sẵn sàng",
         (Lang::En, UpdateReadyBody) => "Restart protunel to finish updating.",
         (Lang::Vi, UpdateReadyBody) => "Khởi động lại protunel để hoàn tất cập nhật.",
+        (Lang::En, ConnectionLost) => "Connection lost ({reason}) — reconnecting…",
+        (Lang::Vi, ConnectionLost) => "Mất kết nối ({reason}) — đang kết nối lại…",
     }
 }
 
@@ -74,9 +78,21 @@ pub fn t_version(app: &AppHandle, text: Text, version: &str) -> String {
     lookup(lang(app), text).replace("{version}", version)
 }
 
+/// The text with its `{reason}` (a server or library message, untranslated) filled in.
+pub fn t_reason(app: &AppHandle, text: Text, reason: &str) -> String {
+    lookup(lang(app), text).replace("{reason}", reason)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reason_placeholder_survives_translation() {
+        for lang in [Lang::En, Lang::Vi] {
+            assert!(lookup(lang, Text::ConnectionLost).contains("{reason}"), "{lang:?}");
+        }
+    }
 
     #[test]
     fn placeholders_survive_translation() {

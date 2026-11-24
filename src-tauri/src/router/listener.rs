@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -262,10 +263,8 @@ async fn serve_via_tunnel(
 /// Returns a live authenticated session for `tunnel_id`, connecting the tunnel
 /// first if needed.
 ///
-/// The connect path is serialized: without the lock, a browser opening six
-/// connections at once would race six `connect_one` calls through the
-/// `is_connected` check and leave five orphaned tunnel tasks fighting over the
-/// same local ports.
+/// Coordinate dials for the same tunnel, including any jumps that
+/// `connect_one` may start for it.
 async fn ensure_session(
     app: &AppHandle,
     state: &AppState,
@@ -275,16 +274,54 @@ async fn ensure_session(
         return Ok(session);
     }
 
-    let _guard = state.router.connect_lock.lock().await;
-    if let Some(session) = state.session_for(tunnel_id) {
-        return Ok(session);
-    }
+    let _target_guard = loop {
+        let chain = jump_chain(state, tunnel_id)?;
+        let mut lock_order = chain.clone();
+        lock_order.sort_unstable();
+        let mut guards = state.router.dial_locks.lock_all(&lock_order).await;
+        if let Some(session) = state.session_for(tunnel_id) {
+            return Ok(session);
+        }
+        // The jump configuration may have changed while waiting for a lock.
+        if jump_chain(state, tunnel_id)? != chain {
+            continue;
+        }
 
-    crate::commands::connect_one(app, state, tunnel_id).await?;
+        if !state.is_connected(tunnel_id) {
+            // A prior dial can time out while its supervisor is still active.
+            // connect_one skips running jumps, so await that hop's session here.
+            if let Some(jump) = chain.iter().copied().skip(1).find(|id| state.is_connected(*id)) {
+                crate::commands::wait_for_session(state, jump, ON_DEMAND_CONNECT_TIMEOUT).await?;
+                if jump_chain(state, tunnel_id)? != chain {
+                    continue;
+                }
+            }
+        }
+
+        crate::commands::connect_one(app, state, tunnel_id).await?;
+        // The target has started. Let sibling tunnels use their jumps while
+        // the target authenticates.
+        let target_index = lock_order.binary_search(&tunnel_id).unwrap();
+        break guards.swap_remove(target_index);
+    };
     crate::commands::wait_for_session(state, tunnel_id, ON_DEMAND_CONNECT_TIMEOUT).await?;
     state
         .session_for(tunnel_id)
         .ok_or_else(|| "tunnel connected but has no session".to_string())
+}
+
+/// Include all potential jump dependencies even when their tasks are running,
+/// since a task may exit while this request waits for its locks.
+fn jump_chain(state: &AppState, tunnel_id: Uuid) -> Result<Vec<Uuid>, String> {
+    let mut chain = Vec::new();
+    let mut seen = HashSet::new();
+    let mut current = Some(tunnel_id);
+    while let Some(id) = current.filter(|id| seen.insert(*id)) {
+        chain.push(id);
+        // Leave missing tunnels and cycles for connect_one to report if needed.
+        current = state.db.get(id).map_err(|e| e.to_string())?.and_then(|tunnel| tunnel.jump_tunnel_id);
+    }
+    Ok(chain)
 }
 
 /// Attributes a routed connection to a captured process, if any capture is

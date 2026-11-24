@@ -45,7 +45,8 @@
       "dev": "Developer"
     },
     "footer": "Change any time in Settings › General",
-    "details": "More about this mode"
+    "details": "More about this mode",
+    "language": "Language"
   },
   "copyError": "Copy error details"
 }

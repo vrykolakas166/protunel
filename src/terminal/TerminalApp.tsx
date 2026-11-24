@@ -24,7 +24,7 @@ import { useTheme } from "../themes";
 import { useTunnelEvents } from "../hooks/useTunnelEvents";
 import type { Settings, Tunnel, TunnelInput, Workspace } from "../types";
 import { HostTree, hostTree, subtreeIds, type HostRow, type HostSection } from "./HostTree";
-import { loadCollapsedGroups, saveCollapsedGroups, toggleSections } from "../groups";
+import { useCollapsedGroups } from "../hooks/useCollapsedGroups";
 import {
   MAX_PANES,
   computeLayout,
@@ -258,7 +258,7 @@ export function TerminalApp() {
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** Collapsed group sections in the host tree, remembered in this window. */
-  const [collapsedGroups, setCollapsedGroups] = useState(() => loadCollapsedGroups(COLLAPSED_GROUPS_KEY));
+  const [collapsedGroups, toggleGroup] = useCollapsedGroups(COLLAPSED_GROUPS_KEY);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
@@ -741,11 +741,7 @@ export function TerminalApp() {
 
   /** `all` (Ctrl+click on a header): every group section follows the clicked one. */
   const toggleSection = (name: string | null, all: boolean) =>
-    setCollapsedGroups((prev) => {
-      const next = toggleSections(prev, name, all ? sections?.map((sec) => sec.name) : undefined);
-      saveCollapsedGroups(COLLAPSED_GROUPS_KEY, next);
-      return next;
-    });
+    toggleGroup(name, all ? sections?.map((sec) => sec.name) : undefined);
 
   /** A group header's menu: open the whole group in one tab, or pick from it. */
   const sectionMenu = (e: ReactMouseEvent, section: HostSection) => {

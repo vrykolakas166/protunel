@@ -222,14 +222,82 @@ fn is_fatal(error: &str) -> bool {
 
 /// Decides whether a failure that just happened earns attempt number `attempt`.
 fn should_retry(app: &AppHandle, error: &str, attempt: u32) -> bool {
-    if is_fatal(error) {
-        return false;
-    }
     let settings = settings(app);
-    if !settings.auto_reconnect_enabled {
+    retry_allowed(
+        settings.auto_reconnect_enabled,
+        settings.reconnect_max_attempts,
+        error,
+        attempt,
+    )
+}
+
+/// Pure core of `should_retry`; `max_attempts == 0` means unlimited.
+fn retry_allowed(auto_reconnect: bool, max_attempts: u32, error: &str, attempt: u32) -> bool {
+    if is_fatal(error) || !auto_reconnect {
         return false;
     }
-    settings.reconnect_max_attempts == 0 || attempt <= settings.reconnect_max_attempts
+    max_attempts == 0 || attempt <= max_attempts
+}
+
+/// A session that stayed up for a minute counts as a fresh start (attempt 1);
+/// a shorter one keeps escalating.
+fn next_attempt_after_session(attempt: u32, lived: Duration) -> u32 {
+    if lived >= Duration::from_secs(60) {
+        1
+    } else {
+        attempt + 1
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::*;
+
+    #[test]
+    fn backoff_table() {
+        let secs = |a| backoff(a).as_secs();
+        assert_eq!(
+            [0, 1, 2, 3, 4, 5, 6, 100].map(secs),
+            [2, 2, 4, 8, 16, 30, 30, 30]
+        );
+    }
+
+    #[test]
+    fn fatal_table() {
+        for (err, fatal) in [
+            ("authentication failed", true),
+            ("no password stored", true),
+            ("No common Cipher algorithm - ours: [a] theirs: [b]", true),
+            ("No common Kex algorithm - ours: [] theirs: []", true),
+            ("Unknown server key", true),
+            ("Wrong server signature", true),
+            ("tunnel cannot jump through itself", true),
+            ("connection refused", false),
+            ("timed out", false),
+        ] {
+            assert_eq!(is_fatal(err), fatal, "{err}");
+        }
+    }
+
+    #[test]
+    fn retry_allowed_table() {
+        // (auto, max, error, attempt, expected)
+        for (auto, max, err, attempt, want) in [
+            (true, 0, "refused", 99, true),
+            (true, 3, "refused", 3, true),
+            (true, 3, "refused", 4, false),
+            (false, 0, "refused", 1, false),
+            (true, 0, "authentication failed", 1, false),
+        ] {
+            assert_eq!(retry_allowed(auto, max, err, attempt), want, "{err} {attempt}");
+        }
+    }
+
+    #[test]
+    fn long_session_resets_attempt() {
+        assert_eq!(next_attempt_after_session(5, Duration::from_secs(60)), 1);
+        assert_eq!(next_attempt_after_session(5, Duration::from_secs(59)), 6);
+    }
 }
 
 /// Owns one tunnel for its whole lifetime: binds its local listeners, then keeps
@@ -353,11 +421,7 @@ pub async fn run_tunnel(
                 // so a single drop reconnects in seconds. One that dies right
                 // after connecting keeps escalating, so a flapping server or a
                 // half-up VPN isn't hammered.
-                attempt = if session_started.elapsed() >= Duration::from_secs(60) {
-                    1
-                } else {
-                    attempt + 1
-                };
+                attempt = next_attempt_after_session(attempt, session_started.elapsed());
                 if !should_retry(&app, &reason, attempt) {
                     emit_status(
                         &app,
@@ -371,7 +435,8 @@ pub async fn run_tunnel(
                 // Toast the drop itself once, not every backoff tick — losing a
                 // tunnel silently is exactly the thing worth knowing about.
                 if attempt == 1 {
-                    notify(&app, &tunnel.name, &format!("Connection lost ({reason}) — reconnecting…"));
+                    let body = crate::i18n::t_reason(&app, crate::i18n::Text::ConnectionLost, &reason);
+                    notify(&app, &tunnel.name, &body);
                 }
                 last_error = Some(reason);
                 if !wait_before_retry(&cancel, &mut forward_rx, &mut listeners, backoff(attempt)).await

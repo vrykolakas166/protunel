@@ -132,7 +132,7 @@ export function ModeChooser({ settings, afterUpdate, onChoose, onSettingsChange 
       <div className="pointer-events-none absolute left-1/2 top-6 h-56 w-56 -translate-x-1/2 rounded-full bg-accent/15 blur-3xl" aria-hidden="true" />
 
       <div className="relative flex justify-end p-3">
-        <div role="radiogroup" aria-label="Language" className="flex rounded-full border border-border bg-surface p-0.5 shadow-sm">
+        <div role="radiogroup" aria-label={t("chooser.language")} className="flex rounded-full border border-border bg-surface p-0.5 shadow-sm">
           {SUPPORTED_LANGUAGES.map((language) => {
             const active = settings.language === language;
             return (

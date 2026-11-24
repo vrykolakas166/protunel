@@ -58,6 +58,7 @@ import {
   type Placement,
   type Size,
 } from "./geometry";
+import { applySelection } from "./selection";
 import {
   baseName,
   crumbs,
@@ -839,21 +840,11 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     const entry = visible[index];
     if (!entry) return;
     setCursor(index);
-    if (mode === "only") {
-      setSelected(new Set([entry.name]));
-      anchor.current = index;
-    } else if (mode === "toggle") {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (next.has(entry.name)) next.delete(entry.name);
-        else next.add(entry.name);
-        return next;
-      });
-      anchor.current = index;
-    } else {
-      const [a, b] = [Math.min(anchor.current, index), Math.max(anchor.current, index)];
-      setSelected(new Set(visible.slice(a, b + 1).map((x) => x.name)));
-    }
+    const startAnchor = anchor.current;
+    const names = visible.map((x) => x.name);
+    setSelected((prev) => applySelection(names, prev, startAnchor, index, mode).selected);
+    // Same rule as applySelection: only/toggle move the anchor, range keeps it.
+    if (mode !== "range") anchor.current = index;
     scrollIntoView(index);
   };
 
@@ -1451,7 +1442,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
           )}
 
         {confirm && (
-          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 p-4">
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-scrim p-4">
             <div role="alertdialog" aria-modal="false" className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-xl">
               {confirm.kind === "delete" ? (
                 <DeleteConfirm

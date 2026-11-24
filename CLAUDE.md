@@ -184,9 +184,10 @@ connection instead of per application.
 - `listener.rs` — accept loop and dispatch. `dispatch` peeks the first byte:
   `G` goes to `serve_pac` (only an exact `GET /protunel.pac` is answered, so an
   app that mistook the port for an HTTP proxy is still refused), anything else
-  is SOCKS5 as before. On-demand tunnel dials go through
-  `RouterState::connect_lock`; without it, one page load races several
-  `connect_one` calls past the `is_connected` check and orphans tunnel tasks.
+  is SOCKS5 as before. On-demand dials lock the target and its jump chain so
+  concurrent `connect_one` calls cannot start duplicate tunnel tasks. A request
+  releases its locks before waiting for a busy tunnel. Disjoint chains dial in
+  parallel, and jump locks are released once the target starts.
 - `pac.rs` — loopback HTTP endpoint serving the PAC script. Required, not a
   convenience: WinINET's `ProxyServer = socks=host:port` means **SOCKS4**, which
   the SOCKS5 listener refuses, so the fixed-proxy setting cannot reach the router.

@@ -21,11 +21,9 @@ import {
   groupOf,
   groupSections,
   hasGroups,
-  loadCollapsedGroups,
-  saveCollapsedGroups,
-  toggleSections,
   sectionKey,
 } from "../groups";
+import { useCollapsedGroups } from "../hooks/useCollapsedGroups";
 
 const COLLAPSED_GROUPS_KEY = "protunel.main.collapsedGroups";
 
@@ -102,14 +100,8 @@ export function TunnelList({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   /** Collapsed group sections (`sectionKey`), remembered in this window. */
-  const [collapsedSections, setCollapsedSections] = useState(() => loadCollapsedGroups(COLLAPSED_GROUPS_KEY));
   /** Ctrl+click on a header passes `all`: every section follows. */
-  const toggleSection = (name: string | null, all?: (string | null)[]) =>
-    setCollapsedSections((current) => {
-      const next = toggleSections(current, name, all);
-      saveCollapsedGroups(COLLAPSED_GROUPS_KEY, next);
-      return next;
-    });
+  const [collapsedSections, toggleSection] = useCollapsedGroups(COLLAPSED_GROUPS_KEY);
   // While dragging: the live order (ids) and the row being dragged.
   const [order, setOrder] = useState<string[] | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);

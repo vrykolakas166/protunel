@@ -45,7 +45,8 @@
       "dev": "Developer"
     },
     "footer": "Đổi lại bất cứ lúc nào trong Cài đặt › Chung",
-    "details": "Thêm về chế độ này"
+    "details": "Thêm về chế độ này",
+    "language": "Ngôn ngữ"
   },
   "copyError": "Sao chép chi tiết lỗi"
 }

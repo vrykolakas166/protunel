@@ -82,7 +82,7 @@ export function Modal({
 
   return (
     <div
-      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4"
       // Both press and release must land on the backdrop itself: a text
       // selection dragged out of the panel must not close it.
       onMouseDown={(e) => {
