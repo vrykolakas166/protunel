@@ -339,20 +339,28 @@ impl CopyBatch {
                 // finished there is left and the folder holds something
                 // else, it was replaced (moved aside, another made) and is
                 // not this job's to merge into. Empty, nothing is at stake.
-                let records = ctx.placed_under(&target);
-                let mut left = records.is_empty();
-                for path in &records {
-                    if dest.symlink_metadata(path.as_str()).await.is_ok_and(|a| a.is_regular() && !a.is_symlink()) {
-                        left = true;
-                        break;
+                // A failed look is an error, never taken for a clash.
+                let mut left = false;
+                for path in ctx.placed_under(&target) {
+                    match dest.symlink_metadata(path.as_str()).await {
+                        Ok(a) if a.is_regular() && !a.is_symlink() => {
+                            left = true;
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(e) if is_missing(&e) => {}
+                        Err(e) => return Err(at(&path, e)),
                     }
                 }
                 if !left {
-                    let empty = match dest.read_dir(target.as_str()).await {
-                        Ok(mut items) => items.next().is_none(),
-                        Err(_) => false,
-                    };
-                    if !empty {
+                    // Nothing of its own there (none recorded, or all
+                    // gone): resume only into an empty folder.
+                    let root = dest.symlink_metadata(target.as_str()).await.map_err(|e| at(&target, e))?;
+                    if !root.is_dir() || root.is_symlink() {
+                        return Err("exists".to_string());
+                    }
+                    let mut items = dest.read_dir(target.as_str()).await.map_err(|e| at(&target, e))?;
+                    if items.next().is_some() {
                         return Err("exists".to_string());
                     }
                 }
@@ -459,15 +467,20 @@ impl CopyBatch {
                     &known_hosts,
                 );
                 let r = run_direct(ctx, &self.source_session, &command, &marker, true, &mut copied).await;
-                // rsync renames each file into place as it finishes.
-                if r.is_ok() || r.as_ref().is_err_and(rsync_partial) {
-                    place_rsync(ctx, dest, target, &copied).await;
-                }
+                // rsync renames each file into place as it finishes. A
+                // cancel or a failed check ends the job (what was checked
+                // stays recorded): never Done with files unaccounted for.
+                let placed = if r.is_ok() || r.as_ref().is_err_and(rsync_partial) {
+                    place_rsync(ctx, dest, target, &copied).await
+                } else {
+                    Ok(())
+                };
                 // Went on past files it could not copy: those are the
                 // job's failures, the rest is in place.
-                match r {
-                    Err(e) if rsync_partial(&e) => rsync_failures(ctx, &e.message),
-                    other => other,
+                match (r, placed) {
+                    (_, Err(e)) => Err(e),
+                    (Err(e), Ok(())) if rsync_partial(&e) => rsync_failures(ctx, &e.message),
+                    (other, Ok(())) => other,
                 }
             }
             // Otherwise each job copies into a stage of its own, published
@@ -540,8 +553,7 @@ impl CopyBatch {
                 match commit_part(ctx, dest, &staged, target, overwrite).await {
                     Ok(()) => {
                         ctx.own();
-                        place_rsync(ctx, dest, target, copied).await;
-                        rsync_failures(ctx, &e.message)
+                        place_rsync(ctx, dest, target, copied).await.and_then(|()| rsync_failures(ctx, &e.message))
                     }
                     // The name was taken meanwhile: "keep both" moves on.
                     Err(c) if c == "exists" => Err(DirectError::from(c)),
@@ -556,9 +568,11 @@ impl CopyBatch {
                     if !overwrite {
                         ctx.own();
                     }
-                    place_rsync(ctx, dest, target, copied).await;
                 }
-                r.map_err(DirectError::from)
+                match r {
+                    Ok(()) => place_rsync(ctx, dest, target, copied).await,
+                    Err(e) => Err(DirectError::from(e)),
+                }
             }
         };
         let cleanup = delete_tree(dest, &stage, true).await;
@@ -579,7 +593,7 @@ const RSYNC_FILE: &str = "protunel-file:";
 /// it copied into, led by the source's name) under `target`: only those
 /// really there on B as regular files, so one rsync listed but could not
 /// write is never taken for finished.
-async fn place_rsync(ctx: &Ctx, dest: &SftpSession, target: &str, copied: &[String]) {
+async fn place_rsync(ctx: &Ctx, dest: &SftpSession, target: &str, copied: &[String]) -> Result<(), DirectError> {
     // Grouped by folder: one listing per folder, not one round trip per file.
     let mut by_dir: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     for name in copied.iter().filter(|n| !n.ends_with('/')) {
@@ -592,29 +606,34 @@ async fn place_rsync(ctx: &Ctx, dest: &SftpSession, target: &str, copied: &[Stri
         }
     }
     for (dir, paths) in by_dir {
-        // A cancel ends the bookkeeping too (unrecorded files are copied
-        // again on a retry, never taken for done).
-        if ctx.check().is_err() {
-            return;
-        }
-        if let [path] = paths.as_slice() {
-            match dest.symlink_metadata(path.as_str()).await {
-                Ok(a) if a.is_regular() && !a.is_symlink() => ctx.placed(path, path, true),
-                Ok(_) => {}
-                Err(e) if is_missing(&e) => {}
-                Err(_) => return,
+        ctx.check()?;
+        // Each look races the cancel, so a big folder never holds it up.
+        let look = async {
+            if let [path] = paths.as_slice() {
+                match dest.symlink_metadata(path.as_str()).await {
+                    Ok(a) if a.is_regular() && !a.is_symlink() => ctx.placed(path, path, true),
+                    Ok(_) => {}
+                    Err(e) if is_missing(&e) => {}
+                    Err(e) => return Err(at(path, e)),
+                }
+                return Ok(());
             }
-            continue;
-        }
-        let Ok(items) = dest.read_dir(dir.as_str()).await else { return };
-        let files: std::collections::HashSet<String> = items
-            .filter(|i| i.metadata().is_regular() && !i.metadata().is_symlink())
-            .map(|i| i.file_name())
-            .collect();
-        for path in paths.iter().filter(|p| files.contains(split(p).1)) {
-            ctx.placed(path, path, true);
+            let items = dest.read_dir(dir.as_str()).await.map_err(|e| at(&dir, e))?;
+            let files: std::collections::HashSet<String> = items
+                .filter(|i| i.metadata().is_regular() && !i.metadata().is_symlink())
+                .map(|i| i.file_name())
+                .collect();
+            for path in paths.iter().filter(|p| files.contains(split(p).1)) {
+                ctx.placed(path, path, true);
+            }
+            Ok(())
+        };
+        tokio::select! {
+            r = look => r?,
+            _ = ctx.cancel.cancelled() => return Err(DirectError::from("cancelled".to_string())),
         }
     }
+    Ok(())
 }
 
 /// One `--out-format` line ("<bytes>:<name>") as the name: rsync writes

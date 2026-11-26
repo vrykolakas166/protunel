@@ -557,6 +557,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     setNameBar(null);
     generationRef.current++;
     dismissConfirm();
+    // A notice from work on the old server ("Copying…") is not this one's.
+    setNotice(null);
     setBound(endpointNow);
     restart();
   };

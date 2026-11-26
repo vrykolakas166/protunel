@@ -126,9 +126,9 @@ export function usePanelDrops({
         if (gen !== generation()) return;
         await filesUpload(tunnelId, paths, dir, mode, endpoint);
       }
-      setQueueOpen(true);
+      if (gen === generation()) setQueueOpen(true);
     } catch (e) {
-      setNotice(errorText(e));
+      if (gen === generation()) setNotice(errorText(e));
     }
   };
 
@@ -141,17 +141,19 @@ export function usePanelDrops({
     try {
       let hint: RelayHint | null = null;
       for (const [mode, some] of parts) {
+        // Reloaded on another server meanwhile: stop, and leave its notices alone.
         if (gen !== generation()) return;
         const out: CopyAcross = await filesCopyAcross(from, some, tunnelId, dir, mode, fromEndpoint, endpoint);
         if (out.route === "relay" && out.keyHint) {
           hint = { fromTunnelId: from, termId: shellFor(from, fromPaneId), command: out.keyHint };
         }
       }
+      if (gen !== generation()) return;
       setNotice(null);
       setQueueOpen(true);
       setRelayHint(hint);
     } catch (e) {
-      setNotice(errorText(e));
+      if (gen === generation()) setNotice(errorText(e));
     }
   };
 
