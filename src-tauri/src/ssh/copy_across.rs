@@ -471,7 +471,7 @@ impl CopyBatch {
                 // cancel or a failed check ends the job (what was checked
                 // stays recorded): never Done with files unaccounted for.
                 let placed = if r.is_ok() || r.as_ref().is_err_and(rsync_partial) {
-                    place_rsync(ctx, dest, target, &copied).await
+                    place_rsync(ctx, dest, target, target, &copied).await
                 } else {
                     Ok(())
                 };
@@ -550,10 +550,18 @@ impl CopyBatch {
             // If it made nothing at all, rsync's own words say why.
             Err(e) if rsync && rsync_partial(&e) => {
                 let staged = join(&stage, split(source).1);
+                // Checked in the stage, before publishing: a check that
+                // fails publishes nothing, so a retry starts clean instead
+                // of finding its own target with nothing recorded.
+                if let Err(v) = place_rsync(ctx, dest, &staged, target, copied).await {
+                    // The check's error is the one to report.
+                    let _ = delete_tree(dest, &stage, true).await;
+                    return Err(v);
+                }
                 match commit_part(ctx, dest, &staged, target, overwrite).await {
                     Ok(()) => {
                         ctx.own();
-                        place_rsync(ctx, dest, target, copied).await.and_then(|()| rsync_failures(ctx, &e.message))
+                        rsync_failures(ctx, &e.message)
                     }
                     // The name was taken meanwhile: "keep both" moves on.
                     Err(c) if c == "exists" => Err(DirectError::from(c)),
@@ -563,16 +571,20 @@ impl CopyBatch {
             Err(e) => Err(e),
             Ok(()) => {
                 let staged = join(&stage, split(source).1);
+                if rsync {
+                    if let Err(v) = place_rsync(ctx, dest, &staged, target, copied).await {
+                        // The check's error is the one to report.
+                        let _ = delete_tree(dest, &stage, true).await;
+                        return Err(v);
+                    }
+                }
                 let r = commit_part(ctx, dest, &staged, target, overwrite).await;
                 if r.is_ok() {
                     if !overwrite {
                         ctx.own();
                     }
                 }
-                match r {
-                    Ok(()) => place_rsync(ctx, dest, target, copied).await,
-                    Err(e) => Err(DirectError::from(e)),
-                }
+                r.map_err(DirectError::from)
             }
         };
         let cleanup = delete_tree(dest, &stage, true).await;
@@ -590,47 +602,50 @@ fn rsync_partial(e: &DirectError) -> bool {
 const RSYNC_FILE: &str = "protunel-file:";
 
 /// Records the files rsync reported (`copied`, names relative to the folder
-/// it copied into, led by the source's name) under `target`: only those
-/// really there on B as regular files, so one rsync listed but could not
+/// it copied into, led by the source's name), looked up under `look` (the
+/// stage before publishing, or the target itself) and recorded under
+/// `target`: only those really there on B as regular files, so one rsync listed but could not
 /// write is never taken for finished.
-async fn place_rsync(ctx: &Ctx, dest: &SftpSession, target: &str, copied: &[String]) -> Result<(), DirectError> {
+async fn place_rsync(ctx: &Ctx, dest: &SftpSession, look: &str, target: &str, copied: &[String]) -> Result<(), DirectError> {
     // Grouped by folder: one listing per folder, not one round trip per file.
-    let mut by_dir: std::collections::BTreeMap<String, Vec<String>> = Default::default();
+    let mut by_dir: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
     for name in copied.iter().filter(|n| !n.ends_with('/')) {
-        let path = match name.split_once('/') {
-            Some((_, rest)) if !rest.is_empty() => join(target, rest),
-            _ => target.to_string(),
+        let rest = match name.split_once('/') {
+            Some((_, rest)) if !rest.is_empty() => Some(rest),
+            _ => None,
         };
-        if ctx.placed_at(&path).is_none() {
-            by_dir.entry(split(&path).0.to_string()).or_default().push(path);
+        let at = |root: &str| rest.map_or(root.to_string(), |r| join(root, r));
+        let (path, record) = (at(look), at(target));
+        if ctx.placed_at(&record).is_none() {
+            by_dir.entry(split(&path).0.to_string()).or_default().push((path, record));
         }
     }
     for (dir, paths) in by_dir {
         ctx.check()?;
-        // Each look races the cancel, so a big folder never holds it up.
-        let look = async {
-            if let [path] = paths.as_slice() {
-                match dest.symlink_metadata(path.as_str()).await {
-                    Ok(a) if a.is_regular() && !a.is_symlink() => ctx.placed(path, path, true),
-                    Ok(_) => {}
-                    Err(e) if is_missing(&e) => {}
-                    Err(e) => return Err(at(path, e)),
-                }
-                return Ok(());
+        if let [(path, record)] = paths.as_slice() {
+            // A lone stat races the cancel (nothing to close if dropped).
+            let look = dest.symlink_metadata(path.as_str());
+            let meta = tokio::select! {
+                r = look => r,
+                _ = ctx.cancel.cancelled() => return Err(DirectError::from("cancelled".to_string())),
+            };
+            match meta {
+                Ok(a) if a.is_regular() && !a.is_symlink() => ctx.placed(record, record, true),
+                Ok(_) => {}
+                Err(e) if is_missing(&e) => {}
+                Err(e) => return Err(DirectError::from(at(path, e))),
             }
-            let items = dest.read_dir(dir.as_str()).await.map_err(|e| at(&dir, e))?;
-            let files: std::collections::HashSet<String> = items
-                .filter(|i| i.metadata().is_regular() && !i.metadata().is_symlink())
-                .map(|i| i.file_name())
-                .collect();
-            for path in paths.iter().filter(|p| files.contains(split(p).1)) {
-                ctx.placed(path, path, true);
-            }
-            Ok(())
-        };
-        tokio::select! {
-            r = look => r?,
-            _ = ctx.cancel.cancelled() => return Err(DirectError::from("cancelled".to_string())),
+            continue;
+        }
+        // A listing runs to the end (dropping it would leak its handle on
+        // the server); the cancel is checked before the next one.
+        let items = dest.read_dir(dir.as_str()).await.map_err(|e| DirectError::from(at(&dir, e)))?;
+        let files: std::collections::HashSet<String> = items
+            .filter(|i| i.metadata().is_regular() && !i.metadata().is_symlink())
+            .map(|i| i.file_name())
+            .collect();
+        for (_, record) in paths.iter().filter(|(p, _)| files.contains(split(p).1)) {
+            ctx.placed(record, record, true);
         }
     }
     Ok(())
