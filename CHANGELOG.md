@@ -22,6 +22,7 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 - The terminal's host sidebar can be **resized**: drag its right edge (double-click it to go back to the default width).
 
 ### Fixes
+- Linux: the app no longer crashes when several tunnels connect or disconnect at once (for example opening several shells together). Tray items that show on/off now mark it with a ✓ in their name.
 - A file panel's transfer list and progress show only that server's transfers, and its Clear only clears those; before, every open panel showed (and cleared) all of them.
 - A file panel stops working on the old server's files once its host is edited to reach another server, and offers to reload on the new one; transfers queued before the edit no longer run against the new server.
 - Saving a file is refused when someone changed it meanwhile even if size and time look the same, two editors on one file can no longer overwrite each other, and a file that can't be replaced safely asks before being written in place.

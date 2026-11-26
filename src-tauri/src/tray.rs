@@ -1,4 +1,4 @@
-use tauri::menu::{CheckMenuItemBuilder, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu, SubmenuBuilder};
+use tauri::menu::{Menu, MenuItemBuilder, MenuItemKind, PredefinedMenuItem, Submenu, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
@@ -144,15 +144,36 @@ pub fn remember_recent(state: &AppState, id: Uuid) {
     });
 }
 
-fn tunnel_item(app: &AppHandle, entry: &Entry) -> tauri::Result<tauri::menu::CheckMenuItem<Wry>> {
+/// A menu item that shows on/off.
+///
+/// Linux draws it as a plain item with a check mark in its label: muda
+/// 0.20's tray snapshot clones a check item's `Rc` platform handle on the
+/// ksni D-Bus thread while the main thread rebuilds the menu, a refcount
+/// race that corrupts the heap and aborts the app
+/// ("malloc(): unaligned tcache chunk detected") once several tunnels
+/// change state at once. Plain items share only `Arc` state. Clicks go by
+/// id either way, and every state change rebuilds the menu.
+fn check_item(app: &AppHandle, id: impl Into<tauri::menu::MenuId>, label: String, checked: bool) -> tauri::Result<MenuItemKind<Wry>> {
+    #[cfg(target_os = "linux")]
+    {
+        let label = if checked { format!("✓ {label}") } else { format!("    {label}") };
+        Ok(MenuItemKind::MenuItem(MenuItemBuilder::with_id(id, label).build(app)?))
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(MenuItemKind::Check(
+            tauri::menu::CheckMenuItemBuilder::with_id(id, label).checked(checked).build(app)?,
+        ))
+    }
+}
+
+fn tunnel_item(app: &AppHandle, entry: &Entry) -> tauri::Result<MenuItemKind<Wry>> {
     let label = if entry.connecting {
         format!("{} · {}", entry.name, i18n::t(app, Text::Connecting))
     } else {
         entry.name.clone()
     };
-    CheckMenuItemBuilder::with_id(format!("{TUNNEL_PREFIX}{}", entry.id), label)
-        .checked(entry.running)
-        .build(app)
+    check_item(app, format!("{TUNNEL_PREFIX}{}", entry.id), label, entry.running)
 }
 
 fn group_submenu(app: &AppHandle, name: &Option<String>, chunks: &[Vec<Entry>]) -> tauri::Result<Submenu<Wry>> {
@@ -184,9 +205,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         menu.append(&PredefinedMenuItem::separator(app)?)?;
         // Simple mode: the one switch the window shows, nothing per tunnel.
         menu.append(
-            &CheckMenuItemBuilder::with_id(ACCESS_ID, i18n::t(app, Text::InternalNetwork))
-                .checked(crate::access::is_on(app))
-                .build(app)?,
+            &check_item(app, ACCESS_ID, i18n::t(app, Text::InternalNetwork), crate::access::is_on(app))?,
         )?;
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     } else if let Some(state) = app.try_state::<AppState>() {
@@ -255,9 +274,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         }
 
         menu.append(
-            &CheckMenuItemBuilder::with_id(ROUTER_ID, i18n::t(app, Text::Router))
-                .checked(state.router.running_port().is_some())
-                .build(app)?,
+            &check_item(app, ROUTER_ID, i18n::t(app, Text::Router), state.router.running_port().is_some())?,
         )?;
         menu.append(
             &MenuItemBuilder::with_id(DISCONNECT_ALL_ID, i18n::t(app, Text::DisconnectAll))

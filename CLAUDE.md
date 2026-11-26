@@ -765,6 +765,12 @@ submenu per group (sorted, ungrouped last, "name (running/total)"; a group
 over 30 goes alphabetical in "A–F" chunks); Router check item
 (`commands::set_router_enabled`, same path as the panel switch); Disconnect
 all. A tunnel may appear twice (running and in its group): same id, both work.
+On Linux the on/off items (tunnels, Router, Internal network) are plain
+items with a "✓ " label (`tray::check_item`), never `CheckMenuItem`: muda
+0.20's ksni snapshot clones a check item's `Rc` platform handle on the
+D-Bus thread while `rebuild_menu` runs on the main thread, which corrupts
+the heap (abort "malloc(): unaligned tcache chunk detected") when many
+tunnels change state at once. Revisit only after a muda upgrade fixes it.
 
 The toggle gesture is double-click on Windows, left click on Linux. Linux gets clicks
 only because `Cargo.toml` enables tray-icon's `ksni` feature (StatusNotifierItem);

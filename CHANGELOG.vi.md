@@ -22,6 +22,7 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 - Thanh máy chủ bên trái của terminal **đổi được độ rộng**: kéo cạnh phải (nhấp đúp để về độ rộng mặc định).
 
 ### Sửa lỗi
+- Linux: ứng dụng không còn bị tắt đột ngột khi nhiều tunnel kết nối hoặc ngắt cùng lúc (ví dụ mở nhiều shell một lúc). Các mục bật/tắt trên khay hệ thống giờ hiện dấu ✓ trước tên.
 - Danh sách truyền tệp và tiến độ trong popup tệp chỉ hiện các lượt truyền của máy chủ đó, và nút **Xóa mục đã xong** chỉ xóa các lượt đó; trước đây mọi popup đang mở đều hiện (và xóa) tất cả.
 - Popup tệp ngừng thao tác trên tệp của máy chủ cũ khi host được sửa để trỏ tới máy chủ khác, và đề nghị tải lại trên máy chủ mới; các lượt truyền đã xếp hàng trước khi sửa không còn chạy trên máy chủ mới.
 - Lưu tệp bị từ chối khi tệp đã bị người khác sửa kể cả khi kích thước và thời gian trông như cũ, hai editor trên cùng một tệp không còn ghi đè nhau, và tệp không thể thay an toàn sẽ hỏi trước khi ghi trực tiếp.
