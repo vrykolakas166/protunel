@@ -6,7 +6,6 @@ use std::time::Instant;
 
 use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
-#[cfg(unix)]
 use russh_sftp::protocol::FileAttributes;
 use super::create_private;
 use serde::{Deserialize, Serialize};
