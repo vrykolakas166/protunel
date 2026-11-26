@@ -364,5 +364,10 @@
   },
   "kbFiles": "tệp của shell",
   "sidebarResize": "Kéo để đổi cỡ · nhấp đúp để về mặc định",
-  "editHost": "Sửa máy chủ…"
+  "editHost": "Sửa máy chủ…",
+  "tourOffer": {
+    "text": "Shell đầu tiên đã mở. Xem hướng dẫn một phút về khung và tệp?",
+    "accept": "Xem",
+    "dismiss": "Để sau"
+  }
 }

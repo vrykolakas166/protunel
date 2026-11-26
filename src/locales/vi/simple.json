@@ -1,6 +1,6 @@
 {
   "title": "Mạng nội bộ",
-  "off": "Đang tắt. Trình duyệt dùng mạng bình thường.",
+  "off": "Tắt. Bật lên rồi mở trang nội bộ trong trình duyệt.",
   "turningOn": "Đang bật…",
   "turningOff": "Đang tắt…",
   "on": "Đang bật. Trang nội bộ mở thẳng trên trình duyệt, qua tunnel.",
@@ -25,7 +25,7 @@
   "needChanges": "Cần đổi máy chủ hay mật khẩu? Quản trị viên có thể chuyển protunel sang chế độ Đầy đủ trong Cài đặt › Chung.",
   "empty": {
     "title": "Chưa có cấu hình",
-    "body": "Lấy tệp cấu hình protunel từ quản trị viên rồi nhập vào đây.",
+    "body": "Xin quản trị viên tệp cấu hình protunel rồi nhập vào đây. Sau đó bật Mạng nội bộ.",
     "import": "Nhập tệp cấu hình…"
   },
   "chooser": {
@@ -46,7 +46,9 @@
     },
     "footer": "Đổi lại bất cứ lúc nào trong Cài đặt › Chung",
     "details": "Thêm về chế độ này",
-    "language": "Ngôn ngữ"
+    "language": "Ngôn ngữ",
+    "simpleDetailLinux": "Quản trị viên thiết lập sẵn máy chủ và gửi bạn tệp cấu hình. Bạn bật mạng nội bộ và, lần đầu, dán một địa chỉ vào cài đặt proxy của trình duyệt."
   },
-  "copyError": "Sao chép chi tiết lỗi"
+  "copyError": "Sao chép chi tiết lỗi",
+  "offManual": "Tắt. Bật lên rồi dán địa chỉ hiện ra vào cài đặt proxy tự động của trình duyệt (một lần)."
 }

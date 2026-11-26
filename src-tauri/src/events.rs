@@ -112,5 +112,9 @@ pub const TERMINAL_HIDDEN_EVENT: &str = "terminal-hidden";
 /// unsaved changes: the window stays open and the page asks first.
 pub const TERMINAL_CLOSE_REQUESTED_EVENT: &str = "terminal-close-requested";
 
+/// The main window's close button was pressed with "close to tray" off: the
+/// page asks before quitting (`quit_app`).
+pub const APP_CLOSE_REQUESTED_EVENT: &str = "app-close-requested";
+
 /// "Forget remembered commands" ran; the terminal window drops its copy.
 pub const TERMINAL_MEMORY_CLEARED_EVENT: &str = "terminal-memory-cleared";

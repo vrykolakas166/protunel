@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { updateSettings } from "../api";
 import logo from "../assets/logo.png";
 import { SUPPORTED_LANGUAGES } from "../i18n";
+import { isWindows } from "../platform";
 import type { Settings, UiMode } from "../types";
 
 interface Props {
@@ -109,7 +110,7 @@ export function ModeChooser({ settings, afterUpdate, onChoose, onSettingsChange 
       <div className="mt-3 flex items-center gap-2">
         <span className="font-display text-base font-semibold text-text">{t(`chooser.${mode}Title`)}</span>
         <span className="ml-auto">
-          <Info text={t(`chooser.${mode}Detail`)} label={t("chooser.details")} />
+          <Info text={t(mode === "simple" && !isWindows ? "chooser.simpleDetailLinux" : `chooser.${mode}Detail`)} label={t("chooser.details")} />
         </span>
       </div>
       <p className="mt-0.5 text-xs text-muted">{t(`chooser.${mode}Tagline`)}</p>

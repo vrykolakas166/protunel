@@ -643,13 +643,24 @@ Text Rust shows by itself (tray menu, desktop notifications) goes through
 hard-coded English string; everything the webview draws stays in
 `src/locales`. Errors from servers and libraries stay untranslated.
 
-Closing the window hides it (`on_window_event` → `prevent_close` + `hide`); exit is
-tray-only. The main window is declared `"visible": false` and shown in `setup`,
+Closing the main window hides it (`on_window_event` → `prevent_close` + `hide`)
+unless `settings.close_to_tray` is off (default on): then Rust emits
+`app-close-requested`, the page confirms, and `quit_app` calls `app.exit(0)`
+— same `RunEvent::Exit` cleanup as the tray's Exit. The terminal
+window always hides. The main window is declared `"visible": false` and shown in `setup`,
 unless the app was started by the OS autostart entry (which passes
 `commands::AUTOSTART_ARG`) and `settings.start_minimized` is on. `setup` also
 rewrites an enabled autostart entry (`refresh_autostart`) so entries from versions
 without the argument pick it up. `tray::rebuild_menu` rebuilds the whole menu and is called on every status
-transition and every tunnel add/edit/delete — tray checkmarks have no other update path.
+transition, every router status and every tunnel add/edit/delete — tray checkmarks have no other update path.
+The Full-mode menu stays short with many tunnels (`tray::plan`, pure and
+tested): Open terminal; running tunnels (≤10, then "…and N more" which shows
+the window); Recent (≤5 not running, from `settings.tray_recent`, moved to
+the front by `remember_recent` on every Connected); "All tunnels" as one
+submenu per group (sorted, ungrouped last, "name (running/total)"; a group
+over 30 goes alphabetical in "A–F" chunks); Router check item
+(`commands::set_router_enabled`, same path as the panel switch); Disconnect
+all. A tunnel may appear twice (running and in its group): same id, both work.
 
 The toggle gesture is double-click on Windows, left click on Linux. Linux gets clicks
 only because `Cargo.toml` enables tray-icon's `ksni` feature (StatusNotifierItem);
@@ -697,6 +708,10 @@ the feature stops applying.
   the top message bar (prefixed with the tunnel name) — with the server's
   text kept after them (and whole in the row's tooltip).
 - Fonts are self-hosted woff2 in `src/assets/fonts` (no CDN; the webview is offline).
+- `MainFooter` (Full mode only) is the main window's status bar: total
+  traffic of connected tunnels (last waveform tick), version or update phase (the `UpdateBanner` card still announces an
+  update; the footer keeps it reachable after "Later"). One line; errors stay
+  in `MessageBar`.
 - `src/App.tsx` owns tunnel list, settings, and dialog state; child components are
   presentational and call back up. The big panels that replace each other
   (add/edit form, Router, Capture, theme drawer, Settings + page) are one
@@ -736,6 +751,14 @@ the feature stops applying.
   window's empty state or Settings › About replays `TerminalTour`, offered
   once via localStorage (shared by both windows: About clears the flag, and
   the `storage` event reaches a live terminal window). F1 stays the shell's.
+  First run is lean (no theme/language/startup cards; `settings` names
+  them in one line). A step with `center: true` shows its card centred when
+  its target is absent (e.g. `forwards` on an empty list) instead of being
+  skipped. The terminal tour is staged: with no tab it runs a short version
+  (`term-next` on `term-empty`) and stores `basic` in its seen flag; the first
+  tab then offers the panes/files part once (`TourOfferToast`, never a modal
+  over a fresh shell). File steps target `term-file-panel` when a panel is
+  open, else the `term-files` button.
   The spotlight never animates its box (a viewport-sized shadow repainting
   every frame); only the ring fades and the card moves by transform. Both use a
   modal focus trap with the app behind it inert. The terminal suspends its

@@ -11,6 +11,11 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 ### Cải thiện
 - **Ctrl+T** ở cửa sổ chính mở terminal và ẩn cửa sổ chính, chỉ một bước.
 - Nhấp chuột phải vào máy chủ ở thanh bên của terminal, hoặc vào khung shell, rồi chọn **Sửa máy chủ…** để sửa ngay, không cần quay lại cửa sổ chính. Đổi thông tin kết nối của máy chủ đang dùng sẽ kết nối lại các shell của nó.
+- **Thanh trạng thái** ở dưới cửa sổ chính: lưu lượng của mọi tunnel đang kết nối, và phiên bản hoặc bản cập nhật đang chờ.
+- **Đóng xuống khay hệ thống** (Cài đặt › Chung, bật mặc định): tắt đi thì đóng cửa sổ chính là thoát protunel, có hỏi xác nhận trước.
+- **Menu khay hệ thống** gọn lại khi có nhiều tunnel: tunnel đang chạy ở trên, rồi 5 tunnel dùng gần nhất, rồi **Tất cả tunnel** với mỗi nhóm một menu con. Thêm Mở terminal, công tắc Router và Ngắt tất cả.
+- **Làm lại hướng dẫn**: ngắn hơn, theo đúng thứ tự thiết lập (thêm tunnel, đăng nhập, jump host, nhóm, port forward, rồi Router). Hướng dẫn terminal chỉ việc cần làm trước khi chưa mở shell nào, và mời xem phần khung và tệp khi shell đầu tiên đã mở.
+- Chế độ Đơn giản nói rõ cần làm gì khi công tắc đang tắt; trên Linux nhắc ngay từ đầu bước cài đặt trình duyệt một lần.
 - Thanh máy chủ bên trái của terminal **đổi được độ rộng**: kéo cạnh phải (nhấp đúp để về độ rộng mặc định).
 
 ## [0.10.0] - 2026-11-24

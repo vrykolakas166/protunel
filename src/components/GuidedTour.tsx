@@ -9,6 +9,8 @@ export interface TourStep {
   /** `data-tour` name(s), first visible wins; null for a centred card with no spotlight. */
   target: string | readonly string[] | null;
   keys?: readonly string[];
+  /** Show the card centred instead of skipping it when no target is on screen. */
+  center?: boolean;
 }
 
 const EDGE = 8;
@@ -118,7 +120,7 @@ export function GuidedTour({ steps, onShowStep, onFinish }: Props) {
       frame = requestAnimationFrame(measure);
     };
     const measure = () => {
-      if (targets.length === 0) {
+      const centred = () => {
         const width = panel.offsetWidth;
         const height = panel.offsetHeight;
         const card = {
@@ -133,13 +135,19 @@ export function GuidedTour({ steps, onShowStep, onFinish }: Props) {
             ? last
             : { index, rect: null, card },
         );
+      };
+      if (targets.length === 0) {
+        centred();
         return;
       }
+      // Every match of each name, in order: a hidden copy (a file panel in
+      // another tab) must not mask a visible one.
       const target = targets
-        .map((name) => document.querySelector<HTMLElement>(`[data-tour="${name}"]`))
-        .find((el): el is HTMLElement => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility === "visible");
+        .flatMap((name) => [...document.querySelectorAll<HTMLElement>(`[data-tour="${name}"]`)])
+        .find((el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility === "visible");
       if (!target) {
         if (!current && performance.now() < deadline) schedule();
+        else if (step.center) centred();
         else skipMissing.current();
         return;
       }
@@ -171,6 +179,7 @@ export function GuidedTour({ steps, onShowStep, onFinish }: Props) {
       }
       if (right <= left || bottom <= top) {
         if (performance.now() < deadline) schedule();
+        else if (step.center) centred();
         else skipMissing.current();
         return;
       }

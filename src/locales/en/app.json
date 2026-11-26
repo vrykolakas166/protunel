@@ -68,5 +68,18 @@
     "ungroupMessage_one": "The host stays, just without a group.",
     "ungroupMessage_other": "The {{count}} hosts stay, just without a group.",
     "ungroupConfirm": "Ungroup"
-  }
+  },
+  "footer": {
+    "down": "Download",
+    "up": "Upload",
+    "trafficHint": "Traffic of all connected tunnels, per second",
+    "updateAvailable": "Update {{version}} available",
+    "updateDownloading": "Downloading update… {{percent}}%",
+    "updateReady": "Restart to update to {{version}}",
+    "aboutHint": "About protunel"
+  },
+  "quitTitle": "Quit protunel?",
+  "quitMessage": "protunel will close. To keep it in the tray instead, turn on Close to tray in Settings › General.",
+  "quitMessageRunning": "Every tunnel and terminal session will be closed. To keep them running in the tray instead, turn on Close to tray in Settings › General.",
+  "quit": "Quit"
 }

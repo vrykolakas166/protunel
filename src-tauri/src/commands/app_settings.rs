@@ -8,6 +8,12 @@ use crate::events::SETTINGS_CHANGED_EVENT;
 use crate::settings::Settings;
 use crate::AppState;
 
+/// Quits protunel, as the tray's Exit (the same `RunEvent::Exit` cleanup).
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    app.exit(0);
+}
+
 #[tauri::command]
 pub fn get_settings(state: State<AppState>) -> Settings {
     state.settings.get()

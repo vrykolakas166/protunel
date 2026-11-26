@@ -68,5 +68,18 @@
     "ungroupMessage_one": "Máy chủ vẫn được giữ, chỉ không còn nhóm.",
     "ungroupMessage_other": "{{count}} máy chủ vẫn được giữ, chỉ không còn nhóm.",
     "ungroupConfirm": "Bỏ nhóm"
-  }
+  },
+  "footer": {
+    "down": "Tải xuống",
+    "up": "Tải lên",
+    "trafficHint": "Lưu lượng mỗi giây của mọi tunnel đang kết nối",
+    "updateAvailable": "Có bản cập nhật {{version}}",
+    "updateDownloading": "Đang tải bản cập nhật… {{percent}}%",
+    "updateReady": "Khởi động lại để lên {{version}}",
+    "aboutHint": "Giới thiệu protunel"
+  },
+  "quitTitle": "Thoát protunel?",
+  "quitMessage": "protunel sẽ đóng. Muốn giữ lại dưới khay hệ thống thì bật Đóng xuống khay hệ thống ở Cài đặt › Chung.",
+  "quitMessageRunning": "Mọi tunnel và phiên terminal sẽ bị đóng. Muốn giữ chúng chạy dưới khay hệ thống thì bật Đóng xuống khay hệ thống ở Cài đặt › Chung.",
+  "quit": "Thoát"
 }

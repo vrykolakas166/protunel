@@ -149,6 +149,7 @@ export function ConfigFlow({ tunnels, onImported, onBusyChange }: Props) {
             onClick={chooseImportFile}
           />
           <button
+            data-tour="settings-winscp"
             onClick={chooseWinscpFile}
             disabled={busy}
             className="col-span-2 flex items-center gap-3 rounded-xl border border-border bg-bg px-4 py-3 text-left transition-colors hover:border-accent hover:bg-surface-hover disabled:opacity-50"

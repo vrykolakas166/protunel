@@ -92,7 +92,9 @@ export function SimpleHome({ tunnels, statuses, router, hostKeyMismatches, onImp
           : isWindows
             ? t("on")
             : t("onManual")
-        : t("off");
+        : isWindows
+          ? t("off")
+          : t("offManual");
 
   const shown = routedTunnels(tunnels, rules, config);
 

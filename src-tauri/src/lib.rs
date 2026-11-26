@@ -123,10 +123,22 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            // Closing the main window only hides it; exit is tray-only.
+            // Closing the main window hides it to the tray, unless the user
+            // chose "quit on close": then it exits like the tray's Exit (the
+            // same `RunEvent::Exit` cleanup runs).
             tauri::WindowEvent::CloseRequested { api, .. } if window.label() == "main" => {
                 api.prevent_close();
-                let _ = window.hide();
+                let to_tray = window
+                    .app_handle()
+                    .try_state::<AppState>()
+                    .is_none_or(|s| s.settings.get().close_to_tray);
+                if to_tray {
+                    let _ = window.hide();
+                } else {
+                    // Quitting closes every tunnel and shell: the page asks
+                    // first, then calls `quit_app`.
+                    let _ = window.emit_to(window.label(), events::APP_CLOSE_REQUESTED_EVENT, ());
+                }
             }
             // The terminal window is hidden too, but its shells close as if it
             // had been destroyed. Tearing the webview down and building a new
@@ -209,6 +221,7 @@ pub fn run() {
             commands::terminal_close,
             commands::terminal_set_unsaved,
             commands::terminal_window_hide,
+            commands::quit_app,
             commands::files_home,
             commands::files_list,
             commands::files_properties,

@@ -16,7 +16,14 @@ import { PaneLayer } from "./PaneLayer";
 import { matchShortcut } from "./shortcuts";
 import { applyDrop, canDrop, detach, type DragSource, type DropTarget, type Tab } from "./tabs";
 import type { PaneHandle, SessionInfo } from "./TerminalView";
-import { markTerminalTourSeen, onTerminalTourRequest, shouldShowTerminalTour, TerminalTour } from "./TerminalTour";
+import {
+  markTerminalTourSeen,
+  onTerminalTourRequest,
+  shouldOfferPanesTour,
+  shouldShowTerminalTour,
+  TerminalTour,
+} from "./TerminalTour";
+import { TourOfferToast } from "./TourOfferToast";
 import { useDragDrop } from "./useDragDrop";
 import { broadcastPanes, pruneTabs } from "./tabs";
 import { panesPerHost as countPanesPerHost, tabHostsLabel, toggleId, workspaceTabTitle } from "./tabTitle";
@@ -58,6 +65,9 @@ export function TerminalApp() {
   const [tunnels, setTunnels] = useState<Tunnel[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [showTour, setShowTour] = useState(shouldShowTerminalTour);
+  /** "panes": only the part about panes and files, offered after the first shell. */
+  const [tourPart, setTourPart] = useState<"all" | "panes">("all");
+  const [offerPanesTour, setOfferPanesTour] = useState(false);
   const { statuses, hostKeyQueue, dismissHostKey } = useTunnelEvents();
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -253,10 +263,25 @@ export function TerminalApp() {
   }, [activeTab, showTour, tourOpen]);
 
   // Settings › About in the main window asks for the tour through storage.
-  useEffect(() => onTerminalTourRequest(() => setShowTour(true)), []);
+  useEffect(
+    () =>
+      onTerminalTourRequest(() => {
+        setTourPart("all");
+        setOfferPanesTour(false);
+        setShowTour(true);
+      }),
+    [],
+  );
 
-  const closeTour = () => {
-    markTerminalTourSeen();
+  // Taken with no shell open, the tour stopped before panes and files: the
+  // first shell offers the rest, once (a toast, never a modal over the shell).
+  const hasTabs = tabs.length > 0;
+  useEffect(() => {
+    if (hasTabs && !showTour && shouldOfferPanesTour()) setOfferPanesTour(true);
+  }, [hasTabs, showTour]);
+
+  const closeTour = (basicOnly: boolean) => {
+    markTerminalTourSeen(basicOnly);
     setShowTour(false);
     refocus();
   };
@@ -758,6 +783,20 @@ export function TerminalApp() {
           filesPanes={filesPanes}
           onOpenFiles={(_tabKey, paneId) => openFiles(paneId)}
         />
+          {offerPanesTour && hasTabs && !showTour && !(layoutUndo && layoutUndo.tabKey === activeKey) && (
+            <TourOfferToast
+              onAccept={() => {
+                setOfferPanesTour(false);
+                setTourPart("panes");
+                setShowTour(true);
+              }}
+              onDismiss={() => {
+                setOfferPanesTour(false);
+                markTerminalTourSeen();
+                refocus();
+              }}
+            />
+          )}
           {layoutUndo && layoutUndo.tabKey === activeKey && (
             <LayoutUndoToast layoutUndo={layoutUndo} onUndo={undoLayout} onDismiss={() => setLayoutUndo(null)} />
           )}
@@ -770,7 +809,11 @@ export function TerminalApp() {
               workspacePanes={workspacePanes}
               openWorkspace={openWorkspace}
               onAddHost={() => setAdding(true)}
-              onShowTour={() => setShowTour(true)}
+              onShowTour={() => {
+                setTourPart("all");
+                setOfferPanesTour(false);
+                setShowTour(true);
+              }}
             />
           )}
         </div>
@@ -865,7 +908,7 @@ export function TerminalApp() {
         whereOf={whereOf}
         refocus={refocus}
       />
-      {tourOpen && <TerminalTour hasTab={tabs.length > 0} onFinish={closeTour} />}
+      {tourOpen && <TerminalTour hasTab={tabs.length > 0} part={tourPart} onFinish={closeTour} />}
       {hostKeyQueue[0] && <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />}
     </main>
   );

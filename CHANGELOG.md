@@ -11,6 +11,11 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 ### Improvements
 - **Ctrl+T** in the main window opens the terminal and hides the main window, in one step.
 - Right-click a host in the terminal's sidebar, or a shell's pane, and choose **Edit host…** to change it without going back to the main window. Changing the connection of a host that is in use reconnects its shells.
+- A **status bar** at the bottom of the main window: live traffic of every connected tunnel, and your version or a waiting update.
+- **Close to tray** (Settings › General, on by default): turn it off and closing the main window quits protunel, after asking.
+- The **tray menu** stays short with many tunnels: running tunnels first, then the 5 you used last, then **All tunnels** with one submenu per group. It also gets Open terminal, a Router switch and Disconnect all.
+- **Rebuilt guided tours**: shorter, in the order you set things up (add a tunnel, sign in, jump host, groups, port forwards, then the Router). The terminal tour shows what to do first when no shell is open, and offers the part about panes and files once your first shell is open.
+- Simple mode says what to do when the switch is off; on Linux it mentions the one-time browser setting from the start.
 - The terminal's host sidebar can be **resized**: drag its right edge (double-click it to go back to the default width).
 
 ## [0.10.0] - 2026-11-24

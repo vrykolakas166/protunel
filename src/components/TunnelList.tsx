@@ -567,6 +567,7 @@ export function TunnelList({
 
               <button
                 onClick={() => toggleExpanded(tunnel.id)}
+                data-tour="tunnel-forwards"
                 title={t("portForwards")}
                 aria-expanded={expanded.has(tunnel.id)}
                 className="rounded px-2 py-1 text-xs font-medium text-muted hover:bg-surface-hover hover:text-text"

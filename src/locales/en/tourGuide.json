@@ -20,75 +20,63 @@
   "steps": {
     "welcome": {
       "title": "Welcome to protunel",
-      "body": "This tour walks through tunnels, the Router, the terminal and settings. Press ← or → to move, Esc to close; replay it any time with F1 or from Settings › About."
-    },
-    "mode": {
-      "title": "Choose your mode",
-      "body": "Switch modes in Settings › General. Simple mode gives you one Internal network switch, while Full mode gives you the tunnel, router, and terminal controls."
-    },
-    "appearance": {
-      "title": "Preview a theme",
-      "body": "Hover over a theme to preview it and click to keep it. Choose Follow system to set separate light and dark themes."
-    },
-    "language": {
-      "title": "Change the language",
-      "body": "Open the globe menu and choose English or Tiếng Việt."
+      "body": "Use Next to preview the main controls, or close the tour and add your first SSH host. By default, closing the window keeps tunnels running in the tray (Settings › General). Replay this tour with F1 or from Settings › About."
     },
     "linux-setup": {
       "title": "Finish Linux setup",
       "body": "If this notice appears, follow the commands it shows to set up the credential vault or SSH agent."
     },
-    "tray": {
-      "title": "Keep tunnels running in the tray",
-      "body": "Close the main window to hide it while tunnels keep running. Reopen it from the tray, or choose Exit in the tray menu to quit."
-    },
     "add": {
       "title": "Add an SSH tunnel",
-      "body": "Choose Add tunnel and enter the server address, SSH port, and username. Review the server’s key fingerprint when you first connect."
+      "body": "Choose Add tunnel and enter the SSH host, port and username. On the first connection protunel shows the server’s key fingerprint: compare it with one you trust before accepting."
     },
     "add-auth": {
       "title": "Choose how to sign in",
-      "body": "Choose a password, a private key file, or an SSH agent. Saved passwords and key passphrases go into your system credential vault."
+      "body": "Choose a password, a private key file (its passphrase has its own field), or an SSH agent. Saved passwords and passphrases are kept in your system credential vault, never in protunel’s files."
+    },
+    "add-jump": {
+      "title": "Connect through a jump host",
+      "body": "Save the jump host as its own tunnel first, then pick it under Connect via. It doesn’t need SOCKS5. Connecting this tunnel brings up the jump chain for you."
+    },
+    "add-group": {
+      "title": "Organize hosts in groups",
+      "body": "Type a group, or pick an existing one, to file this host in a named section, here and in the terminal’s host tree. Click a section heading to collapse it; Ctrl+click collapses or expands every group."
     },
     "add-socks": {
       "title": "Set up a local proxy",
       "body": "Enable SOCKS5 and point an application at the local port shown here. For a host you only use for SSH shells, leave SOCKS5 off."
     },
-    "add-jump": {
-      "title": "Connect through a jump host",
-      "body": "Choose a saved tunnel under Connect via to reach a private host through it. Connecting the destination brings up the jump chain for you."
-    },
-    "list": {
-      "title": "Manage tunnels and forwards",
-      "body": "Use a tunnel’s switch to connect it, or expand Forwards on its row to add a port forward while it’s running. Jump hosts group their dependent tunnels underneath them."
-    },
-    "groups": {
-      "title": "Organize hosts in groups",
-      "body": "Give a tunnel a group in its edit form and the list shows named sections, here and in the terminal’s host tree. Click a section heading to collapse it, or Ctrl+click to collapse or expand every group at once."
+    "forwards": {
+      "title": "Forward a port",
+      "body": "Open Forwards on a saved tunnel and add one. The destination is as the SSH server sees it (for example db.internal:5432); your app then connects to 127.0.0.1 on the local port. Forwards can be added before connecting or while connected."
     },
     "bulk": {
       "title": "Search and connect in bulk",
       "body": "Press Ctrl+F to filter by name or host. The connect and disconnect buttons act on the entire list, including tunnels hidden by your search."
     },
+    "footer": {
+      "title": "The status bar",
+      "body": "The bar at the bottom shows live traffic of all connected tunnels and your version, or an update when one is waiting."
+    },
     "router": {
       "title": "Route through one local proxy",
-      "body": "Open Router to send traffic through one local SOCKS5 address. Rules choose a route for each connection."
-    },
-    "router-enable": {
-      "title": "Start the router and copy its address",
-      "body": "Flip the switch on the status card, then copy the local SOCKS5 address for your application. The router connects a tunnel on demand when a rule sends traffic through it."
+      "body": "The Router is one more local SOCKS5 address, separate from each tunnel’s own. For every connection, rules choose a tunnel, Direct or Block."
     },
     "router-rules": {
-      "title": "Set rule priority",
-      "body": "Add a hostname wildcard, regex, or IP range and choose a tunnel, Direct, or Block. Move higher-priority rule cards up because the first enabled match wins."
-    },
-    "router-log": {
-      "title": "Trace a routing decision",
-      "body": "Open Log and find the destination to see the matched rule and where the connection went."
+      "title": "Write rules",
+      "body": "Add a hostname wildcard, regex or IP range and choose a tunnel, Direct or Block. The first enabled match wins, so move specific rules up."
     },
     "router-settings": {
       "title": "Set the default route",
-      "body": "Open the router’s Settings tab to change its port and choose what happens when no rule matches."
+      "body": "On Settings, choose where connections go when no rule matches, and the router’s port."
+    },
+    "router-enable": {
+      "title": "Start the router and point your app at it",
+      "body": "Flip the switch, then copy the router’s SOCKS5 address into your app or browser. A tunnel a rule needs is connected on demand."
+    },
+    "router-log": {
+      "title": "Check which route was used",
+      "body": "After using your app, open Log to see, for each destination, the rule that matched and where the connection went."
     },
     "router-proxy": {
       "title": "Use the Windows system proxy",
@@ -108,87 +96,83 @@
     },
     "terminal": {
       "title": "Open the SSH terminal",
-      "body": "Click Terminal to open a separate window with your saved hosts. Use its own ? button for the walkthrough on tabs, splits, and broadcast."
+      "body": "Click Terminal, or press Ctrl+T to open it and hide this window. It has its own tour: replay it from its empty screen or from Settings › About."
     },
     "settings": {
       "title": "Find settings by subject",
-      "body": "Open Settings and use the side list to switch between General, Tunnels, Terminal, Backup, and About."
-    },
-    "settings-reconnect": {
-      "title": "Adjust reconnection",
-      "body": "Open Tunnels to set keepalives and reconnect behavior. Local ports stay reserved while a tunnel retries."
-    },
-    "settings-terminal": {
-      "title": "Tune the terminal",
-      "body": "Open Terminal settings to adjust rendering and mouse behavior, or set up command suggestions and long-command notifications here."
+      "body": "Settings has General (mode, startup, language), Tunnels (keepalive and reconnect), Terminal (suggestions and notifications), Backup and About. The button next to it picks a theme."
     },
     "settings-config": {
-      "title": "Export or import a configuration",
-      "body": "Use Export to create a configuration file and set a passphrase to include encrypted credentials. Use Import to review what will be applied before confirming."
+      "title": "Export and import a configuration",
+      "body": "Choose which sections to export, and set a passphrase to include saved passwords, encrypted. Tick Open in Simple mode when the file is for a tester. On import you choose the sections to apply and review them first."
     },
     "settings-winscp": {
       "title": "Import from WinSCP",
-      "body": "On the same Backup page, choose the WinSCP import to read a WinSCP.ini. Preview the sessions, pick the ones you want, and they arrive as hosts with their folders as groups. Passwords go straight into the credential vault."
+      "body": "Choose Import from WinSCP… and pick a WinSCP.ini (WinSCP: Tools › Export/Backup configuration). Sessions arrive as hosts, folders as groups, and passwords go into the credential vault. Host keys are not imported: confirm each server on its first connection."
     },
     "settings-hosts": {
       "title": "Review trusted hosts",
       "body": "Open the trusted hosts list on Backup to inspect saved SSH fingerprints. Forget a key here when you’re ready to verify its replacement on the next connection."
     },
-    "settings-about": {
-      "title": "Find your version and updates",
-      "body": "Open About to check your installed version and see how updates are delivered for your installation."
+    "term-welcome": {
+      "title": "The SSH terminal",
+      "body": "Use Next to preview the controls, or close the tour and add your first host with + beside Hosts."
     },
     "term-hosts": {
       "title": "Open a host",
-      "body": "Choose a saved host in the sidebar to open its shell, or use + beside Hosts to add one. Hosts with a group appear in collapsible sections (Ctrl+click a heading to toggle them all). Expand a jump host to see the hosts that connect through it, or show the sidebar with Ctrl+Shift+S."
+      "body": "Double-click a host, or select it and press Enter, to open its shell; a single click only selects. Use + beside Hosts to add one, and right-click a host to edit it or open a jump host with its children. Ctrl+Shift+S shows or hides the sidebar; drag its edge to resize it."
     },
     "term-select": {
       "title": "Open several hosts together",
-      "body": "Turn on Select hosts beside the Hosts heading, choose your hosts, then open them in one tiled tab."
+      "body": "Turn on Select hosts (or Ctrl/Shift+click), pick your hosts, and open them as one tiled tab with broadcast off."
     },
     "term-tabs": {
       "title": "Use tabs and splits",
-      "body": "Click + to find another host, or split the focused shell to the right or down with the shortcuts below. Drag a host or tab to a pane edge to split there, then drag the divider to resize."
+      "body": "Split the focused shell to the right or down with the keys below: the new pane opens the same host. Drag another host from the sidebar, or a tab, onto a pane edge to split with it, and drag dividers to resize."
     },
     "term-workspaces": {
       "title": "Save a workspace",
-      "body": "Use the workspace button to save your open tabs and splits. Pick a saved workspace from the sidebar or choose Restore last session when the terminal is empty."
+      "body": "Save your tabs and splits as a workspace. Opening it later rebuilds the layout with fresh shells; commands that were running are not brought back. On the empty screen, Restore last session reopens the last layout."
+    },
+    "term-next": {
+      "title": "Next: open a shell",
+      "body": "Open a host first. Then the toolbar arranges panes, watches output and browses the server’s files, and you’ll be offered a short tour of those."
     },
     "term-header": {
-      "title": "Move, zoom, and watch panes",
-      "body": "In a split tab, drag a pane by its header, use its zoom button, or use its broadcast toggle while broadcast is on. Right-click the header to watch for output or 30 seconds of silence, and look for accent dots marking unread output."
-    },
-    "term-files": {
-      "title": "Browse files on a server",
-      "body": "The folder button, or Ctrl+Shift+O, opens a file panel for the focused shell. Each shell gets its own panel: drag it to snap to a pane corner, pull an edge to resize, or double-click its header to maximize. Use Download to folder… to save files where you choose."
-    },
-    "term-files-copy": {
-      "title": "Copy between servers",
-      "body": "Drag rows from one panel onto another panel or a folder. On the same server the rows move, and Ctrl copies. Another server always copies: directly when the source can log in to the target, otherwise through this computer, with a hint to run ssh-copy-id for a faster route."
-    },
-    "term-files-out": {
-      "title": "Drag files out to Explorer",
-      "body": "Drag rows from a file panel straight into an Explorer window or onto the desktop to download them there."
+      "title": "Move, zoom and watch panes",
+      "body": "Drag a pane by its header to move it, or zoom it. Right-click the header to watch it: get notified on new output or after 30 seconds of silence. A hollow ring on a pane you’re not looking at means new output."
     },
     "term-layout": {
-      "title": "Arrange panes and sync scrolling",
-      "body": "Open the Layout menu to tile panes evenly, equalize existing splits, or sync scrolling. After tiling or equalizing, you have five seconds to select Undo."
+      "title": "Arrange and watch",
+      "body": "The Layout menu tiles panes evenly, equalizes splits, syncs scrolling and sets watches. After tiling or equalizing you have five seconds to select Undo."
     },
     "term-broadcast": {
       "title": "Type in several panes",
-      "body": "Toggle broadcast to send keystrokes to every included pane with an amber frame. Broadcasting pauses while a pane is zoomed."
+      "body": "Broadcast sends your keystrokes to every pane with an amber frame, so check the frames first. A pane’s header toggle leaves it out. Broadcast pauses while a pane is zoomed."
+    },
+    "term-files": {
+      "title": "Files on the server",
+      "body": "The folder button or Ctrl+Shift+O opens this shell’s server files. Double-click a file to view or edit it, and save with Ctrl+S. Drop files on the panel to upload; the arrow beside Download picks the folder. Transfers keep going after the panel closes."
+    },
+    "term-files-copy": {
+      "title": "Copy between servers",
+      "body": "Drag rows onto another server’s panel, or Copy in one panel and Paste in the other: between servers it always copies. On the same server a drop moves, and Ctrl copies."
+    },
+    "term-files-copy-win": {
+      "title": "Copy between servers and to Explorer",
+      "body": "Drag rows onto another server’s panel, or Copy in one panel and Paste in the other: between servers it always copies. On the same server a drop moves, and Ctrl copies. Drag rows out to Explorer or the desktop to download them there."
     },
     "term-footer": {
       "title": "Read the footer chips",
-      "body": "Check the footer for broadcast status, watches, and synced scrolling. When a remote program requests mouse input, click the mouse chip to switch between selection and app mouse control."
+      "body": "The footer shows broadcast, watches, synced scrolling and transfers. When a remote program asks for the mouse, its chip switches between selecting text and giving the program the mouse."
     },
     "term-smart": {
-      "title": "Use command suggestions and alerts",
-      "body": "With suggestions enabled, press → to accept the faded completion at the prompt. Enable long-command notifications in Terminal settings to get an alert when a long command finishes out of sight."
+      "title": "Suggestions and alerts",
+      "body": "With suggestions on (Settings › Terminal), → accepts the faded suggestion and Ctrl+→ one word; Tab stays your shell’s completion. A suggestion chip never runs anything: Alt+Enter puts its command at the prompt for you to check. Long-command notifications tell you when a command finishes out of sight."
     },
     "term-shortcuts": {
       "title": "Keep shortcuts handy",
-      "body": "Use the keys below to find hosts, copy and paste; the empty terminal lists the rest. Replay this tour from the empty terminal or from Settings › About in the main window."
+      "body": "Use the keys below to find hosts, copy and paste; the empty terminal lists more. F1 belongs to your shell, so replay this tour from the empty terminal or from Settings › About in the main window."
     }
   }
 }

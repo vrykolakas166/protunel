@@ -147,6 +147,9 @@ pub(crate) fn emit_status(
     };
     if let Some(state) = app.try_state::<AppState>() {
         state.set_status(event.clone());
+        if status == TunnelStatus::Connected {
+            crate::tray::remember_recent(&state, tunnel_id);
+        }
     }
     let _ = app.emit(STATUS_EVENT, event);
     crate::tray::rebuild_menu(app);

@@ -36,6 +36,7 @@ import { HostKeyChangedDialog } from "./components/HostKeyChangedDialog";
 import { SimpleHome } from "./components/SimpleHome";
 import { ModeChooser } from "./components/ModeChooser";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { MainFooter } from "./components/MainFooter";
 import { TunnelToolbar } from "./components/TunnelToolbar";
 import { openMenu } from "./contextMenu";
 import { DevToolsPage } from "./components/DevToolsPage";
@@ -54,6 +55,7 @@ import {
   getSettings,
   listTunnels,
   openTerminalWindow,
+  quitApp,
   reorderTunnels,
   setTunnelsGroup,
   updateSettings,
@@ -115,6 +117,7 @@ function App() {
   /** A group header's Rename / Ungroup, waiting for its dialog. */
   const [groupAction, setGroupAction] = useState<{ kind: "rename" | "ungroup"; name: string } | null>(null);
   const [pendingBulkAction, setPendingBulkAction] = useState<"connect" | "disconnect" | null>(null);
+  const [confirmQuit, setConfirmQuit] = useState(false);
   const updates = useUpdates();
   /** Release notes of the version this launch just updated to, shown once. */
   const [whatsNewChecked, setWhatsNewChecked] = useState(false);
@@ -168,9 +171,12 @@ function App() {
     // import). Every save sends the whole object, so a stale copy here would
     // put the other window's change back on this window's next save.
     const unlistenSettings = listen<Settings>("settings-changed", (e) => setSettings(e.payload));
+    // "Close to tray" off: the close button asks before quitting.
+    const unlistenClose = listen("app-close-requested", () => setConfirmQuit(true));
     return () => {
       unlisten.then((f) => f());
       unlistenSettings.then((f) => f());
+      unlistenClose.then((f) => f());
     };
   }, []);
 
@@ -356,7 +362,27 @@ function App() {
 
   // Nothing until settings load: the window must not flash the full app at
   // someone about to be asked for (or already in) Simple mode.
-  if (!settings) return <main className="h-screen bg-bg" />;
+  // Asked from every screen, the mode chooser included: the close button
+  // must always be able to close the app.
+  const quitDialog = confirmQuit && (
+        <ConfirmDialog
+          title={t("quitTitle")}
+          message={
+            Object.values(statuses).some((s) => s.status !== "disconnected" && s.status !== "error")
+              ? t("quitMessageRunning")
+              : t("quitMessage")
+          }
+          confirmLabel={t("quit")}
+          tone="danger"
+          onConfirm={() => {
+            setConfirmQuit(false);
+            quitApp().catch((err) => setMessage({ text: String(err), isError: true }));
+          }}
+          onCancel={() => setConfirmQuit(false)}
+        />
+  );
+
+  if (!settings) return <main className="h-screen bg-bg">{quitDialog}</main>;
 
   if (askMode) {
     return (
@@ -369,6 +395,7 @@ function App() {
         />
         {/* A resumed tunnel can still need its key confirmed. */}
         {hostKeyQueue[0] && <HostKeyPrompt request={hostKeyQueue[0]} onResolved={dismissHostKey} />}
+        {quitDialog}
       </main>
     );
   }
@@ -568,6 +595,17 @@ function App() {
         </>
       )}
 
+      {!simple && (
+        <MainFooter
+          statuses={statuses}
+          throughput={throughput}
+          updates={updates}
+          restarting={restart.restarting}
+          onRestart={restart.request}
+          onOpenAbout={() => openSettings("about")}
+        />
+      )}
+
       {formState && (
         <AddTunnelForm
           mode={formState.mode}
@@ -741,6 +779,7 @@ function App() {
         />
       )}
 
+      {quitDialog}
       {pendingBulkAction && (
         <ConfirmDialog
           title={pendingBulkAction === "connect" ? t("connectAllTitle") : t("disconnectAllTitle")}

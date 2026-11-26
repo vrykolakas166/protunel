@@ -214,6 +214,8 @@ export const terminalSetUnsaved = (unsaved: boolean) => invoke<void>("terminal_s
 
 /** Hides the terminal window and closes its shells, after the page asked about unsaved edits. */
 export const terminalWindowHide = () => invoke<void>("terminal_window_hide");
+/** Quits protunel (the close button with "close to tray" off, once confirmed). */
+export const quitApp = () => invoke<void>("quit_app");
 
 // File panel: SFTP on the pane's tunnel session. Errors that the UI
 // translates are bare codes: "not-connected", "no-such-file",

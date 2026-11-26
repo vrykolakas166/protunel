@@ -1,7 +1,7 @@
 //! The proxy router: config, rules and the decision log.
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 
 use crate::router::rules::{self, RouterRule, RouterRuleInput};
@@ -72,6 +72,16 @@ pub async fn update_router_config(
         return Err(e);
     }
     Ok(state.router.config())
+}
+
+/// Turns the router on or off as its switch does (tray menu).
+pub async fn set_router_enabled(app: &AppHandle, enabled: bool) -> Result<RouterConfig, String> {
+    let state = app.state::<AppState>();
+    let config = RouterConfig {
+        enabled,
+        ..state.router.config()
+    };
+    update_router_config(app.clone(), state, config).await
 }
 
 #[tauri::command]

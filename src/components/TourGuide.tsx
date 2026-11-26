@@ -6,37 +6,35 @@ import type { SettingsPage } from "./SettingsPanel";
 
 export type TourPanel = "add" | `router:${RouterTab}` | "capture" | "preferences" | `settings:${SettingsPage}`;
 
+// First run: get to a working tunnel fast. Theme, language and startup are
+// one line in "settings", not cards of their own.
 const stepDefinitions: (TourStep & { panel?: TourPanel; platform?: "windows" | "linux" })[] = [
   { id: "welcome", chapter: "basics", target: null, keys: ["F1"] },
-  { id: "mode", chapter: "basics", target: "settings-mode", panel: "settings:general" },
-  { id: "appearance", chapter: "basics", target: "settings-theme", panel: "preferences" },
-  { id: "language", chapter: "basics", target: "language" },
   { id: "linux-setup", chapter: "basics", target: "linux-setup", platform: "linux" },
-  { id: "tray", chapter: "basics", target: "settings-startup", panel: "settings:general" },
   { id: "add", chapter: "tunnels", target: "add" },
   { id: "add-auth", chapter: "tunnels", target: "add-auth", panel: "add" },
-  { id: "add-socks", chapter: "tunnels", target: "add-socks", panel: "add" },
   { id: "add-jump", chapter: "tunnels", target: "add-jump", panel: "add" },
-  { id: "list", chapter: "tunnels", target: "list" },
-  { id: "groups", chapter: "tunnels", target: "list" },
+  { id: "add-group", chapter: "tunnels", target: "add-group", panel: "add" },
+  { id: "add-socks", chapter: "tunnels", target: "add-socks", panel: "add" },
+  // Centred on a fresh install: there is no row to point at yet.
+  { id: "forwards", chapter: "tunnels", target: "tunnel-forwards", center: true },
   { id: "bulk", chapter: "tunnels", target: "bulk", keys: ["Ctrl+F"] },
+  { id: "footer", chapter: "tunnels", target: "main-footer" },
+  // Configure first, then point the app at it, then read the log.
   { id: "router", chapter: "router", target: "router" },
-  { id: "router-enable", chapter: "router", target: "router-enable", panel: "router:rules" },
   { id: "router-rules", chapter: "router", target: "router-rules", panel: "router:rules" },
-  { id: "router-log", chapter: "router", target: "router-log", panel: "router:log" },
   { id: "router-settings", chapter: "router", target: "router-settings", panel: "router:settings" },
+  { id: "router-enable", chapter: "router", target: "router-enable", panel: "router:rules" },
+  { id: "router-log", chapter: "router", target: "router-log", panel: "router:log" },
   { id: "router-proxy", chapter: "router", target: "router-proxy", panel: "router:settings", platform: "windows" },
   { id: "router-pac", chapter: "router", target: "router-pac", panel: "router:settings", platform: "linux" },
   { id: "capture-launch", chapter: "capture", target: "capture-launch", panel: "capture", platform: "windows" },
   { id: "capture-monitor", chapter: "capture", target: "capture-active", panel: "capture", platform: "windows" },
-  { id: "terminal", chapter: "terminal", target: "terminal" },
+  { id: "terminal", chapter: "terminal", target: "terminal", keys: ["Ctrl+T"] },
   { id: "settings", chapter: "settings", target: "settings" },
-  { id: "settings-reconnect", chapter: "settings", target: "settings-reconnect", panel: "settings:tunnels" },
-  { id: "settings-terminal", chapter: "settings", target: "settings-smart", panel: "settings:terminal" },
   { id: "settings-config", chapter: "settings", target: "settings-config", panel: "settings:backup" },
-  { id: "settings-winscp", chapter: "settings", target: "settings-config", panel: "settings:backup" },
+  { id: "settings-winscp", chapter: "settings", target: ["settings-winscp", "settings-config"], panel: "settings:backup" },
   { id: "settings-hosts", chapter: "settings", target: "settings-hosts", panel: "settings:backup" },
-  { id: "settings-about", chapter: "settings", target: "settings-updates", panel: "settings:about" },
 ];
 const steps = stepDefinitions.filter(({ platform }) => !platform || platform === (isWindows ? "windows" : "linux"));
 

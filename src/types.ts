@@ -265,6 +265,8 @@ export interface Settings {
   terminalAppMouse: boolean;
   /** Stay in the tray when launched at sign-in. */
   startMinimized: boolean;
+  /** Closing the main window hides it to the tray; false quits. */
+  closeToTray: boolean;
   /** GPU (WebGL) terminal rendering; off uses native text rendering. */
   terminalWebgl: boolean;
   /** Download updates in the background as soon as they are found. */
@@ -277,6 +279,8 @@ export interface Settings {
   terminalLongCommandSecs: number;
   /** Last folder chosen with "Download to folder…" (file panel). */
   filesDownloadDir?: string | null;
+  /** Tunnels most recently connected, newest first (the tray's Recent). */
+  trayRecent?: string[];
   /** Dim the panes without focus in a tab with several panes. */
   terminalDimInactive: boolean;
 }

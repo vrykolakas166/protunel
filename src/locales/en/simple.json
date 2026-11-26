@@ -1,6 +1,6 @@
 {
   "title": "Internal network",
-  "off": "Off. Your browser uses the normal network.",
+  "off": "Off. Turn it on, then open your internal site in your browser.",
   "turningOn": "Turning on…",
   "turningOff": "Turning off…",
   "on": "On. Internal sites open in your browser through the tunnels.",
@@ -25,7 +25,7 @@
   "needChanges": "Need a server or password changed? Your administrator can switch protunel to Full mode under Settings › General.",
   "empty": {
     "title": "Nothing set up yet",
-    "body": "Get the protunel config file from your administrator, then import it here.",
+    "body": "Get the protunel config file from your administrator and import it here. Then turn on Internal network.",
     "import": "Import config file…"
   },
   "chooser": {
@@ -46,7 +46,9 @@
     },
     "footer": "Change any time in Settings › General",
     "details": "More about this mode",
-    "language": "Language"
+    "language": "Language",
+    "simpleDetailLinux": "Your administrator sets up the servers and sends you a config file. You turn the internal network on and, the first time, paste one address into your browser’s proxy setting."
   },
-  "copyError": "Copy error details"
+  "copyError": "Copy error details",
+  "offManual": "Off. Turn it on, then paste the address it shows into your browser’s automatic proxy setting (once)."
 }

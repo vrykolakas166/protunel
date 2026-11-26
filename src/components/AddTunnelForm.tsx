@@ -176,7 +176,7 @@ export function AddTunnelForm({
               required
             />
           </div>
-          <div>
+          <div data-tour="add-group">
             <label className={labelClass}>{t("group")}</label>
             <input
               className={inputClass}

@@ -77,6 +77,18 @@ export function GeneralPage({
             />
           }
         />
+        <Row
+          title={t("closeToTray")}
+          description={t("closeToTrayHint")}
+          control={
+            <Switch
+              label={t("closeToTray")}
+              checked={settings.closeToTray}
+              disabled={busy}
+              onChange={(on) => save({ ...settings, closeToTray: on })}
+            />
+          }
+        />
       </Group>
       <Group title={t("groups.notifications")}>
         <Row

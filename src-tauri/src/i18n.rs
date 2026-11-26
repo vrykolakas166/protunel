@@ -28,6 +28,16 @@ pub enum Text {
     FilterExecutables,
     /// File dialog filter for protunel config files.
     FilterConfig,
+    OpenTerminal,
+    Recent,
+    AllTunnels,
+    Ungrouped,
+    Router,
+    DisconnectAll,
+    /// `{count}`: connected tunnels not listed at the top of the tray menu.
+    MoreConnected,
+    /// Suffix for a tunnel that is (re)connecting.
+    Connecting,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -77,6 +87,22 @@ fn lookup(lang: Lang, text: Text) -> &'static str {
         (Lang::Vi, FilterExecutables) => "Tệp thực thi",
         (Lang::En, FilterConfig) => "protunel config",
         (Lang::Vi, FilterConfig) => "Tệp cấu hình protunel",
+        (Lang::En, OpenTerminal) => "Open terminal",
+        (Lang::Vi, OpenTerminal) => "Mở terminal",
+        (Lang::En, Recent) => "Recent",
+        (Lang::Vi, Recent) => "Gần đây",
+        (Lang::En, AllTunnels) => "All tunnels",
+        (Lang::Vi, AllTunnels) => "Tất cả tunnel",
+        (Lang::En, Ungrouped) => "No group",
+        (Lang::Vi, Ungrouped) => "Không nhóm",
+        (Lang::En, Router) => "Router",
+        (Lang::Vi, Router) => "Router",
+        (Lang::En, DisconnectAll) => "Disconnect all",
+        (Lang::Vi, DisconnectAll) => "Ngắt tất cả",
+        (Lang::En, MoreConnected) => "…and {count} more connected",
+        (Lang::Vi, MoreConnected) => "…và {count} tunnel khác đang kết nối",
+        (Lang::En, Connecting) => "connecting…",
+        (Lang::Vi, Connecting) => "đang kết nối…",
     }
 }
 
@@ -88,6 +114,11 @@ pub fn t(app: &AppHandle, text: Text) -> String {
 /// The text with its `{version}` filled in.
 pub fn t_version(app: &AppHandle, text: Text, version: &str) -> String {
     lookup(lang(app), text).replace("{version}", version)
+}
+
+/// The text with its `{count}` filled in.
+pub fn t_count(app: &AppHandle, text: Text, count: usize) -> String {
+    lookup(lang(app), text).replace("{count}", &count.to_string())
 }
 
 /// The text with its `{reason}` (a server or library message, untranslated) filled in.

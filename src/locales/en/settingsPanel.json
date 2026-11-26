@@ -136,5 +136,7 @@
   "terminalForgetButton": "Forget",
   "terminalForgotten": "Forgotten",
   "tourMain": "Main window tour",
-  "tourTerminal": "Terminal window tour"
+  "tourTerminal": "Terminal window tour",
+  "closeToTray": "Close to tray",
+  "closeToTrayHint": "Closing the window keeps protunel and its tunnels running in the tray. Off: closing the window quits protunel and closes every tunnel and shell."
 }

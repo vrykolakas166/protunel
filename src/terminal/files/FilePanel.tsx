@@ -589,6 +589,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
         role="dialog"
         aria-labelledby={titleId}
         data-file-panel={paneId}
+        data-tour="term-file-panel"
         onKeyDown={onRootKey}
         onPointerDownCapture={onRaise}
         onFocusCapture={onRaise}

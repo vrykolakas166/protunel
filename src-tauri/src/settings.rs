@@ -50,6 +50,10 @@ pub struct Settings {
     /// opening the window. Launching by hand always shows it.
     #[serde(default)]
     pub start_minimized: bool,
+    /// Closing the main window hides it to the tray (default); off quits
+    /// protunel, closing every tunnel and shell.
+    #[serde(default = "default_close_to_tray")]
+    pub close_to_tray: bool,
     /// GPU (WebGL) rendering in the terminal. Off falls back to xterm's DOM
     /// renderer: native text rendering, sharper on standard-DPI screens.
     #[serde(default = "default_true")]
@@ -75,6 +79,9 @@ pub struct Settings {
     /// The folder last picked by the file panel's "Download to folder…".
     #[serde(default)]
     pub files_download_dir: Option<String>,
+    /// Tunnels most recently connected, newest first: the tray's "Recent".
+    #[serde(default)]
+    pub tray_recent: Vec<uuid::Uuid>,
     /// In a tab with several panes, the ones without focus are dimmed a
     /// little. Off by default: it makes watched panes harder to read.
     #[serde(default)]
@@ -105,6 +112,10 @@ fn default_notifications_enabled() -> bool {
     true
 }
 
+fn default_close_to_tray() -> bool {
+    true
+}
+
 fn default_auto_reconnect_enabled() -> bool {
     true
 }
@@ -130,12 +141,14 @@ impl Default for Settings {
             theme_dark: default_theme_dark(),
             terminal_app_mouse: false,
             start_minimized: false,
+            close_to_tray: true,
             terminal_webgl: true,
             auto_update: true,
             ui_mode: None,
             terminal_suggestions: true,
             terminal_long_command_secs: default_long_command_secs(),
             files_download_dir: None,
+            tray_recent: Vec::new(),
             terminal_dim_inactive: false,
         }
     }

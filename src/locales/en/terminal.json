@@ -365,5 +365,10 @@
   },
   "kbFiles": "files of the shell",
   "sidebarResize": "Drag to resize · double-click to reset",
-  "editHost": "Edit host…"
+  "editHost": "Edit host…",
+  "tourOffer": {
+    "text": "Your first shell is open. Take a one-minute tour of panes and files?",
+    "accept": "Show me",
+    "dismiss": "Not now"
+  }
 }

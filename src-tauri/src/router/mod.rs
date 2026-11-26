@@ -156,6 +156,7 @@ pub fn emit_status(app: &AppHandle, status: RouterStatus, port: Option<u16>, mes
             message,
         },
     );
+    crate::tray::rebuild_menu(app);
 }
 
 /// Binds the router port and starts serving. Idempotent-ish: an already-running

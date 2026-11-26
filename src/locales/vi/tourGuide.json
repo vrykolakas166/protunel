@@ -20,175 +20,159 @@
   "steps": {
     "welcome": {
       "title": "Chào mừng đến với protunel",
-      "body": "Hướng dẫn này đi qua tunnel, Router, terminal và cài đặt. Nhấn ← hoặc → để chuyển bước, Esc để đóng; xem lại bất cứ lúc nào bằng F1 hoặc Cài đặt › Giới thiệu."
-    },
-    "mode": {
-      "title": "Chọn chế độ",
-      "body": "Đổi chế độ trong Cài đặt › Chung. Chế độ Đơn giản có một công tắc Mạng nội bộ, còn chế độ Đầy đủ có các công cụ quản lý tunnel, router và terminal."
-    },
-    "appearance": {
-      "title": "Xem trước chủ đề",
-      "body": "Rê chuột lên chủ đề để xem trước rồi bấm để áp dụng. Chọn Theo hệ thống để đặt riêng chủ đề sáng và tối."
-    },
-    "language": {
-      "title": "Đổi ngôn ngữ",
-      "body": "Mở menu hình quả địa cầu và chọn Tiếng Việt hoặc English."
+      "body": "Bấm Tiếp để xem nhanh các nút chính, hoặc đóng hướng dẫn để thêm máy chủ SSH đầu tiên. Mặc định, đóng cửa sổ thì tunnel vẫn chạy dưới khay hệ thống (Cài đặt › Chung). Xem lại hướng dẫn bằng F1 hoặc ở Cài đặt › Giới thiệu."
     },
     "linux-setup": {
       "title": "Hoàn tất thiết lập Linux",
-      "body": "Nếu thấy thông báo này, làm theo các lệnh được hiển thị để thiết lập kho thông tin xác thực hoặc SSH agent."
-    },
-    "tray": {
-      "title": "Duy trì tunnel trong khay hệ thống",
-      "body": "Đóng cửa sổ chính để ẩn cửa sổ và giữ các tunnel đang chạy. Mở lại từ khay hệ thống hoặc chọn Thoát trong menu của khay để thoát ứng dụng."
+      "body": "Nếu thông báo này hiện ra, chạy các lệnh nó gợi ý để thiết lập kho thông tin đăng nhập hoặc SSH agent."
     },
     "add": {
       "title": "Thêm tunnel SSH",
-      "body": "Chọn Thêm tunnel rồi nhập địa chỉ máy chủ, cổng SSH và tên người dùng. Kiểm tra dấu vân tay của khóa máy chủ khi kết nối lần đầu."
+      "body": "Chọn Thêm tunnel rồi nhập máy chủ SSH, cổng và tên người dùng. Lần kết nối đầu, protunel hiện vân tay khóa máy chủ: so với vân tay bạn tin cậy rồi mới chấp nhận."
     },
     "add-auth": {
       "title": "Chọn cách đăng nhập",
-      "body": "Chọn mật khẩu, tệp khóa riêng hoặc SSH agent. Mật khẩu và passphrase của khóa được lưu trong kho thông tin xác thực của hệ điều hành."
+      "body": "Chọn mật khẩu, tệp khóa riêng (passphrase có ô riêng) hoặc SSH agent. Mật khẩu và passphrase đã lưu nằm trong kho thông tin đăng nhập của hệ thống, không bao giờ nằm trong tệp của protunel."
+    },
+    "add-jump": {
+      "title": "Kết nối qua jump host",
+      "body": "Lưu jump host thành một tunnel riêng trước, rồi chọn nó ở mục Kết nối qua. Jump host không cần bật SOCKS5. Kết nối tunnel này sẽ tự dựng cả chuỗi jump."
+    },
+    "add-group": {
+      "title": "Xếp máy chủ vào nhóm",
+      "body": "Gõ tên nhóm, hoặc chọn nhóm có sẵn, để máy chủ nằm trong một mục có tên, ở đây và trong cây máy chủ của terminal. Bấm tiêu đề mục để thu gọn; Ctrl+click để thu gọn hoặc mở tất cả nhóm."
     },
     "add-socks": {
       "title": "Thiết lập proxy cục bộ",
-      "body": "Bật SOCKS5 rồi cấu hình ứng dụng dùng cổng cục bộ hiển thị ở đây. Với máy chủ chỉ dùng để mở shell SSH, hãy để SOCKS5 tắt."
+      "body": "Bật SOCKS5 rồi cho ứng dụng dùng cổng cục bộ hiện ở đây. Máy chủ chỉ dùng để mở shell SSH thì để SOCKS5 tắt."
     },
-    "add-jump": {
-      "title": "Kết nối qua máy chủ trung gian",
-      "body": "Chọn tunnel đã lưu trong mục Kết nối qua để truy cập máy chủ nội bộ. Khi kết nối máy chủ đích, protunel tự kết nối các tunnel trung gian theo thứ tự."
-    },
-    "list": {
-      "title": "Quản lý tunnel và port forward",
-      "body": "Dùng công tắc để kết nối tunnel hoặc mở mục Forward trên dòng tương ứng để thêm port forward trong lúc tunnel đang chạy. Các tunnel phụ thuộc nằm bên dưới tunnel trung gian."
-    },
-    "groups": {
-      "title": "Sắp xếp máy chủ theo nhóm",
-      "body": "Đặt nhóm cho tunnel trong biểu mẫu sửa và danh sách sẽ hiện các mục có tên, cả ở đây lẫn trong cây máy chủ của terminal. Bấm tiêu đề mục để thu gọn, hoặc Ctrl+bấm để thu gọn hay mở rộng tất cả nhóm cùng lúc."
+    "forwards": {
+      "title": "Chuyển tiếp một cổng",
+      "body": "Mở Forward trên một tunnel đã lưu rồi thêm một port forward. Đích là địa chỉ nhìn từ máy chủ SSH (ví dụ db.internal:5432); ứng dụng của bạn kết nối tới 127.0.0.1 ở cổng cục bộ. Có thể thêm port forward trước khi kết nối hoặc khi đang kết nối."
     },
     "bulk": {
       "title": "Tìm kiếm và kết nối hàng loạt",
-      "body": "Nhấn Ctrl+F để lọc theo tên hoặc máy chủ. Các nút kết nối và ngắt kết nối áp dụng cho toàn bộ danh sách, kể cả tunnel bị bộ lọc ẩn."
+      "body": "Nhấn Ctrl+F để lọc theo tên hoặc địa chỉ. Nút kết nối và ngắt kết nối áp dụng cho cả danh sách, kể cả tunnel đang bị bộ lọc ẩn."
+    },
+    "footer": {
+      "title": "Thanh trạng thái",
+      "body": "Thanh dưới cùng hiện lưu lượng của mọi tunnel đang kết nối và phiên bản, hoặc bản cập nhật khi có."
     },
     "router": {
       "title": "Định tuyến qua một proxy cục bộ",
-      "body": "Mở Router để gửi lưu lượng qua một địa chỉ SOCKS5 cục bộ. Các quy tắc chọn đường đi cho từng kết nối."
-    },
-    "router-enable": {
-      "title": "Bật router và sao chép địa chỉ",
-      "body": "Bật công tắc trên thẻ trạng thái rồi sao chép địa chỉ SOCKS5 cục bộ để dùng trong ứng dụng. Router tự kết nối tunnel khi có quy tắc chuyển lưu lượng qua tunnel đó."
+      "body": "Router là thêm một địa chỉ SOCKS5 cục bộ, tách khỏi SOCKS5 riêng của từng tunnel. Với mỗi kết nối, quy tắc chọn một tunnel, Trực tiếp hoặc Chặn."
     },
     "router-rules": {
-      "title": "Đặt thứ tự ưu tiên cho quy tắc",
-      "body": "Thêm wildcard cho tên máy chủ, regex hoặc dải IP rồi chọn tunnel, Đi trực tiếp hoặc Chặn. Đưa thẻ quy tắc ưu tiên lên trên vì router áp dụng quy tắc đang bật đầu tiên khớp với kết nối."
-    },
-    "router-log": {
-      "title": "Xem quyết định định tuyến",
-      "body": "Mở Nhật ký và tìm đích để xem quy tắc nào khớp và kết nối đã đi theo đường nào."
+      "title": "Viết quy tắc",
+      "body": "Thêm wildcard tên miền, regex hoặc dải IP rồi chọn tunnel, Trực tiếp hoặc Chặn. Quy tắc bật đầu tiên khớp sẽ được dùng, nên đưa quy tắc cụ thể lên trên."
     },
     "router-settings": {
-      "title": "Đặt đường đi mặc định",
-      "body": "Mở tab Cài đặt của router để đổi cổng và chọn cách xử lý kết nối không khớp quy tắc nào."
+      "title": "Đặt tuyến mặc định",
+      "body": "Ở tab Cài đặt, chọn kết nối đi đâu khi không quy tắc nào khớp, và cổng của router."
+    },
+    "router-enable": {
+      "title": "Bật router và trỏ ứng dụng vào",
+      "body": "Bật công tắc, rồi sao chép địa chỉ SOCKS5 của router vào ứng dụng hoặc trình duyệt. Tunnel mà quy tắc cần sẽ tự kết nối khi có lưu lượng."
+    },
+    "router-log": {
+      "title": "Xem kết nối đã đi đường nào",
+      "body": "Sau khi dùng ứng dụng, mở Nhật ký để xem với từng đích, quy tắc nào đã khớp và kết nối đi đâu."
     },
     "router-proxy": {
       "title": "Dùng proxy hệ thống Windows",
-      "body": "Bật proxy hệ thống để đưa lưu lượng của các ứng dụng tương thích qua router bằng PAC. Thêm địa chỉ vào danh sách bỏ qua nếu muốn các ứng dụng đó kết nối trực tiếp."
+      "body": "Bật proxy hệ thống để các ứng dụng hỗ trợ đi qua router bằng PAC. Thêm địa chỉ vào danh sách bỏ qua nếu muốn các ứng dụng đó kết nối thẳng."
     },
     "router-pac": {
       "title": "Sao chép URL PAC cho trình duyệt",
-      "body": "Mở hướng dẫn proxy trên Linux rồi sao chép URL PAC vào phần thiết lập proxy tự động của trình duyệt. Hướng dẫn cũng chỉ cách thiết lập SOCKS5 cho từng ứng dụng."
+      "body": "Mở phần hướng dẫn proxy cho Linux rồi sao chép URL PAC vào cài đặt proxy tự động của trình duyệt. Phần này cũng chỉ cách đặt SOCKS5 cho từng ứng dụng."
     },
     "capture-launch": {
-      "title": "Mở ứng dụng qua router",
-      "body": "Mở Ứng dụng, chọn tệp thực thi và thêm đối số nếu cần. Khởi chạy từ biểu mẫu này để đưa lưu lượng của ứng dụng qua router."
+      "title": "Chạy ứng dụng qua router",
+      "body": "Mở Ứng dụng, chọn tệp chạy và thêm tham số nếu cần. Chạy từ biểu mẫu này để lưu lượng của nó đi qua router."
     },
     "capture-monitor": {
-      "title": "Kiểm tra ứng dụng và lưu lượng",
-      "body": "Dùng danh sách đang chạy để tìm hoặc dừng tiến trình. Xem nhật ký bên dưới để biết router đã chuyển từng kết nối đi đâu."
+      "title": "Theo dõi ứng dụng và lưu lượng",
+      "body": "Dùng danh sách đang chạy để tìm hoặc dừng tiến trình. Xem nhật ký bên dưới để biết router đã gửi từng kết nối đi đâu."
     },
     "terminal": {
       "title": "Mở terminal SSH",
-      "body": "Bấm Terminal để mở cửa sổ riêng chứa các máy chủ đã lưu. Bấm ? trong cửa sổ đó để xem cách dùng tab, chia khung và gõ đồng thời."
+      "body": "Bấm Terminal, hoặc nhấn Ctrl+T để mở terminal và ẩn cửa sổ này. Terminal có hướng dẫn riêng: xem lại từ màn hình trống của nó hoặc ở Cài đặt › Giới thiệu."
     },
     "settings": {
       "title": "Tìm cài đặt theo chủ đề",
-      "body": "Mở Cài đặt và dùng danh sách bên trái để chuyển giữa Chung, Tunnel, Terminal, Sao lưu và Giới thiệu."
-    },
-    "settings-reconnect": {
-      "title": "Điều chỉnh kết nối lại",
-      "body": "Mở mục Tunnel để chỉnh keepalive và cách kết nối lại. Các cổng cục bộ vẫn được giữ trong khi tunnel thử kết nối lại."
-    },
-    "settings-terminal": {
-      "title": "Điều chỉnh terminal",
-      "body": "Mở mục Terminal để chỉnh cách hiển thị và hoạt động của chuột hoặc thiết lập gợi ý lệnh và thông báo lệnh chạy lâu tại đây."
+      "body": "Cài đặt gồm Chung (chế độ, khởi động, ngôn ngữ), Tunnel (keepalive và kết nối lại), Terminal (gợi ý và thông báo), Sao lưu và Giới thiệu. Nút bên cạnh dùng để chọn chủ đề."
     },
     "settings-config": {
-      "title": "Xuất hoặc nhập cấu hình",
-      "body": "Chọn Xuất để tạo tệp cấu hình và đặt passphrase nếu muốn kèm thông tin xác thực đã mã hóa. Chọn Nhập để xem trước các thay đổi rồi xác nhận."
+      "title": "Xuất và nhập cấu hình",
+      "body": "Chọn các phần cần xuất, đặt passphrase để kèm mật khẩu đã lưu (được mã hóa). Đánh dấu Mở ở chế độ Đơn giản khi tệp dành cho tester. Khi nhập, bạn chọn phần cần áp dụng và xem trước."
     },
     "settings-winscp": {
       "title": "Nhập từ WinSCP",
-      "body": "Ngay trên trang Sao lưu, chọn nhập từ WinSCP để đọc tệp WinSCP.ini. Xem trước các phiên, chọn những phiên cần dùng; chúng sẽ thành máy chủ với thư mục là nhóm. Mật khẩu được lưu thẳng vào kho thông tin xác thực."
+      "body": "Chọn Nhập từ WinSCP… rồi chọn tệp WinSCP.ini (trong WinSCP: Tools › Export/Backup configuration). Các phiên thành máy chủ, thư mục thành nhóm, mật khẩu vào kho thông tin đăng nhập. Khóa máy chủ không được nhập: xác nhận từng máy chủ ở lần kết nối đầu."
     },
     "settings-hosts": {
       "title": "Xem máy chủ đã tin cậy",
-      "body": "Mở danh sách máy chủ đã tin cậy trong mục Sao lưu để xem dấu vân tay SSH đã lưu. Xóa khóa cũ tại đây nếu bạn đã sẵn sàng xác minh khóa mới trong lần kết nối tiếp theo."
+      "body": "Mở danh sách máy chủ đã tin cậy ở trang Sao lưu để xem vân tay SSH đã lưu. Quên một khóa ở đây khi bạn sẵn sàng xác minh khóa mới ở lần kết nối sau."
     },
-    "settings-about": {
-      "title": "Xem phiên bản và bản cập nhật",
-      "body": "Mở Giới thiệu để xem phiên bản đang dùng và cách nhận bản cập nhật cho bản cài đặt của bạn."
+    "term-welcome": {
+      "title": "Terminal SSH",
+      "body": "Bấm Tiếp để xem nhanh các nút, hoặc đóng hướng dẫn rồi thêm máy chủ đầu tiên bằng dấu + cạnh Máy chủ."
     },
     "term-hosts": {
-      "title": "Mở máy chủ",
-      "body": "Chọn máy chủ đã lưu ở thanh bên để mở shell hoặc bấm + cạnh Máy chủ để thêm mới. Máy chủ có nhóm nằm trong các mục thu gọn được (Ctrl+bấm tiêu đề để đổi tất cả). Mở rộng máy chủ trung gian để xem các máy chủ kết nối qua nó, hoặc nhấn Ctrl+Shift+S để hiện thanh bên."
+      "title": "Mở một máy chủ",
+      "body": "Nhấp đúp một máy chủ, hoặc chọn rồi nhấn Enter, để mở shell; nhấp một lần chỉ chọn. Dùng dấu + cạnh Máy chủ để thêm, nhấp chuột phải vào máy chủ để sửa hoặc mở jump host kèm các máy chủ con. Ctrl+Shift+S ẩn/hiện thanh bên; kéo cạnh của nó để đổi độ rộng."
     },
     "term-select": {
       "title": "Mở nhiều máy chủ cùng lúc",
-      "body": "Bật Chọn máy chủ bên cạnh tiêu đề Máy chủ, chọn các máy chủ rồi mở chúng trong một tab dạng lưới."
+      "body": "Bật Chọn máy chủ (hoặc Ctrl/Shift+click), chọn máy chủ, rồi mở chúng thành một tab xếp lưới, gõ đồng thời tắt."
     },
     "term-tabs": {
       "title": "Dùng tab và chia khung",
-      "body": "Bấm + để tìm máy chủ khác hoặc dùng phím tắt bên dưới để chia khung sang phải hoặc xuống dưới. Kéo máy chủ hoặc tab đến mép khung để chia tại đó rồi kéo đường chia để đổi kích thước."
+      "body": "Chia khung đang chọn sang phải hoặc xuống dưới bằng các phím bên dưới: khung mới mở cùng máy chủ. Kéo máy chủ khác từ thanh bên, hoặc kéo một tab, vào cạnh khung để chia với nó; kéo đường chia để đổi cỡ."
     },
     "term-workspaces": {
       "title": "Lưu workspace",
-      "body": "Dùng nút workspace để lưu các tab và cách chia khung đang mở. Chọn workspace đã lưu ở thanh bên hoặc chọn Khôi phục phiên trước khi terminal đang trống."
+      "body": "Lưu các tab và khung thành một workspace. Mở lại sau sẽ dựng lại bố cục với shell mới; lệnh đang chạy không được khôi phục. Ở màn hình trống, Khôi phục phiên trước mở lại bố cục gần nhất."
+    },
+    "term-next": {
+      "title": "Tiếp theo: mở một shell",
+      "body": "Hãy mở một máy chủ trước. Sau đó thanh công cụ dùng để sắp khung, theo dõi output và duyệt tệp trên máy chủ, và bạn sẽ được mời xem hướng dẫn ngắn về các phần đó."
     },
     "term-header": {
       "title": "Di chuyển, phóng to và theo dõi khung",
-      "body": "Trong tab đã chia khung, kéo thanh tiêu đề để di chuyển khung, bấm nút phóng to hoặc dùng nút tham gia khi đang gõ đồng thời. Bấm chuột phải vào thanh tiêu đề để bật báo khi có output hoặc khi im lặng 30 giây; chấm màu nhấn báo khung có output mới."
+      "body": "Kéo khung bằng thanh tiêu đề để di chuyển, hoặc phóng to nó. Nhấp chuột phải vào tiêu đề để theo dõi: nhận thông báo khi có output mới hoặc sau 30 giây im lặng. Vòng tròn rỗng trên khung bạn không nhìn nghĩa là có output mới."
+    },
+    "term-layout": {
+      "title": "Sắp xếp và theo dõi",
+      "body": "Menu Bố cục xếp lưới các khung, chia đều, đồng bộ cuộn và đặt theo dõi. Sau khi xếp lưới hoặc chia đều, bạn có 5 giây để Hoàn tác."
+    },
+    "term-broadcast": {
+      "title": "Gõ vào nhiều khung",
+      "body": "Gõ đồng thời gửi phím bạn gõ tới mọi khung có viền vàng, nên kiểm tra viền trước. Nút ở tiêu đề khung để loại khung đó ra. Gõ đồng thời tạm dừng khi một khung đang phóng to."
     },
     "term-files": {
-      "title": "Duyệt tệp trên máy chủ",
-      "body": "Nút thư mục, hoặc Ctrl+Shift+O, mở bảng tệp cho shell đang chọn. Mỗi shell có bảng riêng: kéo để gắn vào góc khung, kéo cạnh để đổi kích thước, bấm đúp thanh tiêu đề để phóng to. Dùng Tải về thư mục… để lưu tệp vào nơi bạn chọn."
+      "title": "Tệp trên máy chủ",
+      "body": "Nút thư mục hoặc Ctrl+Shift+O mở tệp trên máy chủ của shell này. Nhấp đúp tệp để xem hoặc sửa, lưu bằng Ctrl+S. Thả tệp vào bảng để tải lên; mũi tên cạnh Tải về để chọn thư mục. Truyền tệp vẫn chạy sau khi đóng bảng."
     },
     "term-files-copy": {
       "title": "Sao chép giữa các máy chủ",
-      "body": "Kéo các dòng từ bảng này sang bảng khác hoặc vào một thư mục. Trên cùng máy chủ thì di chuyển, giữ Ctrl để sao chép. Sang máy chủ khác luôn là sao chép: trực tiếp nếu nguồn đăng nhập được vào đích, nếu không thì đi qua máy này, kèm gợi ý chạy ssh-copy-id để nhanh hơn."
+      "body": "Kéo các dòng sang bảng của máy chủ khác, hoặc Sao chép ở bảng này rồi Dán ở bảng kia: giữa hai máy chủ luôn là sao chép. Trong cùng máy chủ, thả là di chuyển, giữ Ctrl để sao chép."
     },
-    "term-files-out": {
-      "title": "Kéo tệp ra Explorer",
-      "body": "Kéo các dòng từ bảng tệp thẳng vào cửa sổ Explorer hoặc ra màn hình nền để tải xuống tại đó."
-    },
-    "term-layout": {
-      "title": "Sắp xếp khung và cuộn đồng bộ",
-      "body": "Mở menu Bố cục và theo dõi khung để xếp khung thành lưới đều, cân đều các đường chia hoặc bật cuộn đồng bộ. Sau khi xếp hoặc cân đều, bạn có năm giây để bấm Hoàn tác."
-    },
-    "term-broadcast": {
-      "title": "Gõ đồng thời trong nhiều khung",
-      "body": "Bật gõ đồng thời để gửi phím đến các khung tham gia có viền màu hổ phách. Tính năng này tạm dừng khi một khung được phóng to."
+    "term-files-copy-win": {
+      "title": "Sao chép giữa các máy chủ và ra Explorer",
+      "body": "Kéo các dòng sang bảng của máy chủ khác, hoặc Sao chép ở bảng này rồi Dán ở bảng kia: giữa hai máy chủ luôn là sao chép. Trong cùng máy chủ, thả là di chuyển, giữ Ctrl để sao chép. Kéo dòng ra Explorer hoặc màn hình nền để tải về đó."
     },
     "term-footer": {
-      "title": "Xem các chỉ báo ở thanh dưới",
-      "body": "Xem trạng thái gõ đồng thời, theo dõi và cuộn đồng bộ ở thanh dưới. Khi chương trình từ xa yêu cầu dùng chuột, bấm chỉ báo chuột để chuyển giữa chọn văn bản và điều khiển ứng dụng."
+      "title": "Đọc các chip ở chân trang",
+      "body": "Chân trang hiện trạng thái gõ đồng thời, theo dõi, đồng bộ cuộn và truyền tệp. Khi chương trình trên máy chủ xin dùng chuột, chip chuột chuyển giữa chọn chữ và nhường chuột cho chương trình."
     },
     "term-smart": {
-      "title": "Dùng gợi ý lệnh và thông báo",
-      "body": "Khi bật gợi ý, nhấn → để nhận phần lệnh hiện mờ tại dấu nhắc. Bật thông báo lệnh chạy lâu trong cài đặt Terminal để nhận thông báo khi lệnh hoàn tất ở khung đang ẩn hoặc khi cửa sổ không được chọn."
+      "title": "Gợi ý và cảnh báo",
+      "body": "Khi bật gợi ý (Cài đặt › Terminal), → nhận cả gợi ý mờ, Ctrl+→ nhận một từ; Tab vẫn là tự hoàn thành của shell. Chip gợi ý không bao giờ tự chạy: Alt+Enter đặt lệnh ở dấu nhắc để bạn kiểm tra. Thông báo lệnh chạy lâu báo khi lệnh xong lúc bạn không nhìn."
     },
     "term-shortcuts": {
-      "title": "Xem lại phím tắt",
-      "body": "Dùng các phím bên dưới để tìm máy chủ, sao chép và dán; màn hình terminal trống liệt kê các phím còn lại. Xem lại hướng dẫn này từ màn hình trống hoặc Cài đặt › Giới thiệu ở cửa sổ chính."
+      "title": "Ghi nhớ phím tắt",
+      "body": "Dùng các phím bên dưới để tìm máy chủ, sao chép và dán; màn hình terminal trống liệt kê thêm. F1 thuộc về shell, nên xem lại hướng dẫn từ màn hình trống hoặc ở Cài đặt › Giới thiệu trong cửa sổ chính."
     }
   }
 }

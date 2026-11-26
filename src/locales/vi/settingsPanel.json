@@ -136,5 +136,7 @@
   "terminalForgetButton": "Quên",
   "terminalForgotten": "Đã quên",
   "tourMain": "Hướng dẫn cửa sổ chính",
-  "tourTerminal": "Hướng dẫn cửa sổ terminal"
+  "tourTerminal": "Hướng dẫn cửa sổ terminal",
+  "closeToTray": "Đóng xuống khay hệ thống",
+  "closeToTrayHint": "Đóng cửa sổ thì protunel và các tunnel vẫn chạy dưới khay hệ thống. Tắt: đóng cửa sổ là thoát protunel, đóng mọi tunnel và shell."
 }
