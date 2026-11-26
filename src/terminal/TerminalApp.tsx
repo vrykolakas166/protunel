@@ -132,7 +132,7 @@ export function TerminalApp() {
   const later = useRef<{
     closeTab: (key: string) => void;
     closePane: (tabKey: string, paneId: string) => void;
-    openFiles: (paneId: string) => void;
+    openFilesEvicting: (paneId: string, victim: string) => void;
     windowClose: () => void;
   }>(null as never);
 
@@ -301,10 +301,16 @@ export function TerminalApp() {
     // At the limit the panel used longest ago gives way: its edits would go.
     const gives = filesOpen.length >= MAX_FILE_PANELS && !filesOpen.includes(paneId) ? filesStack[0] : undefined;
     if (gives && unsavedAmong([gives]).length > 0) {
-      guardUnsaved([gives], () => later.current.openFiles(paneId));
+      // The one asked about is the one that goes, even if a failed save
+      // raised it to the top meanwhile; gone already, ask again from scratch.
+      guardUnsaved([gives], () => later.current.openFilesEvicting(paneId, gives));
       return;
     }
-    openFilesNow(paneId);
+    openFilesNow(paneId, gives);
+  };
+  const openFilesEvicting = (paneId: string, victim: string) => {
+    if (filesOpen.includes(victim)) openFilesNow(paneId, victim);
+    else openFiles(paneId);
   };
 
   /** Keyboard split: another shell on the focused pane's host. */
@@ -374,7 +380,7 @@ export function TerminalApp() {
   const windowClose = () =>
     guardUnsaved(tabsRef.current.flatMap((tab) => paneIds(tab.root)), () => void terminalWindowHide());
 
-  later.current = { closeTab: closeTabNow, closePane: closePaneNow, openFiles: openFilesNow, windowClose };
+  later.current = { closeTab: closeTabNow, closePane: closePaneNow, openFilesEvicting, windowClose };
 
   const toggleBroadcast = (tabKey: string) => {
     setBroadcastHint(false);

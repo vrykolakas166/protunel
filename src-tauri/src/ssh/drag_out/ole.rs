@@ -44,6 +44,12 @@ use crate::ssh::sftp::{self, Direction, Transfer, TransferState, CHUNK, PROGRESS
 use super::entries::Entry;
 
 const READ_AHEAD: usize = 32;
+/// Files Explorer pulls at once; more wait their turn. Separate from the
+/// upload/download slots (`sftp::PARALLEL_TRANSFERS`): Explorer's reads are
+/// synchronous, so they must never queue behind a long upload.
+const PARALLEL_PUMPS: usize = 3;
+static PUMPS: std::sync::LazyLock<tokio::sync::Semaphore> =
+    std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(PARALLEL_PUMPS));
 
 pub(super) struct Formats {
     descriptor: u16,
@@ -551,6 +557,14 @@ async fn pump(
     if stop_reader.is_cancelled() {
         return;
     }
+    let _slot = tokio::select! {
+        biased;
+        _ = stop_reader.cancelled() => return,
+        slot = PUMPS.acquire() => match slot {
+            Ok(slot) => slot,
+            Err(_) => return,
+        },
+    };
     let open = async {
         let attrs = sftp
             .symlink_metadata(path.as_str())

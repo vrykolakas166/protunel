@@ -5,6 +5,7 @@
 //! never connects anything by itself.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
@@ -12,7 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
 use crate::ssh::sftp::{
-    self, Content, Count, Direction, DownloadJob, Listing, PasteOutcome, Properties, Saved, Transfer,
+    self, Content, Count, Direction, DownloadJob, Expect, Listing, PasteOutcome, Properties, Saved, Transfer,
     UploadJob,
 };
 pub use crate::ssh::sftp::CopyAcross;
@@ -20,7 +21,7 @@ use crate::AppState;
 
 /// A failed call may mean the session died under the channel; drop the cache
 /// so the next call reopens instead of failing forever.
-async fn settle<T>(app: &AppHandle, tunnel_id: Uuid, result: Result<T, String>) -> Result<T, String> {
+async fn settle<T>(app: &AppHandle, tunnel_id: Uuid, started: Instant, result: Result<T, String>) -> Result<T, String> {
     if let Err(e) = &result {
         let alive = app
             .state::<AppState>()
@@ -30,7 +31,7 @@ async fn settle<T>(app: &AppHandle, tunnel_id: Uuid, result: Result<T, String>) 
         // lives on: transport-level errors reopen it next time too.
         let channel_broken = e == "timeout" || e.starts_with("I/O") || e.contains("closed") || e == "Unexpected packet";
         if !alive || channel_broken {
-            sftp::forget(app, tunnel_id).await;
+            sftp::forget(app, tunnel_id, started).await;
         }
     }
     result
@@ -43,18 +44,20 @@ fn session(state: &AppState, tunnel_id: Uuid) -> Result<std::sync::Arc<russh::cl
 /// The login directory (where a relative path starts).
 #[tauri::command]
 pub async fn files_home(app: AppHandle, tunnel_id: Uuid) -> Result<String, String> {
+    let started = Instant::now();
     let r = async {
         let s = sftp::sftp_for(&app, tunnel_id).await?;
         s.canonicalize(".").await.map_err(sftp::err)
     }
     .await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
 pub async fn files_list(app: AppHandle, tunnel_id: Uuid, path: String) -> Result<Listing, String> {
+    let started = Instant::now();
     let r = async { sftp::list(&*sftp::sftp_for(&app, tunnel_id).await?, &path).await }.await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
@@ -64,12 +67,13 @@ pub async fn files_properties(
     tunnel_id: Uuid,
     path: String,
 ) -> Result<Properties, String> {
+    let started = Instant::now();
     let r = async {
         let s = sftp::sftp_for(&app, tunnel_id).await?;
         sftp::properties(&*session(&state, tunnel_id)?, &s, &path).await
     }
     .await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
@@ -79,6 +83,7 @@ pub async fn files_dir_size(state: State<'_, AppState>, tunnel_id: Uuid, path: S
 
 #[tauri::command]
 pub async fn files_create(app: AppHandle, tunnel_id: Uuid, path: String, dir: bool) -> Result<(), String> {
+    let started = Instant::now();
     let r = async {
         let s = sftp::sftp_for(&app, tunnel_id).await?;
         if dir {
@@ -88,26 +93,29 @@ pub async fn files_create(app: AppHandle, tunnel_id: Uuid, path: String, dir: bo
         }
     }
     .await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
 pub async fn files_rename(app: AppHandle, tunnel_id: Uuid, from: String, to: String) -> Result<(), String> {
+    let started = Instant::now();
     let r = async { sftp::rename(&*sftp::sftp_for(&app, tunnel_id).await?, &from, &to).await }.await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 /// What a delete would remove, for its confirmation.
 #[tauri::command]
 pub async fn files_count(app: AppHandle, tunnel_id: Uuid, paths: Vec<String>) -> Result<Count, String> {
+    let started = Instant::now();
     let r = async { sftp::count(&*sftp::sftp_for(&app, tunnel_id).await?, &paths).await }.await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
 pub async fn files_delete(app: AppHandle, tunnel_id: Uuid, paths: Vec<String>) -> Result<(), String> {
+    let started = Instant::now();
     let r = async { sftp::delete(&*sftp::sftp_for(&app, tunnel_id).await?, &paths).await }.await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
@@ -119,12 +127,13 @@ pub async fn files_paste(
     dest_dir: String,
     cut: bool,
 ) -> Result<PasteOutcome, String> {
+    let started = Instant::now();
     let r = async {
         let s = sftp::sftp_for(&app, tunnel_id).await?;
         sftp::paste(&*session(&state, tunnel_id)?, &s, &sources, &dest_dir, cut).await
     }
     .await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 #[tauri::command]
@@ -142,16 +151,23 @@ pub async fn files_copy_across(
 
 #[tauri::command]
 pub async fn files_read_text(app: AppHandle, tunnel_id: Uuid, path: String, tail: bool) -> Result<Content, String> {
+    let started = Instant::now();
     let r = async { sftp::read_text(&*sftp::sftp_for(&app, tunnel_id).await?, &path, tail).await }.await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 /// An image's bytes, as an `ArrayBuffer` (never a JSON number array).
 #[tauri::command]
 pub async fn files_read_image(app: AppHandle, tunnel_id: Uuid, path: String) -> Result<Response, String> {
+    let started = Instant::now();
     let r = async { sftp::read_bytes(&*sftp::sftp_for(&app, tunnel_id).await?, &path).await }.await;
-    settle(&app, tunnel_id, r).await.map(Response::new)
+    settle(&app, tunnel_id, started, r).await.map(Response::new)
 }
+
+/// Saves of one file run one at a time, so two editors on it in this app
+/// can't both pass the change check before either lands.
+static SAVING: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<(Uuid, String), std::sync::Arc<tokio::sync::Mutex<()>>>>> =
+    std::sync::LazyLock::new(Default::default);
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
@@ -162,14 +178,24 @@ pub async fn files_write_text(
     text: String,
     expect_size: u64,
     expect_mtime: Option<u32>,
+    expect_hash: Option<String>,
     force: bool,
+    in_place: bool,
 ) -> Result<Saved, String> {
+    let gate = {
+        let mut saving = SAVING.lock().unwrap();
+        saving.retain(|_, gate| std::sync::Arc::strong_count(gate) > 1);
+        saving.entry((tunnel_id, path.clone())).or_default().clone()
+    };
+    let _one_at_a_time = gate.lock().await;
+    let started = Instant::now();
     let r = async {
         let s = sftp::sftp_for(&app, tunnel_id).await?;
-        sftp::write_text(&s, &path, &text, expect_size, expect_mtime, force).await
+        let expect = Expect { size: expect_size, mtime: expect_mtime, hash: expect_hash };
+        sftp::write_text(&s, &path, &text, &expect, force, in_place).await
     }
     .await;
-    settle(&app, tunnel_id, r).await
+    settle(&app, tunnel_id, started, r).await
 }
 
 /// Uploads local files or folders (dropped on the popup) into `remote_dir`.
@@ -292,8 +318,9 @@ pub async fn files_drag_out(
 ) -> Result<(), String> {
     #[cfg(windows)]
     {
+        let started = Instant::now();
         let result = crate::ssh::drag_out::start(&app, window, tunnel_id, paths).await;
-        settle(&app, tunnel_id, result).await
+        settle(&app, tunnel_id, started, result).await
     }
     #[cfg(not(windows))]
     {
@@ -331,8 +358,8 @@ pub fn files_cancel_transfer(app: AppHandle, id: Uuid) {
 }
 
 #[tauri::command]
-pub fn files_clear_transfers(app: AppHandle) {
-    sftp::clear_finished(&app);
+pub fn files_clear_transfers(app: AppHandle, tunnel_id: Option<Uuid>) {
+    sftp::clear_finished(&app, tunnel_id);
 }
 
 /// Shows a finished download in the file manager. Only paths the queue wrote.

@@ -397,6 +397,7 @@ pub async fn run_tunnel(
         };
 
         let session = Arc::new(session);
+        sftp::note_session(&app, &session, format!("{}@{}:{}", tunnel.username, tunnel.host, tunnel.port));
         *session_slot.lock().unwrap() = Some(session.clone());
         emit_status(&app, tunnel.id, &tunnel.name, TunnelStatus::Connected, None);
 

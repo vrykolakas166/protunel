@@ -11,8 +11,12 @@ import { baseName, imageMime, viewKind } from "./paths";
 
 export interface FileViewHandle {
   dirty: () => boolean;
-  /** Saves; false when it could not (conflict, lost session…). */
+  /** Saves; false when it could not (conflict, lost session…) or when text
+   *  typed during the save is still unsaved, so a "save and close" never
+   *  drops it. */
   save: () => Promise<boolean>;
+  /** Keeps the edited text as a local file (a Save dialog); false when cancelled or failed. */
+  saveDraft: () => Promise<boolean>;
 }
 
 interface Props {
@@ -45,14 +49,22 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   /** Save problem: the file changed on the server, or saving failed. */
-  const [problem, setProblem] = useState<{ kind: "conflict" } | { kind: "failed"; message: string } | null>(null);
+  const [problem, setProblem] = useState<
+    { kind: "conflict" } | { kind: "unsafe" } | { kind: "failed"; message: string } | null
+  >(null);
   const [wrap, setWrap] = useState(() => readWrap());
   const wrapRef = useRef(wrap);
   wrapRef.current = wrap;
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<Editor | null>(null);
   /** What the file looked like when read or last saved: the conflict check. */
-  const base = useRef<{ size: number; mtime: number | null }>({ size: 0, mtime: null });
+  const base = useRef<{ size: number; mtime: number | null; hash: string | null }>({
+    size: 0,
+    mtime: null,
+    hash: null,
+  });
+  /** The save in flight: a second Ctrl+S waits for it instead of racing it. */
+  const inFlight = useRef<Promise<boolean> | null>(null);
   const original = useRef("");
 
   const load = async (tail: boolean) => {
@@ -67,7 +79,7 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
       }
       const content = await filesReadText(tunnelId, path, tail);
       if (content.kind === "text") {
-        base.current = { size: content.size, mtime: content.mtime };
+        base.current = { size: content.size, mtime: content.mtime, hash: content.hash };
         original.current = content.text;
         setDirty(false);
       }
@@ -112,7 +124,11 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
         return;
       }
       editor.current = made;
-      made.focus();
+      // Only when focus still belongs here: a slow file must not pull the
+      // keyboard away from another panel or a shell picked meanwhile.
+      const active = document.activeElement;
+      const panel = host.current?.closest("[data-file-panel]");
+      if (!active || active === document.body || panel?.contains(active)) made.focus();
     });
     return () => {
       cancelled = true;
@@ -124,27 +140,38 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
 
   useEffect(() => editor.current?.setWrap(wrap), [wrap]);
 
-  const save = async (force: boolean): Promise<boolean> => {
-    const ed = editor.current;
-    if (!ed || tail) return false;
-    const text = ed.text();
-    setSaving(true);
-    try {
-      const saved = await filesWriteText(tunnelId, path, text, base.current.size, base.current.mtime, force);
-      base.current = saved;
-      original.current = text;
-      // Typing while the save was in flight is still unsaved.
-      setDirty((editor.current?.text() ?? text) !== text);
-      setProblem(null);
-      onSaved();
-      return true;
-    } catch (e) {
-      if (e === "conflict") setProblem({ kind: "conflict" });
-      else setProblem({ kind: "failed", message: errorText(e) });
-      return false;
-    } finally {
-      setSaving(false);
-    }
+  const save = (force: boolean, inPlace = false): Promise<boolean> => {
+    if (inFlight.current) return inFlight.current;
+    const run = async (): Promise<boolean> => {
+      const ed = editor.current;
+      if (!ed || tail) return false;
+      const text = ed.text();
+      setSaving(true);
+      try {
+        const { size, mtime, hash } = base.current;
+        const saved = await filesWriteText(tunnelId, path, text, size, mtime, hash, force, inPlace);
+        base.current = saved;
+        original.current = text;
+        // Typing while the save was in flight is still unsaved.
+        const still = (editor.current?.text() ?? text) !== text;
+        setDirty(still);
+        setProblem(null);
+        onSaved();
+        return !still;
+      } catch (e) {
+        if (e === "conflict") setProblem({ kind: "conflict" });
+        else if (e === "unsafe-save") setProblem({ kind: "unsafe" });
+        else setProblem({ kind: "failed", message: errorText(e) });
+        return false;
+      } finally {
+        setSaving(false);
+      }
+    };
+    const pending = run().finally(() => {
+      inFlight.current = null;
+    });
+    inFlight.current = pending;
+    return pending;
   };
   const saveRef = useRef(save);
   saveRef.current = save;
@@ -156,7 +183,21 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
   }, [dirty]);
   useEffect(() => () => onDirtyRef.current?.(false), []);
 
-  useImperativeHandle(ref, () => ({ dirty: () => dirty, save:() => saveRef.current(false) }), [dirty]);
+  const saveDraft = async () => {
+    if (!editor.current) return true;
+    try {
+      return (await filesSaveDraft(name, editor.current.text())) !== null;
+    } catch {
+      return false;
+    }
+  };
+
+  useImperativeHandle(
+    ref,
+    () => ({ dirty: () => dirty, save: () => saveRef.current(false), saveDraft }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dirty, name],
+  );
 
   const toggleWrap = () => {
     setWrap((w) => {
@@ -210,8 +251,17 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
       {problem && (
         <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-amber/10 px-3 py-1.5 text-xs text-text">
           <span className="min-w-0 flex-1">
-            {problem.kind === "conflict" ? t("files.view.conflict", { where }) : t("files.view.saveFailed", { message: problem.message })}
+            {problem.kind === "conflict"
+              ? t("files.view.conflict", { where })
+              : problem.kind === "unsafe"
+                ? t("files.view.unsafeSave", { where })
+                : t("files.view.saveFailed", { message: problem.message })}
           </span>
+          {problem.kind === "unsafe" && (
+            <button onClick={() => void save(false, true)} className={`${button} text-coral`}>
+              {t("files.view.saveInPlace")}
+            </button>
+          )}
           {problem.kind === "conflict" && (
             <>
               <button onClick={() => void save(true)} className={`${button} text-coral`}>

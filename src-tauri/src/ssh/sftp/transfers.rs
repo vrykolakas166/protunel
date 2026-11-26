@@ -18,7 +18,7 @@ use uuid::Uuid;
 use crate::events::FILE_TRANSFER_EVENT;
 use crate::AppState;
 
-use super::{at, err, exists, forget, is_missing, join, sanitize, sftp_for, split, stem_ext, Files, CHUNK, PROGRESS_EVERY};
+use super::{at, endpoint_now, err, exists, forget, is_missing, join, sanitize, sftp_bound, split, stem_ext, Files, CHUNK, PROGRESS_EVERY};
 
 /// Transfers running at once, over every host.
 pub(super) const PARALLEL_TRANSFERS: usize = 3;
@@ -92,10 +92,15 @@ pub fn cancel(app: &AppHandle, id: Uuid) {
 }
 
 /// Drops finished transfers from the list.
-pub fn clear_finished(app: &AppHandle) {
+/// Drops finished rows: every one, or only those touching `tunnel` (a file
+/// panel clears its own server's rows, never another panel's).
+pub fn clear_finished(app: &AppHandle, tunnel: Option<Uuid>) {
     let files = app.state::<Files>();
     let mut t = files.transfers.lock().unwrap();
-    t.list.retain(|x| matches!(x.state, TransferState::Queued | TransferState::Running));
+    t.list.retain(|x| {
+        matches!(x.state, TransferState::Queued | TransferState::Running)
+            || tunnel.is_some_and(|id| x.tunnel_id != id && x.dest_tunnel_id != Some(id))
+    });
 }
 
 pub(in crate::ssh) fn publish(app: &AppHandle, transfer: &Transfer) {
@@ -152,6 +157,12 @@ pub struct DownloadJob {
     pub open_when_done: bool,
 }
 
+/// What a queued job may run against: the endpoint the tunnel reached when the
+/// job was queued (see `endpoint_now`).
+pub fn bind(app: &AppHandle, tunnel_id: Uuid) -> Option<String> {
+    endpoint_now(app, tunnel_id)
+}
+
 /// Queues one transfer and returns its id; it runs when a slot frees up.
 pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
     let name = job
@@ -174,7 +185,8 @@ pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
         error: None,
         open_when_done: false,
     };
-    spawn(app, transfer, move |ctx| Box::pin(upload(ctx, tunnel_id, job)))
+    let expect = bind(app, tunnel_id);
+    spawn(app, transfer, move |ctx| Box::pin(upload(ctx, tunnel_id, expect, job)))
 }
 
 pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uuid {
@@ -194,7 +206,8 @@ pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uui
         error: None,
         open_when_done: job.open_when_done,
     };
-    spawn(app, transfer, move |ctx| Box::pin(download(ctx, tunnel_id, job)))
+    let expect = bind(app, tunnel_id);
+    spawn(app, transfer, move |ctx| Box::pin(download(ctx, tunnel_id, expect, job)))
 }
 
 type JobFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>;
@@ -259,9 +272,11 @@ pub(super) fn spawn(
             p = slots.acquire_owned() => p.ok(),
         };
         let mut transfer = transfer;
+        let mut started = Instant::now();
         let result = match permit {
             None => Err("cancelled".to_string()),
             Some(_permit) => {
+                started = Instant::now();
                 transfer.state = TransferState::Running;
                 publish(&app, &transfer);
                 let ctx = Arc::new(Ctx {
@@ -304,9 +319,9 @@ pub(super) fn spawn(
             }
         }
         if matches!(transfer.state, TransferState::Failed) {
-            forget_if_dead(&app, transfer.tunnel_id).await;
+            forget_if_dead(&app, transfer.tunnel_id, started).await;
             if let Some(dest_tunnel_id) = transfer.dest_tunnel_id {
-                forget_if_dead(&app, dest_tunnel_id).await;
+                forget_if_dead(&app, dest_tunnel_id, started).await;
             }
         }
         app.state::<Files>().transfers.lock().unwrap().cancels.remove(&id);
@@ -316,15 +331,15 @@ pub(super) fn spawn(
 }
 
 /// A failed transfer may have been the session dying; the next one reopens.
-async fn forget_if_dead(app: &AppHandle, tunnel_id: Uuid) {
+async fn forget_if_dead(app: &AppHandle, tunnel_id: Uuid, started: Instant) {
     let alive = app.state::<AppState>().session_for(tunnel_id).is_some_and(|s| !s.is_closed());
     if !alive {
-        forget(app, tunnel_id).await;
+        forget(app, tunnel_id, started).await;
     }
 }
 
-async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, job: UploadJob) -> Result<(), String> {
-    let sftp = sftp_for(&ctx.app, tunnel_id).await?;
+async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: UploadJob) -> Result<(), String> {
+    let sftp = sftp_bound(&ctx.app, tunnel_id, expect.as_deref()).await?;
     let name = job.local.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
     let target = join(&job.remote_dir, &name);
     let meta = tokio::fs::metadata(&job.local).await.map_err(|e| e.to_string())?;
@@ -445,7 +460,9 @@ async fn upload_file(ctx: &Ctx, sftp: &SftpSession, local: &Path, remote: &str, 
 
 /// Publishes a finished part file. Without `overwrite` a plain SFTP rename,
 /// which refuses an existing name ("exists"); with it posix-rename, and only
-/// when the server lacks that, remove-then-rename.
+/// when the server lacks that, a recoverable swap: the old file is renamed
+/// aside first and renamed back if the new one can't take its place, so a
+/// dropped connection never leaves the name missing with nothing to restore.
 pub(super) async fn commit_part(ctx: &Ctx, sftp: &SftpSession, part: &str, remote: &str, overwrite: bool) -> Result<(), String> {
     ctx.check()?; // a Cancel during the last write still wins
     if !overwrite {
@@ -463,10 +480,31 @@ pub(super) async fn commit_part(ctx: &Ctx, sftp: &SftpSession, part: &str, remot
     match sftp.posix_rename(part, remote).await {
         Ok(true) => Ok(()),
         Ok(false) => {
-            if exists(sftp, remote).await? {
-                sftp.remove_file(remote).await.map_err(|e| at(remote, e))?;
+            let old = match sftp.symlink_metadata(remote).await {
+                Err(e) if is_missing(&e) => None,
+                Err(e) => return Err(at(remote, e)),
+                Ok(a) if a.is_dir() => return Err(format!("{remote}: not a file")),
+                Ok(_) => {
+                    let (dir, name) = split(remote);
+                    let aside = join(dir, &format!(".{name}.{}.protunel-old", short_id()));
+                    sftp.rename(remote, aside.as_str()).await.map_err(|e| at(remote, e))?;
+                    Some(aside)
+                }
+            };
+            match sftp.rename(part, remote).await {
+                Ok(()) => {
+                    if let Some(aside) = old {
+                        let _ = sftp.remove_file(aside.as_str()).await;
+                    }
+                    Ok(())
+                }
+                Err(e) => {
+                    if let Some(aside) = old {
+                        let _ = sftp.rename(aside.as_str(), remote).await;
+                    }
+                    Err(at(remote, e))
+                }
             }
-            sftp.rename(part, remote).await.map_err(|e| at(remote, e))
         }
         Err(e) => Err(at(remote, e)),
     }
@@ -476,42 +514,45 @@ pub(super) fn short_id() -> String {
     Uuid::new_v4().simple().to_string()[..8].to_string()
 }
 
-async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, job: DownloadJob) -> Result<(), String> {
-    let sftp = sftp_for(&ctx.app, tunnel_id).await?;
+async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: DownloadJob) -> Result<(), String> {
+    let sftp = sftp_bound(&ctx.app, tunnel_id, expect.as_deref()).await?;
     let attrs = sftp.metadata(job.remote.as_str()).await.map_err(err)?;
     let (_, name) = split(&job.remote);
     tokio::fs::create_dir_all(&job.local_dir).await.map_err(|e| e.to_string())?;
-    // Downloads never overwrite a local file: "name (1).ext" like a browser,
-    // the name reserved on disk so two downloads can't pick the same one.
-    let local = reserve_local(&job.local_dir, name, attrs.is_dir()).await?;
-    ctx.set_local(&local);
-    let result = if attrs.is_dir() {
+    // Downloads never overwrite a local file: "name (1).ext" like a browser.
+    // A folder is reserved up front (created by us, so ours); a file is
+    // written to a private part file and only then published under the
+    // first free name (`publish_local`), so nothing placed under the final
+    // name meanwhile is ever replaced or deleted.
+    if attrs.is_dir() {
+        let local = reserve_dir(&job.local_dir, name).await?;
+        ctx.set_local(&local);
         let total = remote_size(&ctx, &sftp, &job.remote).await?;
         ctx.set_total(total);
         download_tree(&ctx, &sftp, &job.remote, &local).await
     } else {
         ctx.set_total(attrs.size.unwrap_or(0));
-        download_file(&ctx, &sftp, &job.remote, &local).await
-    };
-    if result.is_err() && !attrs.is_dir() {
-        let _ = tokio::fs::remove_file(&local).await; // the empty reservation
+        let local = download_file(&ctx, &sftp, &job.remote, &job.local_dir, name).await?;
+        ctx.set_local(&local);
+        Ok(())
     }
-    result
 }
 
-/// Creates `dir/name` (or "name (n).ext") exclusively and returns it: a file
-/// as a placeholder the download then replaces, or the folder itself.
-async fn reserve_local(dir: &Path, name: &str, folder: bool) -> Result<PathBuf, String> {
+fn candidate(dir: &Path, name: &str, n: u32) -> PathBuf {
+    let (stem, ext) = stem_ext(name);
+    if n == 0 {
+        dir.join(name)
+    } else {
+        dir.join(format!("{stem} ({n}){ext}"))
+    }
+}
+
+/// Creates the folder `dir/name` (or "name (n)") exclusively and returns it.
+async fn reserve_dir(dir: &Path, name: &str) -> Result<PathBuf, String> {
     let name = sanitize(name);
-    let (stem, ext) = stem_ext(&name);
     for n in 0..10_000 {
-        let path = if n == 0 { dir.join(&name) } else { dir.join(format!("{stem} ({n}){ext}")) };
-        let made = if folder {
-            tokio::fs::create_dir(&path).await.map(|_| ())
-        } else {
-            tokio::fs::OpenOptions::new().write(true).create_new(true).open(&path).await.map(|_| ())
-        };
-        match made {
+        let path = candidate(dir, &name, n);
+        match tokio::fs::create_dir(&path).await {
             Ok(()) => return Ok(path),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("{}: {e}", path.display())),
@@ -547,24 +588,22 @@ async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &P
             // Names that differ remotely but not as local names (`a:b`, `a?b`)
             // get "(1)" instead of landing on each other.
             if meta.is_dir() && !meta.is_symlink() {
-                let child = reserve_local(&local, &item.file_name(), true).await?;
+                let child = reserve_dir(&local, &item.file_name()).await?;
                 stack.push((item.path(), child));
             } else if meta.is_regular() {
-                let child = reserve_local(&local, &item.file_name(), false).await?;
-                download_file(ctx, sftp, &item.path(), &child).await?;
+                download_file(ctx, sftp, &item.path(), &local, &item.file_name()).await?;
             }
         }
     }
     Ok(())
 }
 
-async fn download_file(ctx: &Ctx, sftp: &SftpSession, remote: &str, local: &Path) -> Result<(), String> {
+/// Downloads `remote` into `dir` under `name` (or the first free "name (n)")
+/// and returns where it landed.
+async fn download_file(ctx: &Ctx, sftp: &SftpSession, remote: &str, dir: &Path, name: &str) -> Result<PathBuf, String> {
+    let name = sanitize(name);
     let mut src = sftp.open(remote).await.map_err(|e| at(remote, e))?;
-    let part = local.with_file_name(format!(
-        "{}.{}.protunel-part",
-        local.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-        short_id()
-    ));
+    let part = dir.join(format!(".{name}.{}.protunel-part", short_id()));
     let mut dst = tokio::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -587,15 +626,56 @@ async fn download_file(ctx: &Ctx, sftp: &SftpSession, remote: &str, local: &Path
     .await;
     drop(dst);
     let _ = src.close().await;
-    // Replaces only this download's own placeholder (`reserve_local`).
-    let committed = match copied {
-        Ok(()) => ctx.check().and(tokio::fs::rename(&part, local).await.map_err(|e| e.to_string())),
+    // A Cancel during the last write still wins: checked before publishing.
+    let committed = match copied.and_then(|()| ctx.check()) {
+        Ok(()) => publish_local(&part, dir, &name).await,
         Err(e) => Err(e),
     };
-    if committed.is_err() {
-        let _ = tokio::fs::remove_file(&part).await;
-    }
+    let _ = tokio::fs::remove_file(&part).await;
     committed
+}
+
+/// Gives a finished part file its final name without ever replacing a file:
+/// a hard link fails when the name exists (atomic no-replace on every OS), so
+/// the next "name (n)" is tried. Where hard links are unsupported (FAT,
+/// some network shares) the name is created exclusively and the part file
+/// copied into it.
+async fn publish_local(part: &Path, dir: &Path, name: &str) -> Result<PathBuf, String> {
+    for n in 0..10_000 {
+        let path = candidate(dir, name, n);
+        match tokio::fs::hard_link(part, &path).await {
+            Ok(()) => return Ok(path),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return publish_by_copy(part, dir, name, n).await,
+        }
+    }
+    Err("exists".to_string())
+}
+
+async fn publish_by_copy(part: &Path, dir: &Path, name: &str, from: u32) -> Result<PathBuf, String> {
+    for n in from..10_000 {
+        let path = candidate(dir, name, n);
+        let mut dst = match tokio::fs::OpenOptions::new().write(true).create_new(true).open(&path).await {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        };
+        let copied = async {
+            let mut src = tokio::fs::File::open(part).await?;
+            tokio::io::copy(&mut src, &mut dst).await?;
+            dst.flush().await
+        }
+        .await;
+        return match copied {
+            Ok(()) => Ok(path),
+            Err(e) => {
+                drop(dst);
+                let _ = tokio::fs::remove_file(&path).await; // ours: created exclusively above
+                Err(e.to_string())
+            }
+        };
+    }
+    Err("exists".to_string())
 }
 
 #[cfg(test)]
@@ -606,11 +686,18 @@ mod tests {
     async fn local_names_are_reserved_never_clobbered() {
         let dir = std::env::temp_dir().join(format!("protunel-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(reserve_local(&dir, "a.txt", false).await.unwrap(), dir.join("a.txt"));
-        assert_eq!(reserve_local(&dir, "a.txt", false).await.unwrap(), dir.join("a (1).txt"));
-        assert_eq!(reserve_local(&dir, "a:b", false).await.unwrap(), dir.join("a_b"));
-        assert_eq!(reserve_local(&dir, "a?b", false).await.unwrap(), dir.join("a_b (1)"));
-        assert_eq!(reserve_local(&dir, "../x", true).await.unwrap(), dir.join(".._x"));
+        assert_eq!(reserve_dir(&dir, "a").await.unwrap(), dir.join("a"));
+        assert_eq!(reserve_dir(&dir, "a").await.unwrap(), dir.join("a (1)"));
+        assert_eq!(reserve_dir(&dir, "a:b").await.unwrap(), dir.join("a_b"));
+        assert_eq!(reserve_dir(&dir, "a?b").await.unwrap(), dir.join("a_b (1)"));
+        assert_eq!(reserve_dir(&dir, "../x").await.unwrap(), dir.join(".._x"));
+        // Files: published next to (never over) what is there.
+        std::fs::write(dir.join("f.txt"), b"theirs").unwrap();
+        let part = dir.join("part");
+        std::fs::write(&part, b"ours").unwrap();
+        assert_eq!(publish_local(&part, &dir, "f.txt").await.unwrap(), dir.join("f (1).txt"));
+        assert_eq!(std::fs::read(dir.join("f.txt")).unwrap(), b"theirs");
+        assert_eq!(std::fs::read(dir.join("f (1).txt")).unwrap(), b"ours");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

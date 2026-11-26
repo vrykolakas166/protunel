@@ -413,25 +413,52 @@ no dropping files on a shell — only on the panel, which names the target.
 
 - Backend: an `sftp` subsystem channel on the tunnel's live session, cached
   per tunnel in `sftp::Files` (managed state) and reused only while it belongs
-  to that same `client::Handle` (a reconnect gets a fresh one); `settle`
-  drops it after an error on a dead session. Commands never connect: no
+  to that same `client::Handle` (a reconnect gets a fresh one), opened once
+  per tunnel even when two panels ask at once; `settle` drops it after an
+  error on a dead session, but never a channel opened after the failed call
+  started (`forget(.., since)`). Commands never connect: no
   session → `"not-connected"`. Error codes the UI translates are bare words
   (`files.err.*`). Server-side copy and folder size are `exec` (`cp -a`, `du
   -sk`) with `sftp::quote` (POSIX single quotes); SFTP has no copy.
 - Bytes stay Rust↔disk: transfers are Rust jobs (`start_upload` /
   `start_download`, 3 at a time, `file-transfer` events, `files_transfers`
   seeds a reload) writing `*.protunel-part` and renaming when complete;
-  downloads go to Downloads and never overwrite (`name (1).ext`); uploads skip
-  an existing name unless asked to overwrite. Only text the user opens (≤2 MB,
-  or the last 1 MB) and images (≤10 MB) reach the webview.
-- Saving edits (`write_text`) refuses with `"conflict"` when size/mtime moved
-  since it was read; it writes a temp file with the original's mode/owner and
-  posix-renames it, falling back to an in-place write when that would change
-  the file (symlink, owner it can't set, no posix-rename).
+  downloads go to Downloads and never overwrite (`name (1).ext`): a file is
+  written to a hidden part file and published by hard link, which fails on
+  an existing name (no placeholder under the final name, so nothing that
+  appears there meanwhile is replaced); uploads skip an existing name unless
+  asked to overwrite. Overwrite on a server without posix-rename renames the
+  old file aside first and back on failure, never remove-then-rename. A
+  queued job is bound to the endpoint (`user@host:port`, recorded per session
+  by `sftp::note_session`) its tunnel reached when queued and fails with
+  `"target-changed"` if the host was edited to reach another server. Only
+  text the user opens (≤2 MB, or the last 1 MB) and images (≤10 MB) reach the
+  webview.
+- Saving edits (`write_text`) refuses with `"conflict"` when size, mtime or
+  the bytes' fingerprint (`preview::fingerprint`; SFTP v3 mtime has 1 s
+  resolution) moved since it was read; saves of one file are serialized in
+  `commands::files` (`SAVING`). It writes a temp file with the original's
+  mode/owner and posix-renames it (for a symlink, next to the file it points
+  to, so the link stays). When that can't keep the file as it was (owner it
+  can't set, no posix-rename, folder not writable) it refuses with
+  `"unsafe-save"`; only the user's "Write in place" (`in_place`) truncates
+  and rewrites. `FileView` saves are single-flight, and a save reports false
+  while text typed during it is unsaved, so Save-and-close never drops it.
 - Delete walks the tree over SFTP, never following symlinks; the confirmation
   names host + paths, counts (`files_count`) and asks for the name typed at
   ≥100 items. Cut = rename; a name clash is skipped, never overwritten
   (copy into the same folder makes "name (copy)").
+- A panel is bound to the endpoint its tunnel reached when it opened: once
+  the host is edited to reach another server, the panel goes inert under a
+  banner until "Reload on …" (unsaved edits go to a local file first), so a
+  delete or save meant for the old server never lands on the new one.
+- Panels on one tunnel keep each other current: a delete, rename, create or
+  paste calls `invalidateDirs` (`panelStore.ts`) and every other panel on that
+  tunnel showing one of those folders re-lists it. Such refreshes (and those
+  after a finished transfer) are `background` loads (`refreshCurrent`): skipped
+  while a navigation is pending, they re-list the folder on screen now and
+  keep filter and scroll. Retry after a first open that failed (disconnected)
+  reruns the whole lookup, login folder included.
 - `FilePanel.tsx` is the panel's shell; listing (`useFileListing`, with the
   `loadSeq` stale-listing guard), scroll (`useListScroll`), drops and
   drag-out (`usePanelDrops`), move/resize (`usePanelGeometry`) and list keys
@@ -440,12 +467,15 @@ no dropping files on a shell — only on the panel, which names the target.
   gives way), each owned by the pane that opened it; Ctrl+Shift+O in a shell
   opens or focuses that shell's panel. `filesOpen` (opening order) is also the
   DOM order and never changes — moving a node blurs what has focus in it —
-  while `filesStack` gives the z-order (the last touched is on top, and takes
-  OS drops). Hidden, not closed, while its pane is in another tab or zoomed
+  while `filesStack` gives the z-order (the last touched is on top). An OS
+  drop goes to the panel whose file list (`[data-file-drop]`) is the topmost
+  element at the point, never through a dialog, an editor or an error. Hidden, not closed, while its pane is in another tab or zoomed
   away; closed with the pane. Unsaved editor changes are never dropped
   silently: closing the pane or its tab, the LRU eviction at `MAX_FILE_PANELS`
   and the terminal window's close button first ask (Cancel / Discard / Save
-  and close, naming user@host and file; a failed save keeps everything).
+  and close, naming user@host and file; a failed save keeps everything). The
+  LRU eviction evicts exactly the panel it asked about (`openFilesEvicting`),
+  even if a failed save raised it meanwhile.
   `FileView` reports dirty up through `FilePanel` `onUnsaved`; `useUnsavedGuard`
   probes `FilePanelHandle.unsaved()` (`files/unsaved.ts`, pure) in
   `guardUnsaved`. The window close is deferred to the page only while
@@ -488,16 +518,25 @@ no dropping files on a shell — only on the panel, which names the target.
   is **pinned**: protunel's trusted key for B goes into a temp 0600
   known_hosts on A used with `HostKeyAlias`, so A's own DNS, ssh config or
   known_hosts can never send the data to another machine; no trusted key →
-  relay. Keep the options to what old OpenSSH accepts (no
-  `KnownHostsCommand`): an unknown option fails every probe. Success is
+  relay. Every ssh/scp/rsync transport runs with `-F /dev/null`, so none of
+  A's ssh config (a `KnownHostsCommand`, a Host alias, a ProxyCommand) can
+  widen the check. Keep the options to what old OpenSSH accepts (no
+  `KnownHostsCommand=none`): an unknown option fails every probe. Success is
   cached per A→B (and A's session), failure only 60 s so `ssh-copy-id`
   takes effect; a direct copy ending with ssh's 255 drops the cache.
-  Direct = rsync when both A and B have it (progress2 parsed,
-  `--ignore-times` on Overwrite), else `scp -p` for a single file only
-  (scp -r follows symlinks; folders go by relay), staged on B. Both run
+  Direct = rsync when both A and B have it (progress2 parsed;
+  `--ignore-times` merging into the target on Overwrite, otherwise into a
+  stage of its own published by a no-replace rename, so two copies of one
+  name never mix), else `scp -p` for a single file only (scp -r follows
+  symlinks; folders go by relay), staged on B. Both run
   under a `sh` watchdog that kills the copy on a `cancel` line or stdin EOF
   (a lost client); the stage is removed only once exit is confirmed. Relay
-  = SFTP A → part file on B → rename, keeping mode and mtime. All routes
+  = SFTP A → part file on B → rename, keeping mode and mtime. It walks the
+  whole source first (≤100 000 entries) and only then creates anything on
+  B, so a destination inside the source (two tunnels to one machine) can't
+  feed it its own output; symlinks are not copied: a top-level one fails
+  (`"not-copied-link"`), nested ones finish as Done with
+  `error: "skipped-links:N"`, shown as a note. All routes
   skip an existing top-level name unless Overwrite. A relay returns
   `key_hint` (none when user/host hold whitespace or control chars), which
   the panel types into the shell it resolved when the hint appeared
@@ -519,7 +558,9 @@ no dropping files on a shell — only on the panel, which names the target.
   `IDataObjectAsyncCapability` lets `DoDragDrop` return at drop; once
   `StartOperation` ran, only `EndOperation` decides the outcome (queue rows
   stay Running until then; bytes read are progress, not success). Each file
-  is read lazily (first `GetData`) into a bounded channel (32 × 256 KiB).
+  is read lazily (first `GetData`) into a bounded channel (32 × 256 KiB). At most 3
+  files are pulled at once (`ole.rs` `PUMPS`, separate from the upload/download
+  slots so Explorer's synchronous reads never queue behind an upload).
   Cancel in protunel → next `Read` returns `E_ABORT`; Explorer releasing the
   stream cancels the reader and closes the SFTP handle. Queue rows are
   `Direction::DragOut`, shown as "Explorer".

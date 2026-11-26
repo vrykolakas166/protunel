@@ -5,6 +5,16 @@ use uuid::Uuid;
 
 use super::{err, join, split};
 
+/// A fingerprint of a file's bytes: catches a change that kept size and
+/// mtime (SFTP v3 mtime has one-second resolution). A string: u64 does not
+/// survive a JS number.
+pub fn fingerprint(data: &[u8]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    data.hash(&mut h);
+    format!("{:016x}", h.finish())
+}
+
 /// Largest text file shown or edited in the popup.
 pub const MAX_TEXT_BYTES: u64 = 2 * 1024 * 1024;
 /// Largest image previewed in the popup.
@@ -21,6 +31,8 @@ pub enum Content {
         mtime: Option<u32>,
         /// Only the last `TAIL_BYTES` were read.
         tail: bool,
+        /// `fingerprint` of the whole file; none for a tail.
+        hash: Option<String>,
     },
     Binary { size: u64 },
     TooLarge { size: u64 },
@@ -56,7 +68,8 @@ pub async fn read_text(sftp: &SftpSession, path: &str, tail: bool) -> Result<Con
             text.drain(..=i);
         }
     }
-    Ok(Content::Text { text, size, mtime: attrs.mtime, tail: from > 0 })
+    let hash = (from == 0).then(|| fingerprint(&buf));
+    Ok(Content::Text { text, size, mtime: attrs.mtime, tail: from > 0, hash })
 }
 
 /// NUL bytes, or mostly invalid UTF-8, in the first 8 KiB.
@@ -94,53 +107,99 @@ pub async fn read_bytes(sftp: &SftpSession, path: &str) -> Result<Vec<u8>, Strin
 pub struct Saved {
     pub size: u64,
     pub mtime: Option<u32>,
+    pub hash: Option<String>,
+}
+
+/// What the editor last read or saved: a save refuses with "conflict" when
+/// the file no longer matches it.
+pub struct Expect {
+    pub size: u64,
+    pub mtime: Option<u32>,
+    pub hash: Option<String>,
+}
+
+/// Size and mtime first (cheap); then the bytes, when the editor has a hash.
+async fn unchanged(sftp: &SftpSession, path: &str, expect: &Expect) -> Result<bool, String> {
+    let now = match sftp.metadata(path).await {
+        Ok(now) => now,
+        Err(_) => return Ok(false),
+    };
+    if now.size.unwrap_or(0) != expect.size || now.mtime != expect.mtime {
+        return Ok(false);
+    }
+    let Some(hash) = &expect.hash else { return Ok(true) };
+    if expect.size > MAX_TEXT_BYTES {
+        return Ok(true);
+    }
+    let mut file = sftp.open(path).await.map_err(err)?;
+    let mut buf = Vec::with_capacity(expect.size as usize);
+    (&mut file)
+        .take(MAX_TEXT_BYTES + 1)
+        .read_to_end(&mut buf)
+        .await
+        .map_err(|e| e.to_string())?;
+    let _ = file.close().await;
+    Ok(&fingerprint(&buf) == hash)
 }
 
 /// Saves edited text. Refuses with "conflict" when the file changed since it
-/// was opened (size or mtime), unless `force`.
+/// was opened (size, mtime or bytes), unless `force`. The caller serializes
+/// saves of one file (`commands::files`), so two editors in this app can't
+/// both pass the check before either lands.
 ///
-/// Safe write: a temp file next to the original, given the original's mode,
+/// Safe write: a temp file next to the original (for a symlink, next to the
+/// file it points to, so the link survives), given the original's mode,
 /// owner and group, then renamed over it (posix-rename) so a dropped
 /// connection never leaves a half-written file. When that cannot keep the
-/// file as it was (a symlink, an owner we can't set, no posix-rename) it
-/// writes in place instead, which keeps inode, owner and links.
+/// file as it was (an owner we can't set, no posix-rename, no write access to
+/// the folder) it refuses with "unsafe-save" unless `in_place`: writing in
+/// place keeps inode, owner and links, but a dropped connection can leave
+/// the file cut short, so the user decides.
 pub async fn write_text(
     sftp: &SftpSession,
     path: &str,
     text: &str,
-    expect_size: u64,
-    expect_mtime: Option<u32>,
+    expect: &Expect,
     force: bool,
+    in_place: bool,
 ) -> Result<Saved, String> {
     let link = sftp.symlink_metadata(path).await.map_err(err)?;
     let current = sftp.metadata(path).await.map_err(err)?;
-    if !force && (current.size.unwrap_or(0) != expect_size || current.mtime != expect_mtime) {
+    if !force && !unchanged(sftp, path, expect).await? {
         return Err("conflict".to_string());
     }
+    let real = if link.is_symlink() {
+        sftp.canonicalize(path).await.map_err(err)?
+    } else {
+        path.to_string()
+    };
     let data = text.as_bytes();
-    let replaced = if link.is_symlink() {
+    // Forced: still never over a change made while the temp file was written.
+    let fresh = Expect { size: current.size.unwrap_or(0), mtime: current.mtime, hash: None };
+    let check = if force { &fresh } else { expect };
+    let replaced = if in_place {
         Staged::Unsuitable
     } else {
-        replace_atomically(sftp, path, data, &current).await
+        replace_atomically(sftp, &real, data, &current, check).await
     };
-    if let Staged::Failed(e) = replaced {
-        // The original is untouched; never fall back to truncating it after
-        // a write that already failed once (a full disk would eat it).
-        return Err(e);
-    }
-    if matches!(replaced, Staged::Unsuitable) {
-        if !force && changed_since(sftp, path, expect_size, expect_mtime).await {
-            return Err("conflict".to_string());
+    match replaced {
+        Staged::Failed(e) => return Err(e), // the original is untouched
+        Staged::Unsuitable if !in_place => return Err("unsafe-save".to_string()),
+        Staged::Unsuitable => {
+            if !unchanged(sftp, path, check).await? {
+                return Err("conflict".to_string());
+            }
+            let mut file = sftp
+                .open_with_flags(path, OpenFlags::WRITE | OpenFlags::TRUNCATE)
+                .await
+                .map_err(err)?;
+            file.write_all(data).await.map_err(|e| e.to_string())?;
+            file.shutdown().await.map_err(|e| e.to_string())?;
         }
-        let mut file = sftp
-            .open_with_flags(path, OpenFlags::WRITE | OpenFlags::TRUNCATE)
-            .await
-            .map_err(err)?;
-        file.write_all(data).await.map_err(|e| e.to_string())?;
-        file.shutdown().await.map_err(|e| e.to_string())?;
+        Staged::Replaced => {}
     }
     let after = sftp.metadata(path).await.map_err(err)?;
-    Ok(Saved { size: after.size.unwrap_or(0), mtime: after.mtime })
+    Ok(Saved { size: after.size.unwrap_or(0), mtime: after.mtime, hash: Some(fingerprint(data)) })
 }
 
 enum Staged {
@@ -150,15 +209,14 @@ enum Staged {
     Failed(String),
 }
 
-async fn changed_since(sftp: &SftpSession, path: &str, size: u64, mtime: Option<u32>) -> bool {
-    match sftp.metadata(path).await {
-        Ok(now) => now.size.unwrap_or(0) != size || now.mtime != mtime,
-        Err(_) => true,
-    }
-}
-
 /// The temp-and-rename half of `write_text`; cleans up whatever it backs out of.
-async fn replace_atomically(sftp: &SftpSession, path: &str, data: &[u8], original: &FileAttributes) -> Staged {
+async fn replace_atomically(
+    sftp: &SftpSession,
+    path: &str,
+    data: &[u8],
+    original: &FileAttributes,
+    expect: &Expect,
+) -> Staged {
     let (dir, name) = split(path);
     let temp = join(dir, &format!(".{name}.protunel-{}", &Uuid::new_v4().simple().to_string()[..8]));
     let Ok(mut file) = sftp
@@ -195,8 +253,8 @@ async fn replace_atomically(sftp: &SftpSession, path: &str, data: &[u8], origina
         let _ = sftp.remove_file(&temp).await;
         return Staged::Unsuitable;
     }
-    // Last look right before the swap (best effort: SFTP has no compare-and-swap).
-    if changed_since(sftp, path, original.size.unwrap_or(0), original.mtime).await {
+    // Last look right before the swap (SFTP has no compare-and-swap).
+    if !matches!(unchanged(sftp, path, expect).await, Ok(true)) {
         let _ = sftp.remove_file(&temp).await;
         return Staged::Failed("conflict".to_string());
     }

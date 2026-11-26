@@ -95,7 +95,7 @@ async fn it_sftp_write_text_detects_conflict() {
         let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
         sftp.write(path.as_str(), b"initial").await.unwrap();
         let Content::Text {
-            text, size, mtime, ..
+            text, size, mtime, hash, ..
         } = files_read_text(case.app.clone(), tunnel.id, path.clone(), false)
             .await
             .unwrap()
@@ -113,11 +113,54 @@ async fn it_sftp_write_text_detects_conflict() {
             "my edit".into(),
             size,
             mtime,
+            hash,
+            false,
             false,
         )
         .await;
         assert!(matches!(result, Err(ref error) if error == "conflict"));
         assert_eq!(sftp.read(path.as_str()).await.unwrap(), b"changed remotely");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_sftp_write_text_detects_same_size_same_mtime_change() {
+    run(async |case| {
+        let (tunnel, dir) = connect(case).await;
+        let path = format!("{dir}/same.txt");
+        let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
+        sftp.write(path.as_str(), b"aaaa").await.unwrap();
+        let Content::Text {
+            size, mtime, hash, ..
+        } = files_read_text(case.app.clone(), tunnel.id, path.clone(), false)
+            .await
+            .unwrap()
+        else {
+            panic!("expected editable text")
+        };
+        // Another editor: same length, mtime kept (what SFTP v3 can't tell apart).
+        case.exec(
+            &tunnel,
+            &format!("printf bbbb > {path}.n && touch -r {path} {path}.n && mv {path}.n {path}"),
+        )
+        .await;
+
+        let result = files_write_text(
+            case.app.clone(),
+            tunnel.id,
+            path.clone(),
+            "mine".into(),
+            size,
+            mtime,
+            hash,
+            false,
+            false,
+        )
+        .await;
+        assert!(matches!(result, Err(ref error) if error == "conflict"));
+        assert_eq!(sftp.read(path.as_str()).await.unwrap(), b"bbbb");
     })
     .await;
 }

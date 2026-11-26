@@ -144,7 +144,9 @@ export function useFilePanels({
   const raiseFiles = (paneId: string) =>
     setFilesStack((prev) => (prev[prev.length - 1] === paneId ? prev : [...prev.filter((id) => id !== paneId), paneId]));
 
-  const openFilesNow = (paneId: string) => {
+  /** Opens (or raises) `paneId`'s panel. At the limit `evict` gives way: the
+   *  panel the caller already confirmed, else the one used longest ago. */
+  const openFilesNow = (paneId: string, evict?: string) => {
     if (filesOpen.includes(paneId)) {
       raiseFiles(paneId);
       filesRefs.current.get(paneId)?.focus();
@@ -154,9 +156,10 @@ export function useFilePanels({
     // would move whenever another panel moved.
     setFilesGeometry((prev) => (prev[paneId] ? prev : { ...prev, [paneId]: firstGeometry(lastFilesGeometry.current!) }));
     // At the limit the panel used longest ago gives way.
-    const evict = filesOpen.length >= MAX_FILE_PANELS ? filesStack[0] : null;
-    setFilesOpen((prev) => [...prev.filter((id) => id !== evict), paneId]);
-    setFilesStack((prev) => [...prev.filter((id) => id !== evict), paneId]);
+    const victim =
+      filesOpen.length < MAX_FILE_PANELS ? null : evict && filesOpen.includes(evict) ? evict : filesStack[0];
+    setFilesOpen((prev) => [...prev.filter((id) => id !== victim), paneId]);
+    setFilesStack((prev) => [...prev.filter((id) => id !== victim), paneId]);
   };
 
   /** The terminal id of a live shell on `tunnelId`: the preferred pane's if it
@@ -206,6 +209,14 @@ export function useFilePanels({
     saveFilesGeometry(geo);
   };
 
+  /** The panel whose file list is the topmost surface at (x, y): never one
+   *  behind a dialog, another panel or its own editor or confirmation. */
+  const dropTargetAt = (x: number, y: number) => {
+    const surface = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-file-drop]");
+    const paneId = surface?.closest<HTMLElement>("[data-file-panel]")?.dataset.filePanel;
+    return paneId ? dropTargets.current.find((t) => t.paneId === paneId) : undefined;
+  };
+
   // Files dragged in from the OS: only a drop on the panel uploads (never on
   // a shell — too easy to mistake where they would go).
   useEffect(() => {
@@ -218,9 +229,7 @@ export function useFilePanels({
       const ratio = window.devicePixelRatio || 1;
       const x = p.position.x / ratio;
       const y = p.position.y / ratio;
-      const hit = dropTargets.current.find(
-        ({ box }) => x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h,
-      );
+      const hit = dropTargetAt(x, y);
       if (p.type === "drop") {
         setDropHover(null);
         if (hit) filesRefs.current.get(hit.paneId)?.drop(p.paths, x, y);

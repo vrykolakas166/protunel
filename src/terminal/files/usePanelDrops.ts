@@ -5,18 +5,23 @@ import type { CopyAcross, FileEntry } from "../../types";
 import { dropDirFor, type DropPlan } from "./dropLogic";
 import { canPasteClip } from "./panelLogic";
 import { getClipboard, setClipboard, type RelayHint } from "./panelStore";
-import { baseName, isDirLike, joinPath } from "./paths";
+import { baseName, isDirLike, joinPath, parentPath } from "./paths";
 import { isWindows } from "../../platform";
-import { onRowDragLeaveWindow, registerRowReceiver, rowReceiver, type RowDragPayload } from "./rowDrag";
+import { onRowDragLeaveWindow, registerRowReceiver, type RowDragPayload } from "./rowDrag";
 
 interface Args {
   paneId: string;
   tunnelId: string;
+  /** The host now reaches another server: nothing may land here. */
+  stale: boolean;
+  /** Tells the other panels on this server these folders changed. */
+  changed: (dirs: string[]) => void;
+  /** Re-lists the folder on screen now; `select` applies only if it is `dir`. */
+  refreshCurrent: (select?: string[], dir?: string) => void;
   path: string | null;
   entries: FileEntry[];
   viewing: string | null;
   error: string | null;
-  load: (dir: string, keep?: { select?: string[] }) => unknown;
   refresh: () => void;
   errorText: (e: unknown) => string;
   t: TFunction;
@@ -36,11 +41,13 @@ interface Args {
 export function usePanelDrops({
   paneId,
   tunnelId,
+  stale,
+  changed,
+  refreshCurrent,
   path,
   entries,
   viewing,
   error,
-  load,
   refresh,
   errorText,
   t,
@@ -76,11 +83,14 @@ export function usePanelDrops({
           ? t("files.pasteSkipped", { count: out.skipped.length, names: out.skipped.map(baseName).join(", ") })
           : null,
       );
-      if (path) void load(path, { select: dir === path ? out.done.map(baseName) : [] });
+      // The folder on screen now, not the one shown when the paste began.
+      refreshCurrent(out.done.map(baseName), dir);
+      changed(cut ? [dir, ...new Set(paths.map(parentPath))] : [dir]);
       return true;
     } catch (e) {
       setNotice(errorText(e));
       refresh();
+      changed(cut ? [dir, ...new Set(paths.map(parentPath))] : [dir]);
       return false;
     }
   };
@@ -99,16 +109,15 @@ export function usePanelDrops({
 
   /** The folder a row drop at window point (x, y) goes to: a folder row, else the open folder. */
   const rowDropDir = (x: number, y: number): string | null => {
-    if (!path || viewing || error) return null;
+    if (!path || viewing || error || stale) return null;
     const name = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-file-row]")?.dataset.fileRow;
     return dropDirFor(path, name ? entries.find((e) => e.name === name) : undefined);
   };
   const receiveRows = async (payload: RowDragPayload, dir: string, plan: DropPlan) => {
     if (plan.kind === "across") return void (await copyAcross(payload.tunnelId, payload.paneId, payload.paths, dir));
     if (plan.kind === "none") return;
-    const ok = await pasteHere(payload.paths, dir, plan.kind === "move");
-    // A move empties the source folder; another panel may be showing it.
-    if (ok && plan.kind === "move" && payload.paneId !== paneId) rowReceiver(payload.paneId)?.refresh();
+    // A move empties the source folder: `pasteHere` tells the panels showing it.
+    await pasteHere(payload.paths, dir, plan.kind === "move");
   };
   const receiverApi = useRef({ rowDropDir, receiveRows, refresh });
   receiverApi.current = { rowDropDir, receiveRows, refresh };
@@ -167,7 +176,8 @@ export function usePanelDrops({
 
   /** The folder a drop at window point (x, y) goes to: a folder row, else the open folder. */
   const dirAt = (x: number, y: number): string | null => {
-    if (!path || viewing) return path;
+    // Never into the folder behind an editor, an error or a stale listing.
+    if (!path || viewing || error || stale) return null;
     const row = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-file-row]");
     const name = row?.dataset.fileRow;
     const entry = name ? entries.find((e) => e.name === name) : undefined;
@@ -176,11 +186,11 @@ export function usePanelDrops({
   useEffect(() => {
     setDropDir(dropHover ? dirAt(dropHover.x, dropHover.y) : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dropHover?.x, dropHover?.y, path, viewing]);
+  }, [dropHover?.x, dropHover?.y, path, viewing, error, stale]);
 
   /** Local paths dropped from the OS at window point (x, y). */
   const dropFiles = (paths: string[], x: number, y: number) => {
-    const dir = dirAt(x, y) ?? path;
+    const dir = dirAt(x, y);
     setDropDir(null);
     if (!dir || paths.length === 0) return;
     void filesUpload(tunnelId, paths, dir, false)

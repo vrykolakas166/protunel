@@ -40,7 +40,7 @@ pub use copy_across::{copy_across, CopyAcross};
 pub use helpers::{join, quote, sanitize, split, stem_ext};
 pub use listing::{dir_size, list, properties, Listing, Properties};
 pub use operations::{count, create_dir, create_file, delete, exists, paste, rename, Count, PasteOutcome};
-pub use preview::{read_bytes, read_text, write_text, Content, Saved};
+pub use preview::{read_bytes, read_text, write_text, Content, Expect, Saved};
 
 pub use transfers::{
     cancel, clear_finished, start_download, start_upload, transfers, Direction, DownloadJob, Route,
@@ -48,7 +48,7 @@ pub use transfers::{
 };
 
 use operations::delete_tree;
-use transfers::{commit_part, remote_size, short_id, spawn, Ctx, Transfers, PARALLEL_TRANSFERS};
+use transfers::{commit_part, short_id, spawn, Ctx, Transfers, PARALLEL_TRANSFERS};
 
 pub(super) use transfers::publish;
 #[cfg(windows)]
@@ -63,11 +63,23 @@ type Handle = client::Handle<SshHandler>;
 struct Cached {
     session: Weak<Handle>,
     sftp: Arc<SftpSession>,
+    /// When it was opened: an error from an older call never evicts it.
+    opened: Instant,
+}
+
+/// The endpoint (`user@host:port`) a session was authenticated to.
+struct Endpoint {
+    session: Weak<Handle>,
+    target: String,
 }
 
 /// Open SFTP channels and the transfer queue. Managed state.
 pub struct Files {
     cache: tokio::sync::Mutex<HashMap<Uuid, Cached>>,
+    /// One channel opening per tunnel at a time (two panels' first calls
+    /// share one channel instead of opening two).
+    opening: Mutex<HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>,
+    endpoints: Mutex<Vec<Endpoint>>,
     copy_probes: copy_across::Probes,
     transfers: Mutex<Transfers>,
     slots: Arc<Semaphore>,
@@ -77,10 +89,34 @@ impl Default for Files {
     fn default() -> Self {
         Self {
             cache: tokio::sync::Mutex::new(HashMap::new()),
+            opening: Mutex::new(HashMap::new()),
+            endpoints: Mutex::new(Vec::new()),
             copy_probes: copy_across::Probes::default(),
             transfers: Mutex::new(Transfers::default()),
             slots: Arc::new(Semaphore::new(PARALLEL_TRANSFERS)),
         }
+    }
+}
+
+/// Records which endpoint a freshly authenticated session reached (the
+/// supervisor calls this on every connect). The `Weak` keeps the allocation,
+/// so a later session can never be mistaken for this one.
+pub fn note_session(app: &AppHandle, session: &Arc<Handle>, target: String) {
+    let files = app.state::<Files>();
+    let mut endpoints = files.endpoints.lock().unwrap();
+    endpoints.retain(|e| e.session.strong_count() > 0);
+    endpoints.push(Endpoint { session: Arc::downgrade(session), target });
+}
+
+/// Refuses a session that reaches another endpoint than `target`, the one the
+/// panel shows: after a tunnel's host is edited and it reconnects, a panel
+/// still naming the old server must not write to the new one.
+fn check_target(app: &AppHandle, session: &Arc<Handle>, target: &str) -> Result<(), String> {
+    let files = app.state::<Files>();
+    let endpoints = files.endpoints.lock().unwrap();
+    match endpoints.iter().find(|e| e.session.upgrade().is_some_and(|s| Arc::ptr_eq(&s, session))) {
+        Some(e) if e.target != target => Err("target-changed".to_string()),
+        _ => Ok(()),
     }
 }
 
@@ -91,17 +127,53 @@ pub async fn sftp_for(app: &AppHandle, tunnel_id: Uuid) -> Result<Arc<SftpSessio
     sftp_for_session(app, tunnel_id, &session).await
 }
 
+/// `sftp_for`, only when the session still reaches `target` (`check_target`).
+pub async fn sftp_checked(app: &AppHandle, tunnel_id: Uuid, target: &str) -> Result<Arc<SftpSession>, String> {
+    let state = app.state::<AppState>();
+    let session = state.session_for(tunnel_id).ok_or("not-connected")?;
+    check_target(app, &session, target)?;
+    sftp_for_session(app, tunnel_id, &session).await
+}
+
+/// The endpoint the tunnel's current session reached, if connected: what a
+/// queued job binds to so it never runs against a server edited in later.
+pub fn endpoint_now(app: &AppHandle, tunnel_id: Uuid) -> Option<String> {
+    let session = app.state::<AppState>().session_for(tunnel_id)?;
+    let files = app.state::<Files>();
+    let endpoints = files.endpoints.lock().unwrap();
+    endpoints
+        .iter()
+        .find(|e| e.session.upgrade().is_some_and(|s| Arc::ptr_eq(&s, &session)))
+        .map(|e| e.target.clone())
+}
+
+/// `sftp_checked` when the job was bound to an endpoint, else `sftp_for`.
+pub async fn sftp_bound(app: &AppHandle, tunnel_id: Uuid, expect: Option<&str>) -> Result<Arc<SftpSession>, String> {
+    match expect {
+        Some(target) => sftp_checked(app, tunnel_id, target).await,
+        None => sftp_for(app, tunnel_id).await,
+    }
+}
+
+async fn cached(files: &Files, tunnel_id: Uuid, session: &Arc<Handle>) -> Option<Arc<SftpSession>> {
+    let cache = files.cache.lock().await;
+    cache
+        .get(&tunnel_id)
+        .filter(|entry| entry.session.upgrade().is_some_and(|s| Arc::ptr_eq(&s, session)))
+        .map(|entry| entry.sftp.clone())
+}
+
 async fn sftp_for_session(app: &AppHandle, tunnel_id: Uuid, session: &Arc<Handle>) -> Result<Arc<SftpSession>, String> {
     let files = app.state::<Files>();
-    {
-        let cache = files.cache.lock().await;
-        if let Some(entry) = cache.get(&tunnel_id) {
-            if entry.session.upgrade().is_some_and(|s| Arc::ptr_eq(&s, session)) {
-                return Ok(entry.sftp.clone());
-            }
-        }
+    if let Some(sftp) = cached(&files, tunnel_id, session).await {
+        return Ok(sftp);
     }
-    // Opened without the lock held: a slow server must not block other hosts.
+    // One opener per tunnel; other tunnels never wait on a slow server.
+    let gate = files.opening.lock().unwrap().entry(tunnel_id).or_default().clone();
+    let _opening = gate.lock().await;
+    if let Some(sftp) = cached(&files, tunnel_id, session).await {
+        return Ok(sftp);
+    }
     let channel = session
         .channel_open_session()
         .await
@@ -117,15 +189,20 @@ async fn sftp_for_session(app: &AppHandle, tunnel_id: Uuid, session: &Arc<Handle
     let sftp = Arc::new(sftp);
     files.cache.lock().await.insert(
         tunnel_id,
-        Cached { session: Arc::downgrade(session), sftp: sftp.clone() },
+        Cached { session: Arc::downgrade(session), sftp: sftp.clone(), opened: Instant::now() },
     );
     Ok(sftp)
 }
 
 /// Drops a tunnel's cached channel after an error that may mean it is dead,
-/// so the next call opens a fresh one.
-pub async fn forget(app: &AppHandle, tunnel_id: Uuid) {
-    app.state::<Files>().cache.lock().await.remove(&tunnel_id);
+/// so the next call opens a fresh one. `since`: when the failed call started;
+/// a channel opened after that (another panel's, or a reconnect's) is kept.
+pub async fn forget(app: &AppHandle, tunnel_id: Uuid, since: Instant) {
+    let files = app.state::<Files>();
+    let mut cache = files.cache.lock().await;
+    if cache.get(&tunnel_id).is_some_and(|entry| entry.opened <= since) {
+        cache.remove(&tunnel_id);
+    }
 }
 
 /// Error text for the webview. Codes the UI translates are bare words.

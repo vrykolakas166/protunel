@@ -47,6 +47,8 @@ import {
   HIDDEN_KEY,
   ROW,
   getClipboard,
+  invalidateDirs,
+  onInvalidate,
   readFlag,
   setClipboard,
   subscribeClipboard,
@@ -68,7 +70,7 @@ import { usePanelDrops } from "./usePanelDrops";
 import { useFileListing } from "./useFileListing";
 import { useListScroll } from "./useListScroll";
 import { gripCursor, usePanelGeometry } from "./usePanelGeometry";
-import { isActive, overallProgress } from "./useTransfers";
+import { involves, isActive, overallProgress } from "./useTransfers";
 
 export interface FilePanelHandle {
   /** Path of the file open in the editor with unsaved changes, else null. */
@@ -111,7 +113,8 @@ interface Props {
   shellAlive: (termId: string, tunnelId: string) => boolean;
   transfers: FileTransfer[];
   byId: Record<string, Tunnel>;
-  onClearTransfers: () => void;
+  /** Clears this server's finished rows only. */
+  onClearTransfers: (tunnelId: string) => void;
   /** An OS drag is over the window here (window px), or null. */
   dropHover: { x: number; y: number } | null;
   onClose: () => void;
@@ -150,6 +153,13 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const { t } = useTranslation("terminal");
   const tunnelId = tunnel.id;
   const where = target.replace(/:22$/, "");
+  // The server this panel's listing and editor belong to. When the host is
+  // edited to reach another one, everything here is inert until the user
+  // reloads on the new server: a delete or save meant for the old one must
+  // never land on the new one at the same path.
+  const endpointNow = `${tunnel.username}@${tunnel.host}:${tunnel.port}`;
+  const [bound, setBound] = useState(endpointNow);
+  const stale = endpointNow !== bound;
   const titleId = `file-panel-title-${paneId}`;
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -200,7 +210,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   // ---- loading ----------------------------------------------------------
 
-  const { home, path, entries, loading, error, load } = useFileListing({
+  const { home, path, entries, loading, error, load, refreshCurrent, retry, restart } = useFileListing({
     tunnelId,
     errorText,
     onMemory,
@@ -214,9 +224,25 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     [entries, sort, showHidden, filter],
   );
 
-  const refresh = useCallback(() => {
-    if (path) void load(path, { select: [...selected] });
-  }, [path, load, selected]);
+  const refresh = useCallback(() => refreshCurrent([...selected]), [refreshCurrent, selected]);
+
+  /** Tells the other panels on this server that these folders changed. */
+  const changed = useCallback(
+    (dirs: string[]) => invalidateDirs({ tunnelId, dirs, fromPaneId: paneId }),
+    [tunnelId, paneId],
+  );
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const pathNow = useRef(path);
+  pathNow.current = path;
+  useEffect(
+    () =>
+      onInvalidate((change) => {
+        if (change.tunnelId !== tunnelId || change.fromPaneId === paneId) return;
+        if (pathNow.current && change.dirs.includes(pathNow.current)) refreshRef.current();
+      }),
+    [tunnelId, paneId],
+  );
 
   // Opening the panel is asking for it: the keyboard moves in.
   useEffect(() => {
@@ -319,11 +345,13 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const { dropDir, relayHint, setRelayHint, preparing, paste, hintShellAlive, typeRelayHint, dropFiles } = usePanelDrops({
     paneId,
     tunnelId,
+    stale,
+    changed,
+    refreshCurrent,
     path,
     entries,
     viewing,
     error,
-    load,
     refresh,
     errorText,
     t,
@@ -356,6 +384,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     } catch (e) {
       setNotice(errorText(e));
     }
+    // Partly done or not, the folders may have changed.
+    changed([...new Set(paths.map(parentPath))]);
     refresh();
     focusList();
   };
@@ -370,7 +400,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
         await filesCreate(tunnelId, joinPath(path, name), nameBar.kind === "dir");
       }
       setNameBar(null);
-      await load(path, { select: [name] });
+      changed([path]);
+      await load(path, { select: [name], background: true });
       focusList();
     } catch (e) {
       setNotice(errorText(e));
@@ -398,6 +429,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   /** Unsaved edits: Save / Discard / Cancel. True when it is fine to leave. */
   const settleDirty = async (): Promise<boolean> => {
     if (!viewRef.current?.dirty()) return true;
+    // Stale: saving would reach the wrong server; the edits go to a local draft.
+    if (stale) return viewRef.current.saveDraft();
     const choice = await new Promise<"save" | "discard" | "cancel">((resolve) =>
       setConfirm((prev) => {
         // Asked again while the question is up: the earlier ask is answered "cancel".
@@ -419,15 +452,29 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     }
   };
 
+  /** Reload on the server the host reaches now; unsaved edits are kept as a local file first. */
+  const reloadOnNewServer = async () => {
+    if (viewRef.current?.dirty() && !(await viewRef.current.saveDraft())) return;
+    setViewing(null);
+    setDetails(null);
+    setNameBar(null);
+    setConfirm(null);
+    setBound(endpointNow);
+    restart();
+  };
+
   useImperativeHandle(ref, () => ({
     unsaved: () => (viewing && viewRef.current?.dirty() ? viewing : null),
-    saveUnsaved: async () => (await viewRef.current?.save()) ?? true,
+    // Stale: the host reaches another server now, so "save" keeps a local draft.
+    saveUnsaved: async () => (stale ? viewRef.current?.saveDraft() : viewRef.current?.save()) ?? true,
     focus: () => {
       if (rootRef.current?.contains(document.activeElement)) return;
       if (viewing) rootRef.current?.querySelector<HTMLElement>(".cm-content")?.focus();
       else listRef.current?.focus();
     },
-    drop: dropFiles,
+    drop: (paths, x, y) => {
+      if (!stale) dropFiles(paths, x, y);
+    },
   }));
 
   // ---- menus --------------------------------------------------------------
@@ -551,7 +598,9 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   // ---- render ---------------------------------------------------------------
 
-  const activeHere = transfers.filter((x) => x.tunnelId === tunnelId);
+  // Only this server's transfers (from or to it): other panels' uploads and
+  // downloads are none of this panel's business.
+  const activeHere = transfers.filter((x) => involves(x, tunnelId));
   const running = activeHere.filter(isActive);
   const progress = overallProgress(activeHere);
 
@@ -610,6 +659,20 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
           onFocusShell={onFocusShell}
           onCloseClick={() => void settleDirty().then((ok) => ok && onClose())}
         />
+
+        {stale && (
+          <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-amber/15 px-3 py-2 text-xs text-text">
+            <span className="min-w-0 flex-1">{t("files.stale", { now: endpointNow.replace(/:22$/, ""), was: bound.replace(/:22$/, "") })}</span>
+            <button
+              onClick={() => void reloadOnNewServer()}
+              className="rounded bg-amber px-2.5 py-1 text-xs font-medium text-on-amber hover:opacity-90"
+            >
+              {t("files.staleReload", { now: endpointNow.replace(/:22$/, "") })}
+            </button>
+          </div>
+        )}
+
+        <div inert={stale} className="contents">
 
         {viewing ? (
           <FileView
@@ -682,7 +745,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
                   onKeyDown={onListKey}
                   onScroll={setScrollTop}
                   onBackgroundMenu={backgroundMenu}
-                  onRetry={(dir) => void load(dir)}
+                  onRetry={retry}
                   onRowPointerDown={onRowPointerDown}
                   onRowMouseDown={onRowMouseDown}
                   onRowOpen={open}
@@ -709,9 +772,9 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
           progress={progress}
           queueOpen={queueOpen}
           toggleQueue={() => setQueueOpen((v) => !v)}
-          transfers={transfers}
+          transfers={activeHere}
           byId={byId}
-          onClearTransfers={onClearTransfers}
+          onClearTransfers={() => onClearTransfers(tunnelId)}
         />
 
         {relayHint && (
@@ -757,6 +820,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
             focusList={focusList}
           />
         )}
+        </div>
       </div>
       {!maximized &&
         !moving &&

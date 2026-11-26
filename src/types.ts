@@ -454,13 +454,14 @@ export interface PasteOutcome {
 }
 
 export type FileContent =
-  | { kind: "text"; text: string; size: number; mtime: number | null; tail: boolean }
+  | { kind: "text"; text: string; size: number; mtime: number | null; tail: boolean; hash: string | null }
   | { kind: "binary"; size: number }
   | { kind: "tooLarge"; size: number };
 
 export interface SavedFile {
   size: number;
   mtime: number | null;
+  hash: string | null;
 }
 
 export type TransferState = "queued" | "running" | "done" | "skipped" | "failed" | "cancelled";

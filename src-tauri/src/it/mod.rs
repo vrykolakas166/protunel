@@ -88,7 +88,7 @@ async fn run(test: impl AsyncFnOnce(&mut Case)) {
         .expect("integration test timed out");
     for tunnel in &case.tunnels {
         case.state().stop_and_wait(tunnel.id).await;
-        files::forget(case.app, tunnel.id).await;
+        files::forget(case.app, tunnel.id, std::time::Instant::now()).await;
     }
     crate::router::stop(case.app).await;
 }
@@ -226,7 +226,7 @@ impl Drop for Case {
             self.state().db.delete(tunnel.id).unwrap();
             TEST_SECRETS.lock().unwrap().remove(&tunnel.id);
         }
-        files::clear_finished(self.app);
+        files::clear_finished(self.app, None);
         if let Some(path) = &self.local {
             let _ = std::fs::remove_dir_all(path);
         }

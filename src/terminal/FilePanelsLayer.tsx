@@ -13,7 +13,7 @@ interface Props {
   windowBox: Box;
   transfers: FileTransfer[];
   byId: Record<string, Tunnel>;
-  clearFinished: () => void;
+  clearFinished: (tunnelId?: string) => void;
   dropHover: { x: number; y: number; paneId: string } | null;
   raiseFiles: (paneId: string) => void;
   setGeometry: (paneId: string, geo: FilesGeometry) => void;

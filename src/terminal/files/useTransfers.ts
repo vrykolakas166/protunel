@@ -5,8 +5,11 @@ import type { FileTransfer } from "../../types";
 
 export const isActive = (t: FileTransfer) => t.state === "queued" || t.state === "running";
 
+/** A transfer belongs to a server's panel when it reads from or writes to it. */
+export const involves = (t: FileTransfer, tunnelId: string) => t.tunnelId === tunnelId || t.destTunnelId === tunnelId;
+
 /** The transfer queue (Rust owns it): seeded once, then kept live by events. */
-export function useTransfers(): { transfers: FileTransfer[]; clearFinished: () => void } {
+export function useTransfers(): { transfers: FileTransfer[]; clearFinished: (tunnelId?: string) => void } {
   const [list, setList] = useState<FileTransfer[]>([]);
   useEffect(() => {
     let alive = true;
@@ -31,9 +34,9 @@ export function useTransfers(): { transfers: FileTransfer[]; clearFinished: () =
       void unlisten.then((f) => f());
     };
   }, []);
-  const clearFinished = () => {
-    setList((prev) => prev.filter(isActive));
-    void filesClearTransfers().catch(() => {});
+  const clearFinished = (tunnelId?: string) => {
+    setList((prev) => prev.filter((x) => isActive(x) || (tunnelId !== undefined && !involves(x, tunnelId))));
+    void filesClearTransfers(tunnelId).catch(() => {});
   };
   return { transfers: list, clearFinished };
 }

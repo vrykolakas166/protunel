@@ -18,6 +18,16 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 - Chế độ Đơn giản nói rõ cần làm gì khi công tắc đang tắt; trên Linux nhắc ngay từ đầu bước cài đặt trình duyệt một lần.
 - Thanh máy chủ bên trái của terminal **đổi được độ rộng**: kéo cạnh phải (nhấp đúp để về độ rộng mặc định).
 
+### Sửa lỗi
+- Danh sách truyền tệp và tiến độ trong popup tệp chỉ hiện các lượt truyền của máy chủ đó, và nút Xóa chỉ xóa các lượt đó; trước đây mọi popup đang mở đều hiện (và xóa) tất cả.
+- Popup tệp ngừng thao tác trên tệp của máy chủ cũ khi host được sửa để trỏ tới máy chủ khác, và đề nghị tải lại trên máy chủ mới; các lượt truyền đã xếp hàng trước khi sửa không còn chạy trên máy chủ mới.
+- Lưu tệp bị từ chối khi tệp đã bị người khác sửa kể cả khi kích thước và thời gian trông như cũ, hai editor trên cùng một tệp không còn ghi đè nhau, và tệp không thể thay an toàn sẽ hỏi trước khi ghi trực tiếp.
+- Ghi đè, tải về và hủy không bao giờ làm mất hay đè tệp: ghi đè giữ tệp cũ đến khi tệp mới vào chỗ, tải về không chiếm tên vừa xuất hiện trong lúc tải, và hủy tải không để lại gì.
+- Các popup cùng máy chủ tự làm mới cho nhau sau khi xóa, đổi tên, tạo mới hay dán; upload xong không còn kéo popup về thư mục vừa rời, và giữ nguyên bộ lọc lẫn vị trí cuộn.
+- Tệp thả từ hệ thống chỉ vào danh sách của popup ngay dưới con trỏ, không xuyên qua hộp thoại hay vào thư mục phía sau tệp đang mở.
+- Mở popup thứ chín chỉ đóng đúng popup đã được hỏi, tệp mở chậm không còn giành bàn phím của popup khác, và Thử lại trên popup mở lúc chưa kết nối sẽ tìm đúng thư mục home.
+- Sao chép giữa hai máy chủ bỏ qua ssh config của máy nguồn, hai lượt sao chép vào cùng một tên không còn trộn lẫn, sao chép đi vòng qua máy này không thể chép một thư mục vào chính nó, và symlink bị bỏ qua được báo thay vì hiện là xong.
+
 ## [0.10.0] - 2026-11-24
 
 ### Điểm nổi bật

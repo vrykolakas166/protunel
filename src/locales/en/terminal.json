@@ -307,7 +307,9 @@
       "binary": "Binary file ({{size}}): it can't be shown here.",
       "tooLarge": "Too big to open here ({{size}}; the limit is 2 MB).",
       "showTail": "Show the last 1 MB",
-      "imageTooLarge": "Image too big to preview (the limit is 10 MB)."
+      "imageTooLarge": "Image too big to preview (the limit is 10 MB).",
+      "unsafeSave": "This file on {{where}} can't be replaced in one step (owner or folder rights). Writing in place keeps it, but a dropped connection can leave it cut short.",
+      "saveInPlace": "Write in place"
     },
     "queue": {
       "title": "Transfers",
@@ -329,7 +331,9 @@
       "routeRsync": "direct · rsync",
       "routeScp": "direct · scp",
       "routeRelay": "via this computer",
-      "routeRelaySpeed": "via this computer · {{speed}}/s"
+      "routeRelaySpeed": "via this computer · {{speed}}/s",
+      "skippedLinks_one": "Copied · {{count}} link skipped",
+      "skippedLinks_other": "Copied · {{count}} links skipped"
     },
     "err": {
       "not-connected": "{{where}} is not connected: reconnect the shell first.",
@@ -340,7 +344,10 @@
       "timeout": "{{where}} did not answer in time.",
       "too-large": "Too big to open here.",
       "same-tunnel": "Source and destination are the same server.",
-      "invalid-path": "That path can't be used."
+      "invalid-path": "That path can't be used.",
+      "not-copied-link": "A symlink: not copied.",
+      "too-many-files": "Too many files to copy this way (over 100 000).",
+      "target-changed": "This host now points to another server: reload the panel."
     },
     "maximize": "Maximize (double-click the header)",
     "restore": "Restore size (double-click the header)",
@@ -361,7 +368,9 @@
       "copy": "Copy command",
       "dismiss": "Dismiss",
       "typed": "Typed. Press Enter in the shell to run it."
-    }
+    },
+    "stale": "This host now points to {{now}}. The panel still shows {{was}}.",
+    "staleReload": "Reload on {{now}}"
   },
   "kbFiles": "files of the shell",
   "sidebarResize": "Drag to resize · double-click to reset",

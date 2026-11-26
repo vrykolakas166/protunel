@@ -307,7 +307,9 @@
       "binary": "Tệp nhị phân ({{size}}): không hiển thị được ở đây.",
       "tooLarge": "Quá lớn để mở ở đây ({{size}}; giới hạn 2 MB).",
       "showTail": "Xem 1 MB cuối",
-      "imageTooLarge": "Ảnh quá lớn để xem trước (giới hạn 10 MB)."
+      "imageTooLarge": "Ảnh quá lớn để xem trước (giới hạn 10 MB).",
+      "unsafeSave": "Không thể thay tệp này trên {{where}} trong một bước (quyền chủ sở hữu hoặc thư mục). Ghi trực tiếp vẫn giữ tệp, nhưng nếu mất kết nối giữa chừng tệp có thể bị cụt.",
+      "saveInPlace": "Ghi trực tiếp"
     },
     "queue": {
       "title": "Truyền tệp",
@@ -329,7 +331,9 @@
       "routeRsync": "trực tiếp · rsync",
       "routeScp": "trực tiếp · scp",
       "routeRelay": "qua máy này",
-      "routeRelaySpeed": "qua máy này · {{speed}}/s"
+      "routeRelaySpeed": "qua máy này · {{speed}}/s",
+      "skippedLinks_one": "Đã sao chép · bỏ qua {{count}} symlink",
+      "skippedLinks_other": "Đã sao chép · bỏ qua {{count}} symlink"
     },
     "err": {
       "not-connected": "{{where}} chưa kết nối: hãy kết nối lại shell trước.",
@@ -340,12 +344,16 @@
       "timeout": "{{where}} không trả lời kịp.",
       "too-large": "Quá lớn để mở ở đây.",
       "same-tunnel": "Nguồn và đích là cùng một máy chủ.",
-      "invalid-path": "Không dùng được đường dẫn này."
+      "invalid-path": "Không dùng được đường dẫn này.",
+      "not-copied-link": "Là symlink: không sao chép.",
+      "too-many-files": "Quá nhiều tệp để sao chép cách này (trên 100 000).",
+      "target-changed": "Host này giờ trỏ tới máy chủ khác: hãy tải lại popup."
     },
     "maximize": "Phóng to (nhấp đúp header)",
     "restore": "Về cỡ cũ (nhấp đúp header)",
     "dropCopy": "Sao chép tới {{where}} → {{path}}",
     "dropMove": "Chuyển tới {{where}} → {{path}}",
+    "dragLabel_one": "{{count}} mục",
     "dragLabel_other": "{{count}} mục",
     "copying": "Đang sao chép…",
     "dragOut": {
@@ -360,7 +368,9 @@
       "copy": "Sao chép lệnh",
       "dismiss": "Đóng",
       "typed": "Đã gõ. Nhấn Enter trong shell để chạy."
-    }
+    },
+    "stale": "Host này giờ trỏ tới {{now}}. Popup vẫn đang hiện {{was}}.",
+    "staleReload": "Tải lại trên {{now}}"
   },
   "kbFiles": "tệp của shell",
   "sidebarResize": "Kéo để đổi cỡ · nhấp đúp để về mặc định",

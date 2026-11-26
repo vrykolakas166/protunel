@@ -157,3 +157,16 @@ describe("paths", () => {
     expect(viewKind("app.tar.gz")).toBe("unknown");
   });
 });
+
+import { involves } from "../src/terminal/files/useTransfers";
+import type { FileTransfer } from "../src/types";
+
+describe("transfers per panel", () => {
+  test("a panel sees transfers from or to its server only", () => {
+    const t = (tunnelId: string, destTunnelId: string | null) => ({ tunnelId, destTunnelId }) as FileTransfer;
+    expect(involves(t("a", null), "a")).toBe(true);
+    expect(involves(t("b", "a"), "a")).toBe(true);
+    expect(involves(t("b", null), "a")).toBe(false);
+    expect(involves(t("b", "c"), "a")).toBe(false);
+  });
+});

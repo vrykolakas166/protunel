@@ -250,8 +250,20 @@ export const filesWriteText = (
   text: string,
   expectSize: number,
   expectMtime: number | null,
+  expectHash: string | null,
   force: boolean,
-) => invoke<SavedFile>("files_write_text", { tunnelId, path, text, expectSize, expectMtime, force });
+  inPlace = false,
+) =>
+  invoke<SavedFile>("files_write_text", {
+    tunnelId,
+    path,
+    text,
+    expectSize,
+    expectMtime,
+    expectHash,
+    force,
+    inPlace,
+  });
 export const filesUpload = (tunnelId: string, localPaths: string[], remoteDir: string, overwrite: boolean) =>
   invoke<string[]>("files_upload", { tunnelId, localPaths, remoteDir, overwrite });
 export const filesPickUpload = (tunnelId: string, remoteDir: string) =>
@@ -266,7 +278,8 @@ export const filesOpenLocal = (tunnelId: string, remotePath: string) =>
   invoke<string>("files_open_local", { tunnelId, remotePath });
 export const filesTransfers = () => invoke<FileTransfer[]>("files_transfers");
 export const filesCancelTransfer = (id: string) => invoke<void>("files_cancel_transfer", { id });
-export const filesClearTransfers = () => invoke<void>("files_clear_transfers");
+/** `tunnelId`: only that server's finished rows (a file panel's Clear). */
+export const filesClearTransfers = (tunnelId?: string) => invoke<void>("files_clear_transfers", { tunnelId: tunnelId ?? null });
 export const filesReveal = (id: string) => invoke<void>("files_reveal", { id });
 export const filesSaveDraft = (name: string, text: string) => invoke<string | null>("files_save_draft", { name, text });
 

@@ -51,3 +51,16 @@ export function writeFlag(key: string, on: boolean) {
     // Only a preference.
   }
 }
+
+/**
+ * "These folders changed on this server": every other panel on the same
+ * tunnel showing one of them re-lists it (quietly), so a delete, rename or
+ * paste in one panel never leaves another acting on entries that are gone.
+ */
+export type Invalidation = { tunnelId: string; dirs: string[]; fromPaneId: string };
+const invalidationListeners = new Set<(change: Invalidation) => void>();
+export const onInvalidate = (l: (change: Invalidation) => void) => {
+  invalidationListeners.add(l);
+  return () => void invalidationListeners.delete(l);
+};
+export const invalidateDirs = (change: Invalidation) => invalidationListeners.forEach((l) => l(change));

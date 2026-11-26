@@ -8,6 +8,7 @@ import type { FileTransfer, Tunnel } from "../../types";
 import { isActive } from "./useTransfers";
 import { parentPath } from "./paths";
 import { nextSpeed, type SpeedSample } from "./dropLogic";
+import { knownErrorCode } from "./panelLogic";
 
 interface Props {
   transfers: FileTransfer[];
@@ -32,7 +33,7 @@ export function TransferList({ transfers, byId, onClear, emptyHint }: Props) {
       </ul>
       {finished && (
         <button
-          onClick={onClear}
+          onClick={() => onClear()}
           className="shrink-0 border-t border-border px-3 py-1.5 text-left text-[11px] text-muted hover:bg-surface-hover hover:text-text"
         >
           {t("files.queue.clear")}
@@ -79,8 +80,19 @@ function TransferRow({ transfer: x, host, destHost }: { transfer: FileTransfer; 
     failed: t("files.queue.failed"),
     cancelled: t("files.queue.cancelled"),
   };
+  // A finished relay copy that left symlinks behind says so ("skipped-links:N").
+  const skippedLinks = x.state === "done" ? /^skipped-links:(\d+)$/.exec(x.error ?? "") : null;
+  if (skippedLinks) stateText.done = t("files.queue.skippedLinks", { count: Number(skippedLinks[1]) });
+  const code = x.state === "failed" ? knownErrorCode(x.error) : null;
+  const failure = code ? t(`files.err.${code}`, { where }) : x.error;
   const tone =
-    x.state === "failed" ? "text-coral" : x.state === "skipped" ? "text-amber" : x.state === "done" ? "text-accent" : "text-muted";
+    x.state === "failed"
+      ? "text-coral"
+      : x.state === "skipped" || skippedLinks
+        ? "text-amber"
+        : x.state === "done"
+          ? "text-accent"
+          : "text-muted";
   return (
     <li className="px-3 py-1.5 text-xs">
       <div className="flex items-center gap-2">
@@ -130,7 +142,7 @@ function TransferRow({ transfer: x, host, destHost }: { transfer: FileTransfer; 
               : `${where}:${x.remotePath}`}
         </span>
         {route && <span className="shrink-0">{route}</span>}
-        <span className={`shrink-0 ${tone}`}>{x.error && x.state === "failed" ? x.error : stateText[x.state]}</span>
+        <span className={`shrink-0 ${tone}`}>{failure && x.state === "failed" ? failure : stateText[x.state]}</span>
       </div>
       {x.state === "running" && (
         <div className="ml-5 mt-1 h-1 overflow-hidden rounded bg-border">

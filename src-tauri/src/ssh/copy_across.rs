@@ -304,19 +304,34 @@ impl CopyBatch {
         ctx.check()?;
         let known_hosts = write_known_host(&a, key).await?;
         let result = match route {
-            Route::Rsync => {
+            // Overwrite merges into what is there, as an upload does.
+            Route::Rsync if self.overwrite => {
                 let marker = completion_marker();
                 let command = rsync_command(
                     &self.tunnel,
                     source,
                     &dest_dir,
-                    self.overwrite,
+                    true,
                     &marker,
                     &known_hosts,
                 );
                 run_direct(ctx, &self.source_session, &command, &marker, true).await
             }
-            Route::Scp => self.scp(ctx, &dest, source, &target, &known_hosts).await,
+            // Otherwise each job copies into a stage of its own, published
+            // with a no-replace rename: two copies of one name never mix,
+            // and a cancelled one leaves nothing under the final name.
+            Route::Rsync => {
+                self.staged(ctx, &dest, source, &target, true, |stage, marker| {
+                    rsync_command(&self.tunnel, source, stage, false, marker, &known_hosts)
+                })
+                .await
+            }
+            Route::Scp => {
+                self.staged(ctx, &dest, source, &target, false, |stage, marker| {
+                    scp_command(&self.tunnel, source, stage, marker, &known_hosts)
+                })
+                .await
+            }
             Route::Relay => unreachable!(),
         };
         if result.as_ref().is_err_and(|e| e.status == Some(255)) {
@@ -329,13 +344,16 @@ impl CopyBatch {
         result.map_err(|e| e.message)
     }
 
-    async fn scp(
+    /// Runs a direct copy into a fresh stage folder on B, then renames the
+    /// copied entry to `target` (`commit_part`) and removes the stage.
+    async fn staged(
         &self,
         ctx: &Ctx,
         dest: &SftpSession,
         source: &str,
         target: &str,
-        known_hosts: &str,
+        progress: bool,
+        command: impl FnOnce(&str, &str) -> String,
     ) -> Result<(), DirectError> {
         ctx.check()?;
         let stage = join(
@@ -346,8 +364,8 @@ impl CopyBatch {
             .await
             .map_err(|e| at(&stage, e))?;
         let marker = completion_marker();
-        let command = scp_command(&self.tunnel, source, &stage, &marker, known_hosts);
-        let result = run_direct(ctx, &self.source_session, &command, &marker, false).await;
+        let command = command(&stage, &marker);
+        let result = run_direct(ctx, &self.source_session, &command, &marker, progress).await;
         let result = match result {
             Err(mut e) if e.exit_unconfirmed => {
                 e.message = format!(
@@ -412,7 +430,12 @@ fn shell_command<'a>(args: impl IntoIterator<Item = &'a str>) -> String {
 }
 
 fn ssh_options(user_known_hosts: &str) -> Vec<String> {
-    [
+    // `-F /dev/null`: none of A's ssh config (~/.ssh/config, /etc/ssh/ssh_config)
+    // applies, so nothing there (a KnownHostsCommand, a Host alias, a
+    // ProxyCommand) can widen the pinned check or send the data elsewhere.
+    // Every OpenSSH version accepts it.
+    let config = ["-F".to_string(), "/dev/null".to_string()];
+    config.into_iter().chain([
         "BatchMode=yes".into(),
         "ConnectTimeout=5".into(),
         format!("UserKnownHostsFile={user_known_hosts}"),
@@ -427,7 +450,7 @@ fn ssh_options(user_known_hosts: &str) -> Vec<String> {
         "ControlPath=none".into(),
     ]
     .into_iter()
-    .flat_map(|option| ["-o".into(), option])
+    .flat_map(|option| ["-o".into(), option]))
     .collect()
 }
 
@@ -724,9 +747,58 @@ fn update_progress(ctx: &Ctx, line: &[u8]) {
     }
 }
 
-enum RelayStep {
-    Copy(String, String, FileAttributes),
-    SetDirectoryMode(String, u32),
+/// Most entries one relay copies: the source is walked whole before
+/// anything is created on B.
+const MAX_RELAY_ENTRIES: usize = 100_000;
+
+enum Planned {
+    Dir(String, Option<u32>),
+    File(String, String),
+}
+
+/// Walks the source on A completely first, so a destination inside the
+/// source (two tunnels reaching one machine) can never feed the copy its own
+/// output. Symlinks and special files are counted, not followed.
+async fn plan_relay(
+    ctx: &Ctx,
+    a: &SftpSession,
+    source: &str,
+    target: &str,
+    attrs: &FileAttributes,
+) -> Result<(Vec<Planned>, u64, usize), String> {
+    let mut plan = Vec::new();
+    let mut total = 0;
+    let mut skipped = 0;
+    if !attrs.is_dir() {
+        total = attrs.size.unwrap_or(0);
+        plan.push(Planned::File(source.to_string(), target.to_string()));
+        return Ok((plan, total, skipped));
+    }
+    let mut stack = vec![(source.to_string(), target.to_string(), attrs.permissions)];
+    while let Some((source, target, mode)) = stack.pop() {
+        ctx.check()?;
+        plan.push(Planned::Dir(target.clone(), mode));
+        for item in a.read_dir(&source).await.map_err(|e| at(&source, e))? {
+            let name = item.file_name();
+            if !valid_name(&name) {
+                continue;
+            }
+            if plan.len() + stack.len() >= MAX_RELAY_ENTRIES {
+                return Err("too-many-files".to_string());
+            }
+            let meta = item.metadata();
+            let (from, to) = (join(&source, &name), join(&target, &name));
+            if meta.is_dir() && !meta.is_symlink() {
+                stack.push((from, to, meta.permissions));
+            } else if meta.is_regular() {
+                total += meta.size.unwrap_or(0);
+                plan.push(Planned::File(from, to));
+            } else {
+                skipped += 1;
+            }
+        }
+    }
+    Ok((plan, total, skipped))
 }
 
 async fn relay(
@@ -741,78 +813,61 @@ async fn relay(
         .symlink_metadata(source)
         .await
         .map_err(|e| at(source, e))?;
-    if attrs.is_dir() {
-        ctx.set_total(remote_size(ctx, a, source).await?);
-    } else {
-        ctx.set_total(attrs.size.unwrap_or(0));
+    if !attrs.is_dir() && !attrs.is_regular() {
+        // A link would copy as nothing: say so instead of "done".
+        return Err("not-copied-link".to_string());
     }
+    let (plan, total, skipped) = plan_relay(ctx, a, source, target, &attrs).await?;
+    ctx.set_total(total);
 
-    let mut stack = vec![RelayStep::Copy(
-        source.to_string(),
-        target.to_string(),
-        attrs,
-    )];
-    while let Some(step) = stack.pop() {
+    // New folders stay writable until their children are in; their modes
+    // are applied last, deepest first.
+    let mut modes = Vec::new();
+    let mut root = true;
+    for step in plan {
         ctx.check()?;
-        let (source, target, attrs) = match step {
-            RelayStep::Copy(source, target, attrs) => (source, target, attrs),
-            RelayStep::SetDirectoryMode(target, mode) => {
-                if b.symlink_metadata(target.as_str())
-                    .await
-                    .is_ok_and(|attrs| attrs.is_dir())
-                {
-                    let attrs = FileAttributes {
-                        permissions: Some(mode & 0o7777),
-                        ..FileAttributes::empty()
-                    };
-                    let _ = b.set_metadata(target.as_str(), attrs).await;
-                }
-                continue;
-            }
-        };
-        if !attrs.is_dir() && !attrs.is_regular() {
-            continue;
-        }
-        // Recheck before opening a listed file or directory that may have changed.
-        let current = a
-            .symlink_metadata(source.as_str())
-            .await
-            .map_err(|e| at(&source, e))?;
-        if attrs.is_dir() {
-            if !current.is_dir() {
-                continue;
-            }
-            match b.symlink_metadata(target.as_str()).await {
-                Ok(attrs) if overwrite && attrs.is_dir() => {}
-                Ok(_) if !overwrite => return Err("exists".to_string()),
-                Ok(_) => return Err(format!("{target}: not a folder")),
-                Err(e) if is_missing(&e) => {
-                    if let Err(e) = b.create_dir(target.as_str()).await {
-                        if !overwrite && exists(b, &target).await? {
-                            return Err("exists".to_string());
+        match step {
+            Planned::Dir(target, mode) => {
+                match b.symlink_metadata(target.as_str()).await {
+                    Ok(attrs) if overwrite && attrs.is_dir() && !attrs.is_symlink() => {}
+                    Ok(_) if !overwrite && root => return Err("exists".to_string()),
+                    Ok(_) => return Err(format!("{target}: not a folder")),
+                    Err(e) if is_missing(&e) => {
+                        if let Err(e) = b.create_dir(target.as_str()).await {
+                            if !overwrite && root && exists(b, &target).await? {
+                                return Err("exists".to_string());
+                            }
+                            return Err(at(&target, e));
                         }
-                        return Err(at(&target, e));
+                        if let Some(mode) = mode {
+                            modes.push((target.clone(), mode));
+                        }
                     }
-                    // Keep new directories writable until all children are in place.
-                    if let Some(mode) = current.permissions {
-                        stack.push(RelayStep::SetDirectoryMode(target.clone(), mode));
-                    }
+                    Err(e) => return Err(at(&target, e)),
                 }
-                Err(e) => return Err(at(&target, e)),
+                root = false;
             }
-            for item in a.read_dir(&source).await.map_err(|e| at(&source, e))? {
-                let name = item.file_name();
-                if valid_name(&name) {
-                    stack.push(RelayStep::Copy(
-                        join(&source, &name),
-                        join(&target, &name),
-                        item.metadata(),
-                    ));
-                }
+            Planned::File(source, target) => {
+                // Recheck: the file may have changed since it was listed.
+                let current = match a.symlink_metadata(source.as_str()).await {
+                    Ok(current) if current.is_regular() => current,
+                    Ok(_) => continue,
+                    Err(e) if is_missing(&e) => continue,
+                    Err(e) => return Err(at(&source, e)),
+                };
+                relay_file(ctx, a, b, &source, &target, &current, overwrite).await?;
             }
-        } else if current.is_regular() {
-            relay_file(ctx, a, b, &source, &target, &current, overwrite).await?;
         }
+    }
+    for (target, mode) in modes.into_iter().rev() {
+        let attrs = FileAttributes {
+            permissions: Some(mode & 0o7777),
+            ..FileAttributes::empty()
+        };
+        let _ = b.set_metadata(target.as_str(), attrs).await;
+    }
+    if skipped > 0 {
+        ctx.transfer.lock().unwrap().error = Some(format!("skipped-links:{skipped}"));
     }
     Ok(())
 }
@@ -943,7 +998,7 @@ mod tests {
         let tunnel = destination();
         assert_eq!(
             probe_command(&tunnel, KNOWN_HOSTS),
-            r"'ssh' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=5' '-o' 'UserKnownHostsFile=/tmp/protunel-kh-test' '-o' 'GlobalKnownHostsFile=/dev/null' '-o' 'StrictHostKeyChecking=yes' '-o' 'HostKeyAlias=protunel-dest' '-o' 'VerifyHostKeyDNS=no' '-o' 'ControlPath=none' '-p' '2222' '--' 'o'\''neil@2001:db8::2' 'true'"
+            r"'ssh' '-F' '/dev/null' '-o' 'BatchMode=yes' '-o' 'ConnectTimeout=5' '-o' 'UserKnownHostsFile=/tmp/protunel-kh-test' '-o' 'GlobalKnownHostsFile=/dev/null' '-o' 'StrictHostKeyChecking=yes' '-o' 'HostKeyAlias=protunel-dest' '-o' 'VerifyHostKeyDNS=no' '-o' 'ControlPath=none' '-p' '2222' '--' 'o'\''neil@2001:db8::2' 'true'"
         );
         let hint = r"ssh-copy-id -p 2222 'o'\''neil'@'2001:db8::2'";
         assert_eq!(key_hint_command(&tunnel, true).as_deref(), Some(hint));
@@ -1010,7 +1065,7 @@ mod tests {
         ));
         assert!(
             scp_command(&tunnel, "file", "/to/.stage", "done", KNOWN_HOSTS)
-                .contains("'scp' '-p' '-o'")
+                .contains("'scp' '-p' '-F' '/dev/null' '-o'")
         );
     }
 }

@@ -18,6 +18,16 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 - Simple mode says what to do when the switch is off; on Linux it mentions the one-time browser setting from the start.
 - The terminal's host sidebar can be **resized**: drag its right edge (double-click it to go back to the default width).
 
+### Fixes
+- A file panel's transfer list and progress show only that server's transfers, and its Clear only clears those; before, every open panel showed (and cleared) all of them.
+- A file panel stops working on the old server's files once its host is edited to reach another server, and offers to reload on the new one; transfers queued before the edit no longer run against the new server.
+- Saving a file is refused when someone changed it meanwhile even if size and time look the same, two editors on one file can no longer overwrite each other, and a file that can't be replaced safely asks before being written in place.
+- Overwriting, downloading and cancelling never lose or replace a file: overwrite keeps the old file until the new one is in place, a download never takes over a name that appeared while it ran, and a cancelled download leaves nothing behind.
+- Panels on the same server refresh each other after a delete, rename, new item or paste; a finished upload no longer pulls a panel back to the folder it just left, and keeps its filter and scroll.
+- Files dropped from the system land only on the panel list under the pointer, never through a dialog or into the folder behind an open file.
+- Opening a ninth panel closes only the one it asked about, a slow file no longer takes the keyboard from another panel, and Retry on a panel opened while disconnected finds the home folder.
+- Server-to-server copies ignore the source server's ssh config, two copies to one name no longer mix, a copy through this computer can't copy a folder into itself, and skipped symlinks are reported instead of shown as done.
+
 ## [0.10.0] - 2026-11-24
 
 ### Highlights
