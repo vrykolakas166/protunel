@@ -1,4 +1,11 @@
-import type { ComponentProps, KeyboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
+import { useEffect, useState } from "react";
+import type {
+  ComponentProps,
+  KeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+  RefObject,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type { Tunnel, Workspace } from "../types";
 import { HostTree, type HostRow, type HostSection } from "./HostTree";
@@ -6,6 +13,27 @@ import { MAX_PANES } from "./layout";
 import { icons } from "./PaneLayer";
 
 type HostTreeProps = ComponentProps<typeof HostTree>;
+
+const WIDTH_KEY = "protunel.terminal.sidebarWidth";
+export const SIDEBAR_DEFAULT = 240;
+export const SIDEBAR_MIN = 180;
+/** Never more than this, nor more than 45% of the window: the panes come first. */
+export const SIDEBAR_MAX = 520;
+
+export function clampSidebar(width: number, windowWidth: number): number {
+  const max = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Math.round(windowWidth * 0.45)));
+  return Math.round(Math.min(Math.max(width, SIDEBAR_MIN), max));
+}
+
+/** Per-window convenience only, so browser storage (and failing quietly) is fine. */
+function loadWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(WIDTH_KEY));
+    return n > 0 ? n : SIDEBAR_DEFAULT;
+  } catch {
+    return SIDEBAR_DEFAULT;
+  }
+}
 
 interface Props {
   sidebarHidden: boolean;
@@ -78,16 +106,74 @@ export function TerminalSidebar({
   openSelected,
 }: Props) {
   const { t } = useTranslation("terminal");
+  // Resizable by its right edge; the preference is kept, the shown width is
+  // clamped to the window.
+  const [preferred, setPreferred] = useState(loadWidth);
+  const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
+  const [resizing, setResizing] = useState(false);
+  useEffect(() => {
+    const onResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const width = clampSidebar(preferred, windowWidth);
+  const commitWidth = (w: number) => {
+    setPreferred(w);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(w));
+    } catch {
+      // Private mode or blocked storage: the width just won't persist.
+    }
+  };
+  const startResize = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const grip = e.currentTarget;
+    grip.setPointerCapture(e.pointerId);
+    const startX = e.clientX;
+    const startWidth = width;
+    let latest = startWidth;
+    setResizing(true);
+    const move = (ev: PointerEvent) => {
+      latest = clampSidebar(startWidth + ev.clientX - startX, window.innerWidth);
+      setPreferred(latest);
+    };
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", end);
+      grip.removeEventListener("pointercancel", end);
+      setResizing(false);
+      commitWidth(latest);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  };
   return (
     <aside
       data-tour={sidebarHidden ? undefined : "term-hosts"}
       aria-hidden={sidebarHidden}
-      className={`flex shrink-0 flex-col overflow-hidden bg-surface transition-[width] duration-150 ease-out ${
-        sidebarHidden ? "w-0" : "w-60 border-r border-border"
-      }`}
+      style={{ width: sidebarHidden ? 0 : width }}
+      className={`relative flex shrink-0 flex-col overflow-hidden bg-surface ${
+        resizing ? "" : "transition-[width] duration-150 ease-out"
+      } ${sidebarHidden ? "" : "border-r border-border"}`}
     >
+      {!sidebarHidden && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t("sidebarResize")}
+          aria-valuenow={width}
+          aria-valuemin={SIDEBAR_MIN}
+          aria-valuemax={SIDEBAR_MAX}
+          title={t("sidebarResize")}
+          onPointerDown={startResize}
+          onDoubleClick={() => commitWidth(SIDEBAR_DEFAULT)}
+          className={`absolute inset-y-0 right-0 z-10 w-1.5 cursor-ew-resize hover:bg-accent/40 ${resizing ? "bg-accent/60" : ""}`}
+        />
+      )}
       {/* Fixed inner width so the content slides out instead of reflowing. */}
-      <div className={`flex min-h-0 w-60 flex-1 flex-col ${sidebarHidden ? "invisible" : ""}`}>
+      <div style={{ width }} className={`flex min-h-0 flex-1 flex-col ${sidebarHidden ? "invisible" : ""}`}>
         {namedWorkspaces.length > 0 && (
           <div className="border-b border-border px-2 pb-2 pt-3">
             <span className="px-1 font-display text-xs font-semibold uppercase tracking-wider text-muted">

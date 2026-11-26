@@ -172,7 +172,8 @@ export const listRecentCaptures = () => invoke<RecentCapture[]>("list_recent_cap
 export const listCaptureConnections = () =>
   invoke<CaptureConnection[]>("list_capture_connections");
 
-export const openTerminalWindow = () => invoke<void>("open_terminal_window");
+/** `hideMain`: Ctrl+T in the main window swaps the windows instead of stacking them. */
+export const openTerminalWindow = (hideMain = false) => invoke<void>("open_terminal_window", { hideMain });
 
 /** Opens a PTY shell on the tunnel's session, connecting the tunnel first if
  * needed. Output arrives on `onOutput` as raw bytes. Resolves to the terminal id. */

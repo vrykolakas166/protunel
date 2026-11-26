@@ -72,16 +72,28 @@ pub fn schedule_terminal_teardown(app: &AppHandle) {
 /// Shows the terminal window, creating it on first use. Async on purpose:
 /// building a window from a sync command deadlocks on Windows.
 #[tauri::command]
-pub async fn open_terminal_window(app: AppHandle) -> Result<(), String> {
+pub async fn open_terminal_window(app: AppHandle, hide_main: Option<bool>) -> Result<(), String> {
     // Cancels a pending teardown of the hidden window.
     TERMINAL_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let result = show_or_build_terminal(&app);
+    // Ctrl+T in the main window swaps windows instead of stacking them; the
+    // main window only hides once the terminal is there to take its place.
+    if hide_main == Some(true) && result.is_ok() {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.hide();
+        }
+    }
+    result
+}
+
+fn show_or_build_terminal(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window(TERMINAL_WINDOW) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
         return Ok(());
     }
-    let built = WebviewWindowBuilder::new(&app, TERMINAL_WINDOW, WebviewUrl::App("terminal.html".into()))
+    let built = WebviewWindowBuilder::new(app, TERMINAL_WINDOW, WebviewUrl::App("terminal.html".into()))
         .title("protunel — Terminal")
         .inner_size(1180.0, 740.0)
         .min_inner_size(640.0, 400.0)

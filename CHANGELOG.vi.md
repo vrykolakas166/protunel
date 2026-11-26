@@ -8,6 +8,11 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 
 ## [Unreleased]
 
+### Cải thiện
+- **Ctrl+T** ở cửa sổ chính mở terminal và ẩn cửa sổ chính, chỉ một bước.
+- Nhấp chuột phải vào máy chủ ở thanh bên của terminal, hoặc vào khung shell, rồi chọn **Sửa máy chủ…** để sửa ngay, không cần quay lại cửa sổ chính. Đổi thông tin kết nối của máy chủ đang dùng sẽ kết nối lại các shell của nó.
+- Thanh máy chủ bên trái của terminal **đổi được độ rộng**: kéo cạnh phải (nhấp đúp để về độ rộng mặc định).
+
 ## [0.10.0] - 2026-11-24
 
 ### Điểm nổi bật

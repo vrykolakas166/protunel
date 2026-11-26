@@ -5,7 +5,7 @@
   "captureTooltip": "Chạy ứng dụng với lưu lượng định tuyến qua router",
   "capture": "Ứng dụng",
   "terminal": "Terminal",
-  "terminalTooltip": "Mở terminal SSH trong cửa sổ mới",
+  "terminalTooltip": "Mở terminal SSH trong cửa sổ mới (Ctrl+T mở và ẩn cửa sổ này)",
   "settings": "Cài đặt",
   "installing": "Đang cài đặt…",
   "connectAll": "Kết nối tất cả",

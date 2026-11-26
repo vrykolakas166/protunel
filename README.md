@@ -230,7 +230,7 @@ Capture fails closed: if the hook is not installed before the main thread runs, 
 
 ## SSH terminal
 
-The Terminal button in the header opens a separate window. Every tunnel is a host there (add one with SOCKS off if you only want a shell).
+The Terminal button in the header opens a separate window (**Ctrl+T** opens it and hides the main window). Every tunnel is a host there (add one with SOCKS off if you only want a shell); right-click a host or a pane for **Edit host…**. Drag the sidebar's right edge to resize it.
 
 A terminal opens a PTY channel on the tunnel's existing session, connecting it and its jump chain if needed. It therefore shares credentials, host-key checks and the connection itself. If the session drops, press Enter to reconnect.
 

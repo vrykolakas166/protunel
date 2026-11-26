@@ -26,6 +26,7 @@ export function useHostPicking({
   searchRef,
   refocus,
   areaAspect,
+  editHost,
 }: {
   tunnels: Tunnel[];
   byId: Record<string, Tunnel>;
@@ -39,6 +40,8 @@ export function useHostPicking({
   searchRef: RefObject<HTMLInputElement | null>;
   refocus: () => void;
   areaAspect: () => number;
+  /** Opens the host's edit form here, without the main window. */
+  editHost: (tunnelId: string) => void;
 }) {
   const { t } = useTranslation("terminal");
   /** Picking several hosts in the sidebar to open in one tab. */
@@ -143,6 +146,7 @@ export function useHostPicking({
           ]
         : []),
       "separator",
+      { label: t("editHost"), action: () => editHost(id) },
       { label: selectedSet.has(id) ? t("select.unpick") : t("select.pick"), action: () => pick(id, false) },
     ]);
   };

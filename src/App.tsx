@@ -211,6 +211,19 @@ function App() {
     else setPanel({ kind: target as "capture" | "preferences" });
   }, []);
 
+  // Ctrl+T (Full mode): open the terminal and hide this window. Plain
+  // Ctrl+letter is fine here, unlike the terminal window: no shell to own it.
+  useEffect(() => {
+    if (simple) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.shiftKey || e.repeat || e.key.toLowerCase() !== "t") return;
+      e.preventDefault();
+      openTerminalWindow(true).catch((err) => setMessage({ text: String(err), isError: true }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [simple]);
+
   // F1 replays the tour (Full mode); the toolbar has no button for something
   // used once. Not in the terminal window, where F1 belongs to htop or mc.
   useEffect(() => {

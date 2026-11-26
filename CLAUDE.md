@@ -324,6 +324,13 @@ vault, TOFU, jump chain and config export/import with no extra storage.
   (`schedule_terminal_teardown`, cancelled by a reopen via a generation
   counter) it is destroyed to free memory. `Destroyed` still closes all
   terminals.
+- The host sidebar resizes by its right edge (`TerminalSidebar.tsx`,
+  width per window in localStorage, clamped to 45% of the window).
+  Right-click › Edit host… (sidebar row or pane) opens `AddTunnelForm` in the
+  terminal window itself; `updateTunnel` + `tunnels-changed` keep the main
+  window in step. Ctrl+T in the main window (Full mode) calls
+  `open_terminal_window(hide_main: true)`, which hides the main window only
+  once the terminal is shown.
 - Window shortcuts live in `src/terminal/shortcuts.ts` (wired by
   `useWindowKeys.ts`) and xterm is told to
   ignore exactly those keys. Keep them off plain Ctrl+letter: the shell owns

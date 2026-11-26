@@ -363,5 +363,7 @@
       "typed": "Typed. Press Enter in the shell to run it."
     }
   },
-  "kbFiles": "files of the shell"
+  "kbFiles": "files of the shell",
+  "sidebarResize": "Drag to resize · double-click to reset",
+  "editHost": "Edit host…"
 }

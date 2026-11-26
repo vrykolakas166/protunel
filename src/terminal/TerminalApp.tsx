@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { addTunnel, listTunnels, terminalWindowHide, terminalWrite, terminalWriteMany, updateSettings } from "../api";
+import { addTunnel, listTunnels, terminalWindowHide, terminalWrite, terminalWriteMany, updateSettings, updateTunnel } from "../api";
 import { AddTunnelForm } from "../components/AddTunnelForm";
 import { openMenu, type MenuEntry } from "../contextMenu";
 import { HostKeyPrompt } from "../components/HostKeyPrompt";
@@ -70,6 +70,8 @@ export function TerminalApp() {
   const [collapsedGroups, toggleGroup] = useCollapsedGroups(COLLAPSED_GROUPS_KEY);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  /** The host whose edit form is open (right-click › Edit host…). */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [pendingPaste, setPendingPaste] = useState<PendingPaste | null>(null);
   const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden);
   /** The save-workspace dialog: a new name, or the workspace being updated. */
@@ -221,6 +223,7 @@ export function TerminalApp() {
     searchRef,
     refocus,
     areaAspect,
+    editHost: setEditingId,
   });
 
   // Keep the keyboard highlight on a visible row.
@@ -239,7 +242,8 @@ export function TerminalApp() {
       ? paneIds(activeTab.root).filter((id) => !activeTab.excluded.includes(id) && infos[id]?.phase === "open").length
       : 0;
 
-  const tourOpen = loaded && showTour && !pendingPaste && !pendingUnsaved && !adding && !naming && hostKeyQueue.length === 0;
+  const tourOpen =
+    loaded && showTour && !pendingPaste && !pendingUnsaved && !adding && !editingId && !naming && hostKeyQueue.length === 0;
   const wasTourOpen = useRef(false);
   useLayoutEffect(() => {
     if (wasTourOpen.current && !showTour && activeTab) {
@@ -380,12 +384,14 @@ export function TerminalApp() {
     const tab = tabs.find((x) => x.key === tabKey);
     if (!tab) return;
     const multi = paneIds(tab.root).length > 1;
+    const node = findPane(tab.root, paneId);
     openMenu(e, [
       ...watchEntries(paneId, false),
       "separator",
       ...(multi
         ? [{ label: tab.zoomed === paneId ? t("unzoom") : t("zoom"), action: () => toggleZoom(tabKey, paneId) }]
         : []),
+      ...(node ? [{ label: t("editHost"), action: () => setEditingId(node.tunnelId) }] : []),
       { label: t("closePane"), action: () => closePane(tabKey, paneId) },
     ]);
   };
@@ -483,7 +489,7 @@ export function TerminalApp() {
     const shortcut = matchShortcut(e);
     if (!shortcut) return;
     // A dialog owns the keyboard while it is open.
-    if (tourOpen || pendingPaste || pendingUnsaved || adding || naming || hostKeyQueue.length > 0) return;
+    if (tourOpen || pendingPaste || pendingUnsaved || adding || editingId || naming || hostKeyQueue.length > 0) return;
     // The file panel keeps its keys; only its own toggle reaches the window.
     const inPanel = (e.target as HTMLElement | null)?.closest?.("[data-file-panel]");
     if (inPanel && shortcut.kind !== "files") return;
@@ -585,6 +591,17 @@ export function TerminalApp() {
     setAdding(false);
     setTunnels(await listTunnels());
     openHost(created.id);
+  };
+
+  // Same rules as the main window: a connection change restarts a running
+  // tunnel (and every shell on it); `tunnels-changed` updates both windows.
+  const editing = editingId ? byId[editingId] : undefined;
+  const handleEdit = async (input: TunnelInput, secret?: string) => {
+    if (!editingId) return;
+    await updateTunnel(editingId, input, secret);
+    setEditingId(null);
+    setTunnels(await listTunnels());
+    refocus();
   };
 
   const {
@@ -818,6 +835,20 @@ export function TerminalApp() {
           defaultSocksEnabled={false}
           onSubmit={handleAdd}
           onCancel={() => setAdding(false)}
+        />
+      )}
+      {editing && (
+        <AddTunnelForm
+          key={editing.id}
+          mode="edit"
+          initial={editing}
+          tunnels={tunnels}
+          onSubmit={handleEdit}
+          running={["connected", "connecting", "reconnecting"].includes(statuses[editing.id]?.status ?? "")}
+          onCancel={() => {
+            setEditingId(null);
+            refocus();
+          }}
         />
       )}
       <TerminalDialogs

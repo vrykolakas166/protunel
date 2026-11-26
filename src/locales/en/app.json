@@ -5,7 +5,7 @@
   "captureTooltip": "Launch an app with its traffic routed through the router",
   "capture": "Capture",
   "terminal": "Terminal",
-  "terminalTooltip": "Open the SSH terminal in a new window",
+  "terminalTooltip": "Open the SSH terminal in a new window (Ctrl+T opens it and hides this one)",
   "settings": "Settings",
   "installing": "Installing…",
   "connectAll": "Connect all",

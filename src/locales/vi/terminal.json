@@ -362,5 +362,7 @@
       "typed": "Đã gõ. Nhấn Enter trong shell để chạy."
     }
   },
-  "kbFiles": "tệp của shell"
+  "kbFiles": "tệp của shell",
+  "sidebarResize": "Kéo để đổi cỡ · nhấp đúp để về mặc định",
+  "editHost": "Sửa máy chủ…"
 }

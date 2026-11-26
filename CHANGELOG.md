@@ -8,6 +8,11 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 
 ## [Unreleased]
 
+### Improvements
+- **Ctrl+T** in the main window opens the terminal and hides the main window, in one step.
+- Right-click a host in the terminal's sidebar, or a shell's pane, and choose **Edit host…** to change it without going back to the main window. Changing the connection of a host that is in use reconnects its shells.
+- The terminal's host sidebar can be **resized**: drag its right edge (double-click it to go back to the default width).
+
 ## [0.10.0] - 2026-11-24
 
 ### Highlights
