@@ -734,7 +734,6 @@ export function TerminalApp() {
           attention={attention}
           alerted={alerted}
           unread={unread}
-          focusSearch={focusSearch}
           onSaveButton={onSaveButton}
           activeWorkspace={activeWorkspace}
           activeWorkspaceChanged={activeWorkspaceChanged}
@@ -807,20 +806,32 @@ export function TerminalApp() {
             <LayoutUndoToast layoutUndo={layoutUndo} onUndo={undoLayout} onDismiss={() => setLayoutUndo(null)} />
           )}
           {tabs.length === 0 && (
-            <EmptyState
-              hostCount={tunnels.length}
-              lastSession={lastSession}
-              lastSessionTarget={lastSessionTarget}
-              namedWorkspaces={namedWorkspaces}
-              workspacePanes={workspacePanes}
-              openWorkspace={openWorkspace}
-              onAddHost={() => setAdding(true)}
-              onShowTour={() => {
-                setTourPart("all");
-                setOfferPanesTour(false);
-                setShowTour(true);
-              }}
-            />
+            // With no tab yet the whole area takes a host dropped from the
+            // sidebar (opens it in a new tab), not only the tab strip.
+            <div data-drop-tabbar className="absolute inset-0">
+              {drag?.target?.kind === "tabbar" && (
+                // Opaque, so the empty-state text behind never shows through.
+                <div className="pointer-events-none absolute inset-0 z-10 bg-bg p-3">
+                  <div className="flex h-full items-center justify-center rounded-lg border-2 border-dashed border-accent bg-accent/10 text-sm text-accent">
+                    {t("dropOpenHere")}
+                  </div>
+                </div>
+              )}
+              <EmptyState
+                hostCount={tunnels.length}
+                lastSession={lastSession}
+                lastSessionTarget={lastSessionTarget}
+                namedWorkspaces={namedWorkspaces}
+                workspacePanes={workspacePanes}
+                openWorkspace={openWorkspace}
+                onAddHost={() => setAdding(true)}
+                onShowTour={() => {
+                  setTourPart("all");
+                  setOfferPanesTour(false);
+                  setShowTour(true);
+                }}
+              />
+            </div>
           )}
         </div>
 

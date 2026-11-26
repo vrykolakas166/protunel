@@ -7,7 +7,6 @@
   "openSession": "Open session",
   "noHosts": "No hosts yet.",
   "noMatches": "No matching hosts.",
-  "newTab": "New session (Ctrl+Shift+K)",
   "closeTab": "Close tab",
   "emptyTitle": "No open sessions",
   "emptyBody": "Pick a host on the left to open a shell.",
@@ -426,5 +425,6 @@
     "text": "Your first shell is open. Take a one-minute tour of panes and files?",
     "accept": "Show me",
     "dismiss": "Not now"
-  }
+  },
+  "dropOpenHere": "Drop to open"
 }

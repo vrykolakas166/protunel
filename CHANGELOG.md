@@ -9,6 +9,7 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 ## [Unreleased]
 
 ### Improvements
+- Terminal: with no tab open, a host dragged from the sidebar can be dropped anywhere in the empty area to open it. The tab strip's + button, which only jumped to the host search, is gone (Ctrl+Shift+K still does that).
 - **Name already taken?** Uploading or copying between servers now lists every name that is already there, each set to **Skip** until you change it: pick **Overwrite** or **Keep both** (saved as “name (1)”) per name, or set them all at once. A skipped row in the transfer list offers Overwrite and Keep both too.
 - **Folder transfers go on past a failed file**: the row says how many files made it and lists the ones that failed (copy the list to fix them). Fix the cause (reconnect the shell if the connection dropped), then press **Retry** on the row, also on a cancelled transfer: finished files are kept, the rest is sent again to the same server, and a file cut off midway starts over. The panel's transfer button counts failed transfers until you clear them.
 - The file panel has **Back / Forward** (Alt+← / Alt+→, for the folders you opened since the panel opened) and a **bookmark** button: bookmark folders per host (saved with the host, they come along in config export) and jump back to the host's recent folders, which are kept even after the terminal window was closed.

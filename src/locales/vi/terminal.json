@@ -7,7 +7,6 @@
   "openSession": "Mở phiên",
   "noHosts": "Chưa có máy chủ nào.",
   "noMatches": "Không có máy chủ phù hợp.",
-  "newTab": "Phiên mới (Ctrl+Shift+K)",
   "closeTab": "Đóng tab",
   "emptyTitle": "Chưa có phiên nào",
   "emptyBody": "Chọn một máy chủ bên trái để mở shell.",
@@ -426,5 +425,6 @@
     "text": "Shell đầu tiên đã mở. Xem hướng dẫn một phút về khung và tệp?",
     "accept": "Xem",
     "dismiss": "Để sau"
-  }
+  },
+  "dropOpenHere": "Thả để mở"
 }

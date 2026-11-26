@@ -28,7 +28,6 @@ interface Props {
   attention: Set<string>;
   alerted: Set<string>;
   unread: Set<string>;
-  focusSearch: () => void;
   onSaveButton: (e: ReactMouseEvent) => void;
   activeWorkspace: Workspace | null;
   activeWorkspaceChanged: boolean;
@@ -60,7 +59,6 @@ export function TabBar({
   attention,
   alerted,
   unread,
-  focusSearch,
   onSaveButton,
   activeWorkspace,
   activeWorkspaceChanged,
@@ -196,18 +194,7 @@ export function TabBar({
           <div className="m-1 flex shrink-0 items-center rounded border-2 border-dashed border-accent bg-accent/10 px-3 text-xs text-accent">
             {t("dropNewTab")}
           </div>
-        ) : (
-          <button
-            onClick={focusSearch}
-            title={t("newTab")}
-            aria-label={t("newTab")}
-            className="shrink-0 px-3 text-muted hover:bg-surface-hover hover:text-text"
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M8 2V14M2 8H14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-            </svg>
-          </button>
-        )}
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-0.5 border-l border-border px-1.5">
         <button
