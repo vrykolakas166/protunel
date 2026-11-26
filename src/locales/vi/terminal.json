@@ -308,7 +308,9 @@
       "showTail": "Xem 1 MB cuối",
       "imageTooLarge": "Ảnh quá lớn để xem trước (giới hạn 10 MB).",
       "unsafeSave": "Không thể thay tệp này trên {{where}} trong một bước (quyền chủ sở hữu hoặc thư mục). Ghi trực tiếp vẫn giữ tệp, nhưng nếu mất kết nối giữa chừng tệp có thể bị cụt.",
-      "saveInPlace": "Ghi trực tiếp"
+      "saveInPlace": "Ghi trực tiếp",
+      "lossyBadge": "không phải UTF-8, chỉ đọc",
+      "lossyHint": "Tệp có byte không phải văn bản UTF-8. Chúng đang hiện bằng ký tự thay thế, lưu ở đây sẽ làm thay đổi chúng: hãy tải tệp về để sửa."
     },
     "queue": {
       "title": "Truyền tệp",
@@ -361,7 +363,14 @@
       "connection-lost": "Mất kết nối tới {{where}}.",
       "not-retryable": "Không chạy lại được dòng này.",
       "no-such-transfer": "Dòng này không còn nữa.",
-      "duplicate-names": "Có mục trùng tên nhau, sẽ đè lên nhau. Hãy gửi riêng từng lần."
+      "duplicate-names": "Có mục trùng tên nhau, sẽ đè lên nhau. Hãy gửi riêng từng lần.",
+      "copy-failed": "Sao chép không thành công.",
+      "unsupported": "Không dùng được trên hệ thống này.",
+      "unsafe-save": "Không thể thay tệp an toàn ở đây (chủ sở hữu, quyền hoặc máy chủ không hỗ trợ).",
+      "partial": "Một số mục không chuyển được.",
+      "cancelled": "Đã hủy.",
+      "too-many": "Quá nhiều mục cùng lúc.",
+      "too-many-bookmarks": "Máy chủ này có quá nhiều đánh dấu (tối đa 100)."
     },
     "maximize": "Phóng to (nhấp đúp header)",
     "restore": "Về cỡ cũ (nhấp đúp header)",

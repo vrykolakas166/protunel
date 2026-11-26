@@ -296,13 +296,21 @@ pub fn load_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
 /// before the rename.
 pub fn write_atomic(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
-    let tmp = path.with_extension("json.tmp");
-    {
-        let mut file = std::fs::File::create(&tmp)?;
+    // A temp of its own next to the target, created fresh: an existing file
+    // (or a link) under that name is never truncated or written through,
+    // and two writers never share one.
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = path.with_file_name(format!(".{name}.{}.tmp", uuid::Uuid::new_v4().simple()));
+    let written = (|| {
+        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
         file.write_all(data)?;
         file.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp);
     }
-    std::fs::rename(&tmp, path)
+    written
 }
 
 pub type SettingsStore = JsonStore<Settings>;
@@ -410,7 +418,19 @@ mod tests {
         let config = RouterConfig { port: 4321, ..RouterConfig::default() };
         store.update(config).unwrap();
         assert_eq!(JsonStore::<RouterConfig>::load(path.clone()).get().port, 4321);
-        assert!(!path.with_extension("json.tmp").exists());
+        // Only the file itself is left: no temp beside it.
+        let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("settings.json")]);
+    }
+
+    #[test]
+    fn write_atomic_never_truncates_a_file_named_like_its_temp() {
+        let dir = scratch("tmpname");
+        let other = dir.join("config.json.tmp");
+        std::fs::write(&other, b"keep").unwrap();
+        write_atomic(&dir.join("config.txt"), b"draft").unwrap();
+        assert_eq!(std::fs::read(&other).unwrap(), b"keep");
+        assert_eq!(std::fs::read(dir.join("config.txt")).unwrap(), b"draft");
     }
 
     #[test]

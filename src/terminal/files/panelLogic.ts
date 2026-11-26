@@ -4,7 +4,7 @@ import type { Conflict, FileCount } from "../../types";
 import { joinPath, type SortKey } from "./paths";
 
 /** Error codes the backend sends that have a translation (`files.err.*`). */
-export const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large", "same-tunnel", "invalid-path", "not-copied-link", "too-many-files", "target-changed", "connection-lost", "not-retryable", "no-such-transfer", "duplicate-names"]);
+export const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large", "same-tunnel", "invalid-path", "not-copied-link", "too-many-files", "target-changed", "connection-lost", "not-retryable", "no-such-transfer", "duplicate-names", "copy-failed", "unsupported", "unsafe-save", "partial", "cancelled", "too-many", "too-many-bookmarks"]);
 
 /** The code of an error when it is a known one, else null (show its text as is). */
 export function knownErrorCode(e: unknown): string | null {

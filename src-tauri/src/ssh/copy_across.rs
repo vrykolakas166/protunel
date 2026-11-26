@@ -751,10 +751,6 @@ async fn write_known_host(sftp: &SftpSession, key: &str) -> Result<String, Strin
     Ok(path)
 }
 
-fn valid_name(name: &str) -> bool {
-    !matches!(name, "" | "." | "..") && !name.contains(['/', '\0'])
-}
-
 fn shell_command<'a>(args: impl IntoIterator<Item = &'a str>) -> String {
     args.into_iter().map(quote).collect::<Vec<_>>().join(" ")
 }
@@ -1285,13 +1281,7 @@ async fn relay_file(
 ) -> Result<(), String> {
     let mut src = a.open(source).await.map_err(|e| at(source, e))?;
     let part = format!("{target}.{}.protunel-part", short_id());
-    let mut dst = b
-        .open_with_flags(
-            part.as_str(),
-            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
-        )
-        .await
-        .map_err(|e| at(target, e))?;
+    let mut dst = create_private(b, &part).await.map_err(|e| at(target, e))?;
     let mut buf = vec![0u8; CHUNK];
     let result = async {
         loop {

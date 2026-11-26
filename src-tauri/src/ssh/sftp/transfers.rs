@@ -8,7 +8,7 @@ use russh_sftp::client::error::Error as SftpError;
 use russh_sftp::client::SftpSession;
 #[cfg(unix)]
 use russh_sftp::protocol::FileAttributes;
-use russh_sftp::protocol::OpenFlags;
+use super::create_private;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -860,10 +860,7 @@ async fn upload_file(ctx: &Ctx, sftp: &SftpSession, local: &Path, remote: &str, 
     let mut src = tokio::fs::File::open(local).await.map_err(|e| e.to_string())?;
     // A part file of its own (never an existing file, never through a link).
     let part = format!("{remote}.{}.protunel-part", short_id());
-    let mut dst = sftp
-        .open_with_flags(part.as_str(), OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE)
-        .await
-        .map_err(|e| at(remote, e))?;
+    let mut dst = create_private(sftp, &part).await.map_err(|e| at(remote, e))?;
     let mut buf = vec![0u8; CHUNK];
     let copied: Result<(), String> = async {
         loop {
@@ -884,17 +881,16 @@ async fn upload_file(ctx: &Ctx, sftp: &SftpSession, local: &Path, remote: &str, 
         return Err(e);
     }
     drop(dst);
+    // The part was private while it filled; now the mode it is meant to have.
     #[cfg(unix)]
-    {
+    let mode = {
         use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = tokio::fs::metadata(local).await {
-            let attrs = FileAttributes {
-                permissions: Some(meta.permissions().mode() & 0o777),
-                ..FileAttributes::empty()
-            };
-            let _ = sftp.set_metadata(part.as_str(), attrs).await;
-        }
-    }
+        tokio::fs::metadata(local).await.map_or(0o644, |meta| meta.permissions().mode() & 0o777)
+    };
+    #[cfg(not(unix))]
+    let mode = 0o644; // what a typical server umask gives a new file
+    let attrs = FileAttributes { permissions: Some(mode), ..FileAttributes::empty() };
+    let _ = sftp.set_metadata(part.as_str(), attrs).await;
     let committed = commit_part(ctx, sftp, &part, remote, overwrite).await;
     if committed.is_err() {
         let _ = sftp.remove_file(part.as_str()).await;
@@ -1028,6 +1024,9 @@ pub(super) async fn remote_size(ctx: &Ctx, sftp: &SftpSession, root: &str) -> Re
         ctx.check()?;
         let Ok(rd) = sftp.read_dir(&dir).await else { continue };
         for item in rd {
+            if !super::valid_name(&item.file_name()) {
+                continue;
+            }
             let meta = item.metadata();
             if meta.is_dir() && !meta.is_symlink() {
                 stack.push(item.path());
@@ -1129,6 +1128,10 @@ async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &P
             ctx.check()?;
             let meta = item.metadata();
             let name = item.file_name();
+            if !super::valid_name(&name) {
+                ctx.entry(&remote, Err(format!("{remote}: invalid name from server")))?;
+                continue;
+            }
             let path = item.path();
             // Names that differ remotely but not as local names (`a:b`, `a?b`)
             // get "(1)" instead of landing on each other.

@@ -66,6 +66,9 @@ pub async fn count(sftp: &SftpSession, paths: &[String]) -> Result<Count, String
     }
     while let Some(dir) = queue.pop_front() {
         for item in sftp.read_dir(&dir).await.map_err(err)? {
+            if !super::valid_name(&item.file_name()) {
+                continue;
+            }
             if count.files + count.dirs >= COUNT_LIMIT {
                 count.more = true;
                 return Ok(count);
@@ -114,6 +117,11 @@ pub(super) async fn delete_tree(sftp: &SftpSession, root: &str, staged_copy: boo
         }
         stack.push((dir.clone(), true));
         for item in sftp.read_dir(&dir).await.map_err(|e| at(&dir, e))? {
+            // Never a path the server made up: the folder is left, not
+            // something outside it removed.
+            if !super::valid_name(&item.file_name()) {
+                return Err(format!("{dir}: invalid name from server"));
+            }
             let meta = item.metadata();
             if meta.is_dir() && !meta.is_symlink() {
                 stack.push((item.path(), false));

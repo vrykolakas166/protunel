@@ -185,3 +185,13 @@ describe("chooseConflicts", () => {
     expect(duplicateNames(["a", "b"])).toEqual([]);
   });
 });
+
+test("every known error code has an en and vi message", async () => {
+  const { KNOWN_ERRORS } = await import("../src/terminal/files/panelLogic");
+  const en = (await import("../src/locales/en/terminal.json")).default as { files: { err: Record<string, string> } };
+  const vi = (await import("../src/locales/vi/terminal.json")).default as { files: { err: Record<string, string> } };
+  for (const code of KNOWN_ERRORS) {
+    expect(en.files.err[code], code).toBeTruthy();
+    expect(vi.files.err[code], code).toBeTruthy();
+  }
+});

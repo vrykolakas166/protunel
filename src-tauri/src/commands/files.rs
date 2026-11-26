@@ -30,7 +30,13 @@ async fn settle<T>(app: &AppHandle, tunnel_id: Uuid, started: Instant, result: R
         // The SFTP channel can die alone (server subsystem exit) while SSH
         // lives on: transport-level errors reopen it next time too.
         let channel_broken = e == "timeout" || e.starts_with("I/O") || e.contains("closed") || e == "Unexpected packet";
-        if !alive || channel_broken {
+        // `sftp::err` already names a dead channel "connection-lost" (also
+        // after a path prefix): drop it whenever it was opened, even by
+        // this very call, or every retry picks it up again.
+        let bare = e.rsplit_once(": ").map_or(e.as_str(), |(_, code)| code);
+        if matches!(bare, "connection-lost" | "timeout") {
+            sftp::forget(app, tunnel_id, Instant::now()).await;
+        } else if !alive || channel_broken {
             sftp::forget(app, tunnel_id, started).await;
         }
     }
@@ -82,10 +88,10 @@ pub async fn files_dir_size(state: State<'_, AppState>, tunnel_id: Uuid, path: S
 }
 
 #[tauri::command]
-pub async fn files_create(app: AppHandle, tunnel_id: Uuid, path: String, dir: bool) -> Result<(), String> {
+pub async fn files_create(app: AppHandle, tunnel_id: Uuid, path: String, dir: bool, endpoint: Option<String>) -> Result<(), String> {
     let started = Instant::now();
     let r = async {
-        let s = sftp::sftp_for(&app, tunnel_id).await?;
+        let s = sftp::sftp_bound(&app, tunnel_id, endpoint.as_deref()).await?;
         if dir {
             sftp::create_dir(&s, &path).await
         } else {
@@ -97,9 +103,15 @@ pub async fn files_create(app: AppHandle, tunnel_id: Uuid, path: String, dir: bo
 }
 
 #[tauri::command]
-pub async fn files_rename(app: AppHandle, tunnel_id: Uuid, from: String, to: String) -> Result<(), String> {
+pub async fn files_rename(
+    app: AppHandle,
+    tunnel_id: Uuid,
+    from: String,
+    to: String,
+    endpoint: Option<String>,
+) -> Result<(), String> {
     let started = Instant::now();
-    let r = async { sftp::rename(&*sftp::sftp_for(&app, tunnel_id).await?, &from, &to).await }.await;
+    let r = async { sftp::rename(&*sftp::sftp_bound(&app, tunnel_id, endpoint.as_deref()).await?, &from, &to).await }.await;
     settle(&app, tunnel_id, started, r).await
 }
 
@@ -112,9 +124,11 @@ pub async fn files_count(app: AppHandle, tunnel_id: Uuid, paths: Vec<String>) ->
 }
 
 #[tauri::command]
-pub async fn files_delete(app: AppHandle, tunnel_id: Uuid, paths: Vec<String>) -> Result<(), String> {
+/// `endpoint`: the server the confirmation named; a host edited since gets
+/// nothing deleted (likewise create, rename and save).
+pub async fn files_delete(app: AppHandle, tunnel_id: Uuid, paths: Vec<String>, endpoint: Option<String>) -> Result<(), String> {
     let started = Instant::now();
-    let r = async { sftp::delete(&*sftp::sftp_for(&app, tunnel_id).await?, &paths).await }.await;
+    let r = async { sftp::delete(&*sftp::sftp_bound(&app, tunnel_id, endpoint.as_deref()).await?, &paths).await }.await;
     settle(&app, tunnel_id, started, r).await
 }
 
@@ -311,6 +325,7 @@ pub async fn files_write_text(
     expect_hash: Option<String>,
     force: bool,
     in_place: bool,
+    endpoint: Option<String>,
 ) -> Result<Saved, String> {
     let gate = {
         let mut saving = SAVING.lock().unwrap();
@@ -320,7 +335,7 @@ pub async fn files_write_text(
     let _one_at_a_time = gate.lock().await;
     let started = Instant::now();
     let r = async {
-        let s = sftp::sftp_for(&app, tunnel_id).await?;
+        let s = sftp::sftp_bound(&app, tunnel_id, endpoint.as_deref()).await?;
         let expect = Expect { size: expect_size, mtime: expect_mtime, hash: expect_hash };
         sftp::write_text(&s, &path, &text, &expect, force, in_place).await
     }

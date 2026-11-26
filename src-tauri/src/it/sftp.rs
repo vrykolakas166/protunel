@@ -119,6 +119,7 @@ async fn it_sftp_write_text_detects_conflict() {
             hash,
             false,
             false,
+            None,
         )
         .await;
         assert!(matches!(result, Err(ref error) if error == "conflict"));
@@ -160,6 +161,7 @@ async fn it_sftp_write_text_detects_same_size_same_mtime_change() {
             hash,
             false,
             false,
+            None,
         )
         .await;
         assert!(matches!(result, Err(ref error) if error == "conflict"));
@@ -183,7 +185,7 @@ async fn it_sftp_delete_tree_preserves_symlink_target() {
             ),
         )
         .await;
-        files_delete(case.app.clone(), tunnel.id, vec![format!("{dir}/tree")])
+        files_delete(case.app.clone(), tunnel.id, vec![format!("{dir}/tree")], None)
             .await
             .unwrap();
         let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
@@ -221,7 +223,7 @@ async fn it_sftp_paste_and_rename_skip_name_clash() {
         assert!(outcome.done.is_empty());
         assert_eq!(outcome.skipped, [source.clone()]);
         let renamed =
-            files_rename(case.app.clone(), tunnel.id, source.clone(), target.clone()).await;
+            files_rename(case.app.clone(), tunnel.id, source.clone(), target.clone(), None).await;
         assert_eq!(renamed, Err("exists".into()));
         let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
         assert_eq!(sftp.read(source).await.unwrap(), b"source");

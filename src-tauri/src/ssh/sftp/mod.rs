@@ -147,6 +147,26 @@ pub fn endpoint_now(app: &AppHandle, tunnel_id: Uuid) -> Option<String> {
         .map(|e| e.target.clone())
 }
 
+/// A name a server listed is one path component: a broken or hostile
+/// server's "../x" or "a/b" must never send a walk (delete, count,
+/// download, listing) outside the folder it is in.
+pub(crate) fn valid_name(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\0'])
+}
+
+/// Creates a new file (never an existing one) readable by its owner only:
+/// a temp that will hold another file's bytes must not be world-readable
+/// while it fills, whatever the server's umask. The caller gives it its
+/// final mode before publishing it.
+pub(super) async fn create_private(sftp: &SftpSession, path: &str) -> Result<russh_sftp::client::fs::File, russh_sftp::client::error::Error> {
+    sftp.open_with_flags_and_attributes(
+        path,
+        OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+        FileAttributes { permissions: Some(0o600), ..FileAttributes::empty() },
+    )
+    .await
+}
+
 /// The tunnel's current session, checked against `expect` when given, and
 /// its SFTP channel: one session for both, so a reconnect in between can
 /// never send part of the work to another server.

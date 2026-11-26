@@ -26,7 +26,7 @@ export function TransferList({ transfers, byId, onClear, emptyHint }: Props) {
     return <p className="px-3 py-4 text-center text-xs text-muted">{emptyHint ?? t("files.queue.empty")}</p>;
   }
   return (
-    <div className="flex max-h-72 flex-col">
+    <div className="flex max-h-72 min-h-0 flex-col">
       <ul className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
         {[...transfers].reverse().map((x) => (
           <TransferRow key={x.id} transfer={x} host={byId[x.tunnelId]} destHost={x.destTunnelId ? byId[x.destTunnelId] : undefined} />

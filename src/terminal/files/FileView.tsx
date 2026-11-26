@@ -22,6 +22,8 @@ export interface FileViewHandle {
 interface Props {
   tunnelId: string;
   path: string;
+  /** The server (`user@host:port`) the file was read from: saves go only there. */
+  endpoint: string;
   /** user@host, named in every warning. */
   where: string;
   onBack: () => void;
@@ -40,7 +42,7 @@ type Loaded =
   | FileContent;
 
 export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
-  { tunnelId, path, where, onBack, onDownload, onOpenLocal, onSaved, onDirty, errorText },
+  { tunnelId, path, endpoint, where, onBack, onDownload, onOpenLocal, onSaved, onDirty, errorText },
   ref,
 ) {
   const { t } = useTranslation("terminal");
@@ -102,6 +104,9 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
 
   const textReady = loaded.kind === "text";
   const tail = loaded.kind === "text" && loaded.tail;
+  /** Bytes that aren't UTF-8 are shown replaced: saving would corrupt them. */
+  const lossy = loaded.kind === "text" && loaded.lossy;
+  const readOnly = tail || lossy;
   const textValue = loaded.kind === "text" ? loaded.text : "";
 
   // The editor mounts once the text is in; reloading the same file resets it.
@@ -114,7 +119,7 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
       made = await createEditor(host.current, {
         text: textValue,
         name,
-        readOnly: tail,
+        readOnly,
         wrap: wrapRef.current,
         onChange: (text) => setDirty(text !== original.current),
         onSave: () => void saveRef.current(false),
@@ -136,7 +141,7 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
       editor.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [textReady, textValue, tail]);
+  }, [textReady, textValue, readOnly]);
 
   useEffect(() => editor.current?.setWrap(wrap), [wrap]);
 
@@ -144,12 +149,14 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
     if (inFlight.current) return inFlight.current;
     const run = async (): Promise<boolean> => {
       const ed = editor.current;
-      if (!ed || tail) return false;
+      if (!ed || readOnly) return false;
       const text = ed.text();
+      // Nothing changed: nothing to write (Ctrl+S on a clean file).
+      if (text === original.current && !force && !inPlace) return true;
       setSaving(true);
       try {
         const { size, mtime, hash } = base.current;
-        const saved = await filesWriteText(tunnelId, path, text, size, mtime, hash, force, inPlace);
+        const saved = await filesWriteText(tunnelId, path, text, size, mtime, hash, force, inPlace, endpoint);
         base.current = saved;
         original.current = text;
         // Typing while the save was in flight is still unsaved.
@@ -218,6 +225,11 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
           {name}
           {dirty && <span className="ml-1 text-amber">●</span>}
           {tail && <span className="ml-2 rounded bg-amber/15 px-1 font-sans text-[10px] text-amber">{t("files.view.tailBadge")}</span>}
+          {lossy && !tail && (
+            <span className="ml-2 rounded bg-amber/15 px-1 font-sans text-[10px] text-amber" title={t("files.view.lossyHint")}>
+              {t("files.view.lossyBadge")}
+            </span>
+          )}
         </span>
         {loaded.kind === "text" && (
           <>
@@ -225,7 +237,7 @@ export const FileView = forwardRef<FileViewHandle, Props>(function FileView(
             <button onClick={toggleWrap} className={`${button} ${wrap ? "text-accent" : "text-muted hover:text-text"}`} aria-pressed={wrap}>
               {t("files.view.wrap")}
             </button>
-            {!tail && (
+            {!readOnly && (
               <>
                 <button
                   onClick={() => editor.current?.reset(original.current)}

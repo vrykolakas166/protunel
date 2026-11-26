@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { FileTransfer, Tunnel } from "../../types";
@@ -36,8 +37,31 @@ export function PanelFooter({
 }) {
   const { t } = useTranslation("terminal");
   const failed = transfers.filter((x) => x.state === "failed").length;
+  // The list opens above the footer: never taller than the panel has room
+  // for there, so its rows and buttons are never cut off at the top.
+  const footerRef = useRef<HTMLDivElement>(null);
+  const [room, setRoom] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!queueOpen) return;
+    const measure = () => {
+      const footer = footerRef.current;
+      const panel = footer?.closest("[data-file-panel]");
+      if (!footer || !panel) return;
+      setRoom(Math.max(80, footer.getBoundingClientRect().top - panel.getBoundingClientRect().top - 8));
+    };
+    measure();
+    const panel = footerRef.current?.closest("[data-file-panel]");
+    if (!panel) return;
+    const watch = new ResizeObserver(measure);
+    watch.observe(panel);
+    return () => watch.disconnect();
+  }, [queueOpen]);
+
   return (
-    <div className="relative flex h-7 shrink-0 items-center gap-3 border-t border-border bg-bg/60 px-2.5 text-[11px] text-muted">
+    <div
+      ref={footerRef}
+      className="relative flex h-7 shrink-0 items-center gap-3 border-t border-border bg-bg/60 px-2.5 text-[11px] text-muted"
+    >
       <span className="min-w-0 flex-1 truncate" role="status">
         {notice ??
           (selectedCount > 1
@@ -60,7 +84,10 @@ export function PanelFooter({
         {failed > 0 && <span className="rounded bg-coral/15 px-1 text-coral">{t("files.queue.failedCount", { count: failed })}</span>}
       </button>
       {queueOpen && (
-        <div className="absolute bottom-full right-1 z-10 mb-1 w-[min(26rem,calc(100%-0.5rem))] overflow-hidden rounded-md border border-border bg-surface shadow-xl">
+        <div
+          style={room === null ? undefined : { maxHeight: room }}
+          className="absolute bottom-full right-1 z-10 mb-1 flex w-[min(26rem,calc(100%-0.5rem))] flex-col overflow-hidden rounded-md border border-border bg-surface shadow-xl"
+        >
           <TransferList transfers={transfers} byId={byId} onClear={onClearTransfers} />
         </div>
       )}

@@ -308,7 +308,9 @@
       "showTail": "Show the last 1 MB",
       "imageTooLarge": "Image too big to preview (the limit is 10 MB).",
       "unsafeSave": "This file on {{where}} can't be replaced in one step (owner or folder rights). Writing in place keeps it, but a dropped connection can leave it cut short.",
-      "saveInPlace": "Write in place"
+      "saveInPlace": "Write in place",
+      "lossyBadge": "not UTF-8, read-only",
+      "lossyHint": "Some bytes in this file aren't UTF-8 text. They are shown replaced, so saving here would change them: download the file to edit it."
     },
     "queue": {
       "title": "Transfers",
@@ -361,7 +363,14 @@
       "connection-lost": "The connection to {{where}} was lost.",
       "not-retryable": "This row can't be run again.",
       "no-such-transfer": "This row is gone already.",
-      "duplicate-names": "Two items have the same name and would land on each other. Send them separately."
+      "duplicate-names": "Two items have the same name and would land on each other. Send them separately.",
+      "copy-failed": "The copy failed.",
+      "unsupported": "Not available on this system.",
+      "unsafe-save": "The file can't be replaced safely here (owner, permissions or server support).",
+      "partial": "Some items could not be transferred.",
+      "cancelled": "Cancelled.",
+      "too-many": "Too many items at once.",
+      "too-many-bookmarks": "Too many bookmarks for this host (at most 100)."
     },
     "maximize": "Maximize (double-click the header)",
     "restore": "Restore size (double-click the header)",

@@ -33,6 +33,9 @@ pub enum Content {
         tail: bool,
         /// `fingerprint` of the whole file; none for a tail.
         hash: Option<String>,
+        /// Not valid UTF-8 (some bytes shown as U+FFFD): read-only, since
+        /// saving would write the replacements over the original bytes.
+        lossy: bool,
     },
     Binary { size: u64 },
     TooLarge { size: u64 },
@@ -61,6 +64,13 @@ pub async fn read_text(sftp: &SftpSession, path: &str, tail: bool) -> Result<Con
     if looks_binary(&buf) {
         return Ok(Content::Binary { size });
     }
+    // A tail starts mid-line (maybe mid-character) and loses that line
+    // below: only what is shown has to be valid.
+    let shown = match buf.iter().position(|&b| b == b'\n') {
+        Some(i) if from > 0 => &buf[i + 1..],
+        _ => &buf[..],
+    };
+    let lossy = std::str::from_utf8(shown).is_err();
     let mut text = String::from_utf8_lossy(&buf).into_owned();
     if from > 0 {
         // Starts mid-line: drop the partial first line.
@@ -69,7 +79,7 @@ pub async fn read_text(sftp: &SftpSession, path: &str, tail: bool) -> Result<Con
         }
     }
     let hash = (from == 0).then(|| fingerprint(&buf));
-    Ok(Content::Text { text, size, mtime: attrs.mtime, tail: from > 0, hash })
+    Ok(Content::Text { text, size, mtime: attrs.mtime, tail: from > 0, hash, lossy })
 }
 
 /// NUL bytes, or mostly invalid UTF-8, in the first 8 KiB.
@@ -219,10 +229,7 @@ async fn replace_atomically(
 ) -> Staged {
     let (dir, name) = split(path);
     let temp = join(dir, &format!(".{name}.protunel-{}", &Uuid::new_v4().simple().to_string()[..8]));
-    let Ok(mut file) = sftp
-        .open_with_flags(&temp, OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE)
-        .await
-    else {
+    let Ok(mut file) = super::create_private(sftp, &temp).await else {
         return Staged::Unsuitable; // no write access to the folder
     };
     let written = match file.write_all(data).await {

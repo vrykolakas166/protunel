@@ -444,7 +444,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     setConfirm(null);
     setNotice(t("files.deleting"));
     try {
-      await filesDelete(tunnelId, paths);
+      await filesDelete(tunnelId, paths, bound);
       setNotice(null);
     } catch (e) {
       setNotice(errorText(e));
@@ -455,14 +455,18 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     focusList();
   };
 
+  // A name typed for one folder never applies in another: navigating away
+  // closes the bar (a rename of "config" in A must not rename B's "config").
+  useEffect(() => setNameBar(null), [path]);
+
   const submitName = async () => {
     if (!nameBar || !path || !validName(nameBar.value)) return;
     const name = nameBar.value.trim();
     try {
       if (nameBar.kind === "rename") {
-        if (name !== nameBar.from) await filesRename(tunnelId, joinPath(path, nameBar.from), joinPath(path, name));
+        if (name !== nameBar.from) await filesRename(tunnelId, joinPath(path, nameBar.from), joinPath(path, name), bound);
       } else {
-        await filesCreate(tunnelId, joinPath(path, name), nameBar.kind === "dir");
+        await filesCreate(tunnelId, joinPath(path, name), nameBar.kind === "dir", bound);
       }
       setNameBar(null);
       changed([path]);
@@ -791,6 +795,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
             ref={viewRef}
             tunnelId={tunnelId}
             path={viewing}
+            endpoint={bound}
             where={where}
             onBack={() => void closeView()}
             onDownload={() => download([viewing])}

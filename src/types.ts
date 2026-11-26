@@ -454,7 +454,7 @@ export interface PasteOutcome {
 }
 
 export type FileContent =
-  | { kind: "text"; text: string; size: number; mtime: number | null; tail: boolean; hash: string | null }
+  | { kind: "text"; text: string; size: number; mtime: number | null; tail: boolean; hash: string | null; lossy: boolean }
   | { kind: "binary"; size: number }
   | { kind: "tooLarge"; size: number };
 

@@ -229,12 +229,14 @@ export const filesList = (tunnelId: string, path: string) => invoke<FileListing>
 export const filesProperties = (tunnelId: string, path: string) =>
   invoke<FileProperties>("files_properties", { tunnelId, path });
 export const filesDirSize = (tunnelId: string, path: string) => invoke<number>("files_dir_size", { tunnelId, path });
-export const filesCreate = (tunnelId: string, path: string, dir: boolean) =>
-  invoke<void>("files_create", { tunnelId, path, dir });
-export const filesRename = (tunnelId: string, from: string, to: string) =>
-  invoke<void>("files_rename", { tunnelId, from, to });
+/** `endpoint` (create, rename, delete, save): the server the panel shows; a host edited since gets `"target-changed"`. */
+export const filesCreate = (tunnelId: string, path: string, dir: boolean, endpoint: string | null) =>
+  invoke<void>("files_create", { tunnelId, path, dir, endpoint });
+export const filesRename = (tunnelId: string, from: string, to: string, endpoint: string | null) =>
+  invoke<void>("files_rename", { tunnelId, from, to, endpoint });
 export const filesCount = (tunnelId: string, paths: string[]) => invoke<FileCount>("files_count", { tunnelId, paths });
-export const filesDelete = (tunnelId: string, paths: string[]) => invoke<void>("files_delete", { tunnelId, paths });
+export const filesDelete = (tunnelId: string, paths: string[], endpoint: string | null) =>
+  invoke<void>("files_delete", { tunnelId, paths, endpoint });
 /** `endpoint`: the server the rows were copied or cut on; a host edited since gets nothing moved. */
 export const filesPaste = (tunnelId: string, sources: string[], destDir: string, cut: boolean, endpoint: string | null) =>
   invoke<PasteOutcome>("files_paste", { tunnelId, sources, destDir, cut, endpoint });
@@ -277,7 +279,8 @@ export const filesWriteText = (
   expectMtime: number | null,
   expectHash: string | null,
   force: boolean,
-  inPlace = false,
+  inPlace: boolean,
+  endpoint: string | null,
 ) =>
   invoke<SavedFile>("files_write_text", {
     tunnelId,
@@ -288,6 +291,7 @@ export const filesWriteText = (
     expectHash,
     force,
     inPlace,
+    endpoint,
   });
 /** `endpoint`: the server (`user@host:port`) the panel shows; a job never runs against another. */
 export const filesUpload = (tunnelId: string, localPaths: string[], remoteDir: string, conflict: Conflict, endpoint: string | null) =>

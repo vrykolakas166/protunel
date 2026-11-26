@@ -444,7 +444,7 @@ no dropping files on a shell — only on the panel, which names the target.
   held in `Transfers::reserved` until the job ends so parallel jobs never
   share one) and renames the row; Replace merges a folder and replaces its
   files; the upload picker (`files_pick_upload`) only returns paths. Every
-  upload/download/copy/paste/drag-out/`files_existing` call carries the
+  upload/download/copy/paste/drag-out/delete/rename/create/save/`files_existing` call carries the
   panel's endpoint (`bound`; a source endpoint rides on the clipboard and
   the row drag), so a host edited meanwhile gets `"target-changed"`, never
   the files; a direct copy also refuses when B's saved record no longer
@@ -475,8 +475,14 @@ no dropping files on a shell — only on the panel, which names the target.
   queued job is bound to the endpoint (`user@host:port`, recorded per session
   by `sftp::note_session`) its tunnel reached when queued and fails with
   `"target-changed"` if the host was edited to reach another server. Only
-  text the user opens (≤2 MB, or the last 1 MB) and images (≤10 MB) reach the
+  text the user opens (≤2 MB, or the last 1 MB; not valid UTF-8 → `lossy`,
+  read-only) and images (≤10 MB) reach the
   webview.
+- Remote temp/part files are made by `sftp::create_private` (new, 0600) and
+  get their final mode just before publishing, whatever the server umask.
+  Names a server lists go through `sftp::valid_name` (one component) before
+  any walk joins them. Local writes use `settings::write_atomic` (a unique
+  temp created exclusively).
 - Saving edits (`write_text`) refuses with `"conflict"` when size, mtime or
   the bytes' fingerprint (`preview::fingerprint`; SFTP v3 mtime has 1 s
   resolution) moved since it was read; saves of one file are serialized in

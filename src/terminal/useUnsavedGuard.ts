@@ -1,4 +1,4 @@
-import { useState, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import type { Tunnel } from "../types";
 import { findPane } from "./layout";
 import type { FilePanelHandle } from "./files/FilePanel";
@@ -6,6 +6,9 @@ import type { Unsaved } from "./files/unsaved";
 import type { Tab } from "./tabs";
 
 export interface PendingUnsaved {
+  /** Identity of this request: a save finishing after it was answered or
+   * replaced must not bring it back. */
+  id: number;
   items: Unsaved[];
   /** A save was tried and did not go through (conflict, lost session…). */
   failed: boolean;
@@ -34,7 +37,15 @@ export function useUnsavedGuard({
   raiseFiles: (paneId: string) => void;
   refocus: () => void;
 }) {
-  const [pendingUnsaved, setPendingUnsaved] = useState<PendingUnsaved | null>(null);
+  const [pendingUnsaved, setPendingState] = useState<PendingUnsaved | null>(null);
+  const pendingRef = useRef<PendingUnsaved | null>(null);
+  const setPendingUnsaved = (next: PendingUnsaved | null) => {
+    pendingRef.current = next;
+    setPendingState(next);
+  };
+  const nextId = useRef(0);
+  /** The request whose Save and close is running: a second click waits. */
+  const savingId = useRef<number | null>(null);
 
   /** user@host of the shell a pane belongs to. */
   const whereOf = (paneId: string): string => {
@@ -51,16 +62,30 @@ export function useUnsavedGuard({
       proceed();
       return;
     }
-    if (pendingUnsaved) return;
-    void new Promise<boolean>((resolve) => setPendingUnsaved({ items, failed: false, resolve })).then((ok) => {
+    if (pendingRef.current) return;
+    const id = ++nextId.current;
+    void new Promise<boolean>((resolve) => setPendingUnsaved({ id, items, failed: false, resolve })).then((ok) => {
       if (ok) proceed();
       else refocus();
     });
   };
 
   const saveAllUnsaved = async (pending: PendingUnsaved) => {
+    if (savingId.current === pending.id) return;
+    savingId.current = pending.id;
+    try {
+      await saveAll(pending);
+    } finally {
+      if (savingId.current === pending.id) savingId.current = null;
+    }
+  };
+
+  const saveAll = async (pending: PendingUnsaved) => {
+    // Still the open request? (Cancelled or replaced meanwhile: leave it.)
+    const current = () => pendingRef.current?.id === pending.id;
     for (const item of pending.items) {
       const ok = (await filesRefs.current.get(item.paneId)?.saveUnsaved()) ?? true;
+      if (!current()) return;
       if (!ok) {
         // Show the panel that could not save: it carries the conflict banner.
         const tab = tabsRef.current.find((x) => findPane(x.root, item.paneId));

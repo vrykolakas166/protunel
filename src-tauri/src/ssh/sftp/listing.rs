@@ -67,6 +67,9 @@ pub async fn list(sftp: &SftpSession, path: &str) -> Result<Listing, String> {
     let dir = sftp.read_dir(&path).await.map_err(err)?;
     let mut entries = Vec::new();
     for item in dir {
+        if !super::valid_name(&item.file_name()) {
+            continue;
+        }
         let attrs = item.metadata();
         let mut e = entry(item.file_name(), &attrs);
         if e.kind == Kind::Symlink {

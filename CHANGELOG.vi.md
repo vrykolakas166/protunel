@@ -23,6 +23,7 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 - Thanh máy chủ bên trái của terminal **đổi được độ rộng**: kéo cạnh phải (nhấp đúp để về độ rộng mặc định).
 
 ### Sửa lỗi
+- Bảng tệp: xóa, đổi tên, tạo tệp/thư mục và lưu chỉ thực hiện trên máy chủ mà bảng đang hiển thị; tên đang gõ để đổi bị bỏ khi chuyển sang thư mục khác; tệp không phải UTF-8 hợp lệ mở ở chế độ chỉ đọc thay vì bị hỏng khi lưu; tệp đang tải lên, sao chép hoặc lưu được giữ riêng tư cho tới khi xong; danh sách truyền vừa với bảng nhỏ; bổ sung các thông báo lỗi còn thiếu.
 - Linux: ứng dụng không còn bị tắt đột ngột khi nhiều tunnel kết nối hoặc ngắt cùng lúc (ví dụ mở nhiều shell một lúc). Các mục bật/tắt trên khay hệ thống giờ hiện dấu ✓ trước tên.
 - Danh sách truyền tệp và tiến độ trong popup tệp chỉ hiện các lượt truyền của máy chủ đó, và nút **Xóa mục đã xong** chỉ xóa các lượt đó; trước đây mọi popup đang mở đều hiện (và xóa) tất cả.
 - Popup tệp ngừng thao tác trên tệp của máy chủ cũ khi host được sửa để trỏ tới máy chủ khác, và đề nghị tải lại trên máy chủ mới; các lượt truyền đã xếp hàng trước khi sửa không còn chạy trên máy chủ mới.
