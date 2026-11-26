@@ -465,6 +465,9 @@ impl DragTransfer {
             state: TransferState::Running,
             error: None,
             open_when_done: false,
+            files_done: 0,
+            files_failed: 0,
+            failures: Vec::new(),
         };
         source.track(&transfer, &cancel);
         Self {

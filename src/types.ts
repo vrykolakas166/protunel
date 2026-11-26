@@ -464,6 +464,9 @@ export interface SavedFile {
   hash: string | null;
 }
 
+/** What an upload or copy does when its name is taken (Rust `Conflict`). */
+export type Conflict = "skip" | "replace" | "keepBoth" | "resume";
+
 export type TransferState = "queued" | "running" | "done" | "skipped" | "failed" | "cancelled";
 
 export type TransferDirection = "upload" | "download" | "copy" | "dragout";
@@ -494,4 +497,10 @@ export interface FileTransfer {
   state: TransferState;
   error: string | null;
   openWhenDone: boolean;
+  /** Files finished (a folder transfer counts each). */
+  filesDone: number;
+  /** Files that failed while the rest went on (error "partial"). */
+  filesFailed: number;
+  /** The first failures, "path: error". */
+  failures: string[];
 }

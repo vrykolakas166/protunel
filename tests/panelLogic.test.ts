@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chooseConflicts } from "../src/terminal/files/panelLogic";
 import {
   DEFAULT_SIZE,
   firstGeometry,
@@ -149,5 +150,30 @@ describe("isCurrentRequest", () => {
     const seq = ++latest;
     latest++;
     expect(isCurrentRequest(seq, latest)).toBe(false);
+  });
+});
+
+describe("chooseConflicts", () => {
+  test("free names go, clashes are asked one by one", async () => {
+    const asked: [string, number][] = [];
+    const groups = await chooseConflicts(["a", "b", "c", "d"], new Set(["b", "d"]), async (name, left) => {
+      asked.push([name, left]);
+      return { choice: name === "b" ? "keepBoth" : "replace", all: false };
+    });
+    expect(asked).toEqual([["b", 1], ["d", 0]]);
+    expect(Object.fromEntries(groups!)).toEqual({ skip: ["a", "c"], keepBoth: ["b"], replace: ["d"] });
+  });
+  test("an answer for all stops the questions", async () => {
+    let asks = 0;
+    const groups = await chooseConflicts(["a", "b", "c"], new Set(["a", "b", "c"]), async () => {
+      asks++;
+      return { choice: "skip", all: true };
+    });
+    expect(asks).toBe(1);
+    expect(groups!.get("skip")).toEqual(["a", "b", "c"]);
+  });
+  test("cancel drops everything", async () => {
+    const groups = await chooseConflicts(["a"], new Set(["a"]), async () => ({ choice: "cancel", all: false }));
+    expect(groups).toBeNull();
   });
 });

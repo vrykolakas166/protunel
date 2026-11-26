@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { TFunction } from "i18next";
-import { filesCopyAcross, filesDragOut, filesPaste, filesUpload, terminalWrite } from "../../api";
-import type { CopyAcross, FileEntry } from "../../types";
+import { filesCopyAcross, filesDragOut, filesExisting, filesPaste, filesUpload, terminalWrite } from "../../api";
+import type { Conflict, CopyAcross, FileEntry } from "../../types";
 import { dropDirFor, type DropPlan } from "./dropLogic";
-import { canPasteClip } from "./panelLogic";
+import { canPasteClip, chooseConflicts, type ClashAnswer } from "./panelLogic";
 import { getClipboard, setClipboard, type RelayHint } from "./panelStore";
+
+/** The last part of a local (either separator) or remote path. */
+const lastName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 import { baseName, isDirLike, joinPath, parentPath } from "./paths";
 import { isWindows } from "../../platform";
 import { onRowDragLeaveWindow, registerRowReceiver, type RowDragPayload } from "./rowDrag";
@@ -16,6 +19,8 @@ interface Args {
   stale: boolean;
   /** Tells the other panels on this server these folders changed. */
   changed: (dirs: string[]) => void;
+  /** Asks what to do with `name`, already in `dir`; `left` more clashes follow. */
+  askClash: (name: string, dir: string, left: number) => Promise<ClashAnswer>;
   /** Re-lists the folder on screen now; `select` applies only if it is `dir`. */
   refreshCurrent: (select?: string[], dir?: string) => void;
   path: string | null;
@@ -43,6 +48,7 @@ export function usePanelDrops({
   tunnelId,
   stale,
   changed,
+  askClash,
   refreshCurrent,
   path,
   entries,
@@ -60,14 +66,60 @@ export function usePanelDrops({
   const [dropDir, setDropDir] = useState<string | null>(null);
   const [relayHint, setRelayHint] = useState<RelayHint | null>(null);
 
+  /**
+   * Splits `items` by what each does when its name is taken in `dir` on this
+   * server: asks about every clash (Skip / Replace / Keep both, or one answer
+   * for all). Null when the user cancelled or the check failed.
+   */
+  const splitByConflict = async (items: string[], dir: string): Promise<Map<Conflict, string[]> | null> => {
+    const names = items.map(lastName);
+    let taken: string[];
+    try {
+      taken = await filesExisting(tunnelId, dir, [...new Set(names)]);
+    } catch (e) {
+      setNotice(errorText(e));
+      return null;
+    }
+    const groups = await chooseConflicts([...new Set(names)], new Set(taken), (name, left) => askClash(name, dir, left));
+    if (!groups) return null;
+    const modeOf = new Map<string, Conflict>();
+    for (const [mode, ns] of groups) for (const n of ns) modeOf.set(n, mode);
+    const parts = new Map<Conflict, string[]>();
+    items.forEach((item, i) => {
+      const mode = modeOf.get(names[i]) ?? "skip";
+      parts.set(mode, [...(parts.get(mode) ?? []), item]);
+    });
+    return parts;
+  };
+
+  /** Local files or folders into `dir`, asking about names already there. */
+  const uploadInto = async (localPaths: string[], dir: string) => {
+    const parts = await splitByConflict(localPaths, dir);
+    if (!parts) return;
+    try {
+      for (const [mode, paths] of parts) await filesUpload(tunnelId, paths, dir, mode);
+      setQueueOpen(true);
+    } catch (e) {
+      setNotice(errorText(e));
+    }
+  };
+
   /** Server-to-server copy into `dir`; the queue shows progress, and a relayed one offers the key hint. */
   const copyAcross = async (from: string, fromPaneId: string, paths: string[], dir: string) => {
+    const parts = await splitByConflict(paths, dir);
+    if (!parts) return;
     setNotice(t("files.copying"));
     try {
-      const out: CopyAcross = await filesCopyAcross(from, paths, tunnelId, dir, false);
+      let hint: RelayHint | null = null;
+      for (const [mode, some] of parts) {
+        const out: CopyAcross = await filesCopyAcross(from, some, tunnelId, dir, mode);
+        if (out.route === "relay" && out.keyHint) {
+          hint = { fromTunnelId: from, termId: shellFor(from, fromPaneId), command: out.keyHint };
+        }
+      }
       setNotice(null);
       setQueueOpen(true);
-      setRelayHint(out.route === "relay" && out.keyHint ? { fromTunnelId: from, termId: shellFor(from, fromPaneId), command: out.keyHint } : null);
+      setRelayHint(hint);
     } catch (e) {
       setNotice(errorText(e));
     }
@@ -193,10 +245,8 @@ export function usePanelDrops({
     const dir = dirAt(x, y);
     setDropDir(null);
     if (!dir || paths.length === 0) return;
-    void filesUpload(tunnelId, paths, dir, false)
-      .then(() => setQueueOpen(true))
-      .catch((e) => setNotice(errorText(e)));
+    void uploadInto(paths, dir);
   };
 
-  return { dropDir, relayHint, setRelayHint, preparing, paste, hintShellAlive, typeRelayHint, dropFiles };
+  return { dropDir, relayHint, setRelayHint, preparing, paste, hintShellAlive, typeRelayHint, dropFiles, uploadInto };
 }

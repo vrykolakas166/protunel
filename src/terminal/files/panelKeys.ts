@@ -15,6 +15,8 @@ export interface ListKeyContext {
   selectAt: (index: number, mode: "only" | "toggle" | "range") => void;
   open: (entry: FileEntry) => void;
   goUp: () => void;
+  /** Back (-1) / Forward (+1) through the panel's folders. */
+  go: (delta: -1 | 1) => void;
   refresh: () => void;
   askDelete: () => void;
   paste: () => Promise<void>;
@@ -53,6 +55,10 @@ export function handleListKey(e: ReactKeyboardEvent, c: ListKeyContext) {
     case e.key === "Enter":
       e.preventDefault();
       if (current) c.open(current);
+      return;
+    case (e.key === "ArrowLeft" || e.key === "ArrowRight") && e.altKey && !mod && !e.shiftKey:
+      e.preventDefault();
+      c.go(e.key === "ArrowLeft" ? -1 : 1);
       return;
     case e.key === "Backspace" || (e.key === "ArrowUp" && e.altKey):
       e.preventDefault();

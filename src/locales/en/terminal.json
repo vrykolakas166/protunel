@@ -323,7 +323,6 @@
       "failed": "Failed",
       "cancelled": "Cancelled",
       "cancel": "Cancel",
-      "overwrite": "Overwrite",
       "reveal": "Show in folder",
       "copied": "Copied",
       "explorer": "Explorer",
@@ -333,7 +332,12 @@
       "routeRelay": "via this computer",
       "routeRelaySpeed": "via this computer · {{speed}}/s",
       "skippedLinks_one": "Copied · {{count}} link skipped",
-      "skippedLinks_other": "Copied · {{count}} links skipped"
+      "skippedLinks_other": "Copied · {{count}} links skipped",
+      "retry": "Retry",
+      "retryHint": "Run it again; files already copied are kept",
+      "partial": "{{done}} done, {{failed}} failed",
+      "moreFailed_one": "…and {{count}} more",
+      "moreFailed_other": "…and {{count}} more"
     },
     "err": {
       "not-connected": "{{where}} is not connected: reconnect the shell first.",
@@ -370,7 +374,25 @@
       "typed": "Typed. Press Enter in the shell to run it."
     },
     "stale": "This host now points to {{now}}. The panel still shows {{was}}.",
-    "staleReload": "Reload on {{now}}"
+    "staleReload": "Reload on {{now}}",
+    "back": "Back",
+    "forward": "Forward",
+    "folders": {
+      "title": "Bookmarks and recent folders",
+      "add": "Bookmark this folder",
+      "remove": "Remove this bookmark",
+      "bookmarks": "Bookmarks",
+      "recent": "Recent on this host"
+    },
+    "clash": {
+      "title": "Name already taken",
+      "message": "“{{name}}” is already in {{where}}:{{dir}}.",
+      "all_one": "Do the same for the {{count}} other clash",
+      "all_other": "Do the same for the {{count}} other clashes",
+      "skip": "Skip",
+      "replace": "Replace",
+      "keepBoth": "Keep both"
+    }
   },
   "kbFiles": "files of the shell",
   "sidebarResize": "Drag to resize · double-click to reset",

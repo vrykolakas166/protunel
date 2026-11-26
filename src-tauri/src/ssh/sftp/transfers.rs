@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -9,7 +9,7 @@ use russh_sftp::client::SftpSession;
 #[cfg(unix)]
 use russh_sftp::protocol::FileAttributes;
 use russh_sftp::protocol::OpenFlags;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
@@ -43,6 +43,24 @@ pub enum Route {
     Relay,
 }
 
+/// What an upload or copy does when its name is already taken.
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Debug)]
+#[serde(rename_all = "camelCase")]
+pub enum Conflict {
+    /// Leave what is there; the transfer ends as Skipped.
+    Skip,
+    /// Replace it (a folder is merged, its files replaced).
+    Replace,
+    /// Use the first free "name (n).ext" instead.
+    KeepBoth,
+    /// Retry of a partial transfer: merge into the folder, skip every file
+    /// already there (a file only ever gets its final name once complete).
+    Resume,
+}
+
+/// Failed files listed on a partial transfer, at most.
+const MAX_FAILURES: usize = 20;
+
 #[derive(Clone, Copy, Serialize, PartialEq, Eq, Debug)]
 #[serde(rename_all = "lowercase")]
 pub enum TransferState {
@@ -73,6 +91,12 @@ pub struct Transfer {
     pub error: Option<String>,
     /// Open with the OS's app once downloaded ("Open with…" a temp copy).
     pub open_when_done: bool,
+    /// Files finished, in a folder transfer (a file transfer counts 1).
+    pub files_done: u32,
+    /// Files that failed while the rest went on (error "partial").
+    pub files_failed: u32,
+    /// The first failures, "path: error".
+    pub failures: Vec<String>,
 }
 
 #[derive(Default)]
@@ -101,6 +125,13 @@ pub fn clear_finished(app: &AppHandle, tunnel: Option<Uuid>) {
         matches!(x.state, TransferState::Queued | TransferState::Running)
             || tunnel.is_some_and(|id| x.tunnel_id != id && x.dest_tunnel_id != Some(id))
     });
+}
+
+/// Drops one finished row (a retry replaces it).
+pub fn remove_transfer(app: &AppHandle, id: Uuid) {
+    let files = app.state::<Files>();
+    let mut t = files.transfers.lock().unwrap();
+    t.list.retain(|x| x.id != id || matches!(x.state, TransferState::Queued | TransferState::Running));
 }
 
 pub(in crate::ssh) fn publish(app: &AppHandle, transfer: &Transfer) {
@@ -148,13 +179,19 @@ pub(in crate::ssh) fn finish_drag_out(app: &AppHandle, transfer: &Transfer) {
 pub struct UploadJob {
     pub local: PathBuf,
     pub remote_dir: String,
-    pub overwrite: bool,
+    /// The name on the server, when not the local one (a retry of a
+    /// "keep both" upload).
+    pub name: Option<String>,
+    pub conflict: Conflict,
 }
 
 pub struct DownloadJob {
     pub remote: String,
     pub local_dir: PathBuf,
     pub open_when_done: bool,
+    /// Retry of a folder download: into this existing folder, skipping
+    /// files already there.
+    pub into: Option<PathBuf>,
 }
 
 /// What a queued job may run against: the endpoint the tunnel reached when the
@@ -165,11 +202,12 @@ pub fn bind(app: &AppHandle, tunnel_id: Uuid) -> Option<String> {
 
 /// Queues one transfer and returns its id; it runs when a slot frees up.
 pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
-    let name = job
-        .local
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
+    let name = job.name.clone().unwrap_or_else(|| {
+        job.local
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    });
     let transfer = Transfer {
         id: Uuid::new_v4(),
         tunnel_id,
@@ -184,6 +222,9 @@ pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
         state: TransferState::Queued,
         error: None,
         open_when_done: false,
+        files_done: 0,
+        files_failed: 0,
+        failures: Vec::new(),
     };
     let expect = bind(app, tunnel_id);
     spawn(app, transfer, move |ctx| Box::pin(upload(ctx, tunnel_id, expect, job)))
@@ -205,6 +246,9 @@ pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uui
         state: TransferState::Queued,
         error: None,
         open_when_done: job.open_when_done,
+        files_done: 0,
+        files_failed: 0,
+        failures: Vec::new(),
     };
     let expect = bind(app, tunnel_id);
     spawn(app, transfer, move |ctx| Box::pin(download(ctx, tunnel_id, expect, job)))
@@ -220,11 +264,18 @@ pub(super) struct Ctx {
     last: Mutex<Instant>,
     pub(super) skipped: AtomicBool,
     pub(super) done: AtomicU64,
+    files_done: AtomicU32,
+    failures: Mutex<(u32, Vec<String>)>,
 }
 
 impl Ctx {
     pub(super) fn set_total(&self, total: u64) {
         self.transfer.lock().unwrap().total = total;
+    }
+    fn set_remote(&self, path: &str) {
+        let mut t = self.transfer.lock().unwrap();
+        t.remote_path = path.to_string();
+        t.name = split(path).1.to_string();
     }
     fn set_local(&self, path: &Path) {
         self.transfer.lock().unwrap().local_path = path.to_string_lossy().into_owned();
@@ -245,6 +296,29 @@ impl Ctx {
             publish(&self.app, &snapshot);
         }
     }
+    pub(super) fn file_done(&self) {
+        self.files_done.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The outcome of one file (or folder step) inside a bigger transfer: a
+    /// failure that only concerns that entry is noted and the rest goes on;
+    /// a cancel or a broken connection stops everything.
+    pub(super) fn entry(&self, path: &str, result: Result<(), String>) -> Result<(), String> {
+        match result {
+            Ok(()) => Ok(()),
+            Err(e) if self.cancel.is_cancelled() || stops_all(&e) => Err(e),
+            Err(e) => {
+                let mut f = self.failures.lock().unwrap();
+                f.0 += 1;
+                if f.1.len() < MAX_FAILURES {
+                    let text = if e.starts_with(path) { e } else { format!("{path}: {e}") };
+                    f.1.push(text);
+                }
+                Ok(())
+            }
+        }
+    }
+
     pub(super) fn check(&self) -> Result<(), String> {
         if self.cancel.is_cancelled() {
             Err("cancelled".to_string())
@@ -252,6 +326,18 @@ impl Ctx {
             Ok(())
         }
     }
+}
+
+/// Errors that mean the connection (or the whole job) is gone, not one file.
+fn stops_all(e: &str) -> bool {
+    e == "cancelled"
+        || e == "timeout"
+        || e == "not-connected"
+        || e == "target-changed"
+        || e.ends_with(": timeout")
+        || e.starts_with("I/O")
+        || e.contains("closed")
+        || e.contains("Unexpected packet")
 }
 
 pub(super) fn spawn(
@@ -286,10 +372,19 @@ pub(super) fn spawn(
                     last: Mutex::new(Instant::now()),
                     skipped: AtomicBool::new(false),
                     done: AtomicU64::new(0),
+                    files_done: AtomicU32::new(0),
+                    failures: Mutex::new((0, Vec::new())),
                 });
-                let result = run(ctx.clone()).await;
+                let mut result = run(ctx.clone()).await;
                 transfer = ctx.transfer.lock().unwrap().clone();
                 transfer.done = ctx.done.load(Ordering::Relaxed);
+                transfer.files_done = ctx.files_done.load(Ordering::Relaxed);
+                let (failed, failures) = std::mem::take(&mut *ctx.failures.lock().unwrap());
+                transfer.files_failed = failed;
+                transfer.failures = failures;
+                if failed > 0 && result.is_ok() {
+                    result = Err("partial".to_string());
+                }
                 if ctx.skipped.load(Ordering::Relaxed) && result.is_ok() {
                     transfer.state = TransferState::Skipped;
                 }
@@ -340,19 +435,41 @@ async fn forget_if_dead(app: &AppHandle, tunnel_id: Uuid, started: Instant) {
 
 async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: UploadJob) -> Result<(), String> {
     let sftp = sftp_bound(&ctx.app, tunnel_id, expect.as_deref()).await?;
-    let name = job.local.file_name().ok_or("no file name")?.to_string_lossy().into_owned();
-    let target = join(&job.remote_dir, &name);
+    let name = match &job.name {
+        Some(name) => name.clone(),
+        None => job.local.file_name().ok_or("no file name")?.to_string_lossy().into_owned(),
+    };
+    let mut target = join(&job.remote_dir, &name);
     let meta = tokio::fs::metadata(&job.local).await.map_err(|e| e.to_string())?;
-    if !job.overwrite && exists(&sftp, &target).await? {
-        ctx.skipped.store(true, Ordering::Relaxed);
-        return Ok(());
-    }
+    let taken = exists(&sftp, &target).await?;
+    let mode = match (taken, job.conflict) {
+        (false, _) => Write::New,
+        (true, Conflict::Skip) => {
+            ctx.skipped.store(true, Ordering::Relaxed);
+            return Ok(());
+        }
+        (true, Conflict::Replace) => Write::Replace,
+        (true, Conflict::Resume) => Write::Resume,
+        (true, Conflict::KeepBoth) => {
+            target = free_remote(&sftp, &job.remote_dir, &name).await?;
+            ctx.set_remote(&target);
+            Write::New
+        }
+    };
     let result = if meta.is_dir() {
         ctx.set_total(local_size(&job.local).await);
-        upload_tree(&ctx, &sftp, &job.local, &target, job.overwrite).await
+        upload_tree(&ctx, &sftp, &job.local, &target, mode).await
     } else {
         ctx.set_total(meta.len());
-        upload_file(&ctx, &sftp, &job.local, &target, job.overwrite).await
+        if mode == Write::Resume {
+            ctx.file_done(); // already there, complete
+            return Ok(());
+        }
+        let r = upload_file(&ctx, &sftp, &job.local, &target, mode == Write::Replace).await;
+        if r.is_ok() {
+            ctx.file_done();
+        }
+        r
     };
     match result {
         // Someone else created the name meanwhile: still never replaced.
@@ -362,6 +479,29 @@ async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: Upl
         }
         other => other,
     }
+}
+
+/// How a transfer writes into its target.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Write {
+    /// The target must not exist (it is created).
+    New,
+    /// Merge into a folder; replace files.
+    Replace,
+    /// Merge into a folder; skip files already there.
+    Resume,
+}
+
+/// The first free "name (n).ext" in `dir` on the server.
+pub(super) async fn free_remote(sftp: &SftpSession, dir: &str, name: &str) -> Result<String, String> {
+    let (stem, ext) = stem_ext(name);
+    for n in 1..10_000 {
+        let path = join(dir, &format!("{stem} ({n}){ext}"));
+        if !exists(sftp, &path).await? {
+            return Ok(path);
+        }
+    }
+    Err("exists".to_string())
 }
 
 async fn local_size(root: &Path) -> u64 {
@@ -380,29 +520,56 @@ async fn local_size(root: &Path) -> u64 {
     total
 }
 
-async fn upload_tree(ctx: &Ctx, sftp: &SftpSession, root: &Path, target: &str, overwrite: bool) -> Result<(), String> {
+/// A local folder onto the server. A file or subfolder that fails is noted
+/// (`Ctx::entry`) and the rest goes on; only the top folder must work.
+async fn upload_tree(ctx: &Ctx, sftp: &SftpSession, root: &Path, target: &str, mode: Write) -> Result<(), String> {
     let mut stack = vec![(root.to_path_buf(), target.to_string())];
     let mut first = true;
     while let Some((local, remote)) = stack.pop() {
         ctx.check()?;
-        match sftp.symlink_metadata(remote.as_str()).await {
-            // Merging (overwrite) only into a real folder, never through a link.
-            Ok(a) if a.is_dir() && !a.is_symlink() && (overwrite || !first) => {}
-            Ok(_) if first && !overwrite => return Err("exists".to_string()),
-            Ok(_) => return Err(format!("{remote}: not a folder")),
-            Err(e) if is_missing(&e) => {
-                sftp.create_dir(remote.as_str()).await.map_err(|e| at(&remote, e))?;
+        let made: Result<(), String> = async {
+            match sftp.symlink_metadata(remote.as_str()).await {
+                // Merging only into a real folder, never through a link.
+                Ok(a) if a.is_dir() && !a.is_symlink() && (mode != Write::New || !first) => Ok(()),
+                Ok(_) if first && mode == Write::New => Err("exists".to_string()),
+                Ok(_) => Err(format!("{remote}: not a folder")),
+                Err(e) if is_missing(&e) => sftp.create_dir(remote.as_str()).await.map_err(|e| at(&remote, e)),
+                Err(e) => Err(at(&remote, e)),
             }
-            Err(e) => return Err(at(&remote, e)),
+        }
+        .await;
+        if first {
+            made?;
+        } else if made.is_err() {
+            ctx.entry(&remote, made)?;
+            continue;
         }
         first = false;
-        let mut rd = tokio::fs::read_dir(&local).await.map_err(|e| e.to_string())?;
+        let mut rd = match tokio::fs::read_dir(&local).await {
+            Ok(rd) => rd,
+            Err(e) => {
+                ctx.entry(&local.to_string_lossy(), Err(e.to_string()))?;
+                continue;
+            }
+        };
         while let Some(item) = rd.next_entry().await.map_err(|e| e.to_string())? {
             let name = item.file_name().to_string_lossy().into_owned();
             let child = join(&remote, &name);
             match item.file_type().await {
                 Ok(t) if t.is_dir() => stack.push((item.path(), child)),
-                Ok(t) if t.is_file() => upload_file(ctx, sftp, &item.path(), &child, overwrite).await?,
+                Ok(t) if t.is_file() => {
+                    if mode != Write::Replace && exists(sftp, &child).await? {
+                        // Resume: already there. New: our own fresh folder,
+                        // so only a race; never replaced.
+                        ctx.file_done();
+                        continue;
+                    }
+                    let r = upload_file(ctx, sftp, &item.path(), &child, mode == Write::Replace).await;
+                    if r.is_ok() {
+                        ctx.file_done();
+                    }
+                    ctx.entry(&child, r)?;
+                }
                 _ => {} // symlinks and devices are not copied
             }
         }
@@ -525,15 +692,21 @@ async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: D
     // first free name (`publish_local`), so nothing placed under the final
     // name meanwhile is ever replaced or deleted.
     if attrs.is_dir() {
-        let local = reserve_dir(&job.local_dir, name).await?;
+        // A retry goes on in the folder the first attempt made.
+        let resume = job.into.as_ref().filter(|dir| dir.is_dir()).cloned();
+        let local = match &resume {
+            Some(dir) => dir.clone(),
+            None => reserve_dir(&job.local_dir, name).await?,
+        };
         ctx.set_local(&local);
         let total = remote_size(&ctx, &sftp, &job.remote).await?;
         ctx.set_total(total);
-        download_tree(&ctx, &sftp, &job.remote, &local).await
+        download_tree(&ctx, &sftp, &job.remote, &local, resume.is_some()).await
     } else {
         ctx.set_total(attrs.size.unwrap_or(0));
         let local = download_file(&ctx, &sftp, &job.remote, &job.local_dir, name).await?;
         ctx.set_local(&local);
+        ctx.file_done();
         Ok(())
     }
 }
@@ -579,19 +752,48 @@ pub(super) async fn remote_size(ctx: &Ctx, sftp: &SftpSession, root: &str) -> Re
     Ok(total)
 }
 
-async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &Path) -> Result<(), String> {
+/// A server folder into `local_root`. A file or subfolder that fails is
+/// noted (`Ctx::entry`) and the rest goes on. `resume`: a retry into the
+/// folder of an earlier attempt, reusing its subfolders and skipping files
+/// already there (a download only gets its final name once complete).
+async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &Path, resume: bool) -> Result<(), String> {
     let mut stack = vec![(root.to_string(), local_root.to_path_buf())];
     while let Some((remote, local)) = stack.pop() {
         ctx.check()?;
-        for item in sftp.read_dir(&remote).await.map_err(|e| at(&remote, e))? {
+        let items = match sftp.read_dir(&remote).await {
+            Ok(items) => items,
+            Err(e) if remote == root => return Err(at(&remote, e)),
+            Err(e) => {
+                ctx.entry(&remote, Err(at(&remote, e)))?;
+                continue;
+            }
+        };
+        for item in items {
+            ctx.check()?;
             let meta = item.metadata();
+            let name = item.file_name();
+            let mine = local.join(sanitize(&name));
             // Names that differ remotely but not as local names (`a:b`, `a?b`)
             // get "(1)" instead of landing on each other.
             if meta.is_dir() && !meta.is_symlink() {
-                let child = reserve_dir(&local, &item.file_name()).await?;
-                stack.push((item.path(), child));
+                if resume && mine.is_dir() {
+                    stack.push((item.path(), mine));
+                    continue;
+                }
+                match reserve_dir(&local, &name).await {
+                    Ok(child) => stack.push((item.path(), child)),
+                    Err(e) => ctx.entry(&item.path(), Err(e))?,
+                }
             } else if meta.is_regular() {
-                download_file(ctx, sftp, &item.path(), &local, &item.file_name()).await?;
+                if resume && mine.is_file() {
+                    ctx.file_done();
+                    continue;
+                }
+                let r = download_file(ctx, sftp, &item.path(), &local, &name).await.map(|_| ());
+                if r.is_ok() {
+                    ctx.file_done();
+                }
+                ctx.entry(&item.path(), r)?;
             }
         }
     }

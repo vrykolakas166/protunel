@@ -9,6 +9,9 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 ## [Unreleased]
 
 ### Cải thiện
+- **Tên đã có?** Upload hoặc sao chép giữa hai máy chủ giờ hỏi phải làm gì với từng tên đã tồn tại: **Bỏ qua**, **Thay** hoặc **Giữ cả hai** (lưu thành “tên (1)”), có thể chọn một lần cho tất cả. Dòng bị bỏ qua trong danh sách truyền cũng có nút Thay và Giữ cả hai.
+- **Truyền thư mục không dừng vì một tệp lỗi**: dòng truyền cho biết bao nhiêu tệp đã xong và tệp nào lỗi, và **Thử lại** (cả với lượt đã hủy) chỉ chép phần còn thiếu.
+- Popup tệp có **Quay lại / Tiến tới** (Alt+← / Alt+→) và nút **bookmark**: bookmark thư mục theo từng máy chủ (lưu cùng host và đi theo khi xuất cấu hình) và quay lại các thư mục vừa mở, kể cả sau khi đã đóng cửa sổ terminal.
 - **Ctrl+T** ở cửa sổ chính mở terminal và ẩn cửa sổ chính, chỉ một bước.
 - Nhấp chuột phải vào máy chủ ở thanh bên của terminal, hoặc vào khung shell, rồi chọn **Sửa máy chủ…** để sửa ngay, không cần quay lại cửa sổ chính. Đổi thông tin kết nối của máy chủ đang dùng sẽ kết nối lại các shell của nó.
 - **Thanh trạng thái** ở dưới cửa sổ chính: lưu lượng của mọi tunnel đang kết nối, và phiên bản hoặc bản cập nhật đang chờ.

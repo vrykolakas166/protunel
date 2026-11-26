@@ -1,9 +1,9 @@
 use super::*;
 use crate::commands::{
-    files_delete, files_list, files_paste, files_read_text, files_rename, files_upload,
+    files_delete, files_list, files_paste, files_read_text, files_rename, files_retry, files_upload,
     files_write_text,
 };
-use files::{Content, DownloadJob};
+use files::{Conflict, Content, DownloadJob};
 
 async fn connect(case: &mut Case) -> (Tunnel, String) {
     let tunnel = case.tunnel("127.0.0.1", 2201);
@@ -34,7 +34,7 @@ async fn it_sftp_list_upload_download() {
             tunnel.id,
             vec![upload.to_string_lossy().into_owned()],
             dir.clone(),
-            false,
+            Conflict::Skip,
         );
         let uploaded = case.finished(ids[0], TransferState::Done).await;
         assert_eq!(uploaded.done, payload.len() as u64);
@@ -52,6 +52,7 @@ async fn it_sftp_list_upload_download() {
                 remote: format!("{dir}/name.ext"),
                 local_dir: download_dir.clone(),
                 open_when_done: false,
+                into: None,
             },
         );
         let part = bounded("local download part to appear", async {
@@ -223,6 +224,67 @@ async fn it_sftp_paste_and_rename_skip_name_clash() {
         let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
         assert_eq!(sftp.read(source).await.unwrap(), b"source");
         assert_eq!(sftp.read(target).await.unwrap(), b"target");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_sftp_upload_keep_both_takes_a_free_name() {
+    run(async |case| {
+        let (tunnel, dir) = connect(case).await;
+        let local = case.local_dir().join("a.txt");
+        std::fs::write(&local, b"mine").unwrap();
+        case.exec(&tunnel, &format!("printf theirs > {dir}/a.txt")).await;
+        let local = local.to_string_lossy().into_owned();
+
+        let ids = files_upload(case.app.clone(), tunnel.id, vec![local.clone()], dir.clone(), Conflict::Skip);
+        case.finished(ids[0], TransferState::Skipped).await;
+        let ids = files_upload(case.app.clone(), tunnel.id, vec![local], dir.clone(), Conflict::KeepBoth);
+        let done = case.finished(ids[0], TransferState::Done).await;
+        assert_eq!(done.name, "a (1).txt");
+        assert_eq!(done.remote_path, format!("{dir}/a (1).txt"));
+        let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
+        assert_eq!(sftp.read(format!("{dir}/a.txt")).await.unwrap(), b"theirs");
+        assert_eq!(sftp.read(format!("{dir}/a (1).txt")).await.unwrap(), b"mine");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_sftp_folder_upload_goes_on_past_a_failed_file_and_retries() {
+    run(async |case| {
+        let (tunnel, dir) = connect(case).await;
+        let tree = case.local_dir().join("tree");
+        std::fs::create_dir_all(tree.join("locked")).unwrap();
+        std::fs::write(tree.join("one"), b"1").unwrap();
+        std::fs::write(tree.join("locked/two"), b"2").unwrap();
+        std::fs::write(tree.join("three"), b"3").unwrap();
+        // The folder is there already, with a subfolder this user can't write.
+        case.exec(&tunnel, &format!("mkdir -p {dir}/tree/locked && chmod 555 {dir}/tree/locked")).await;
+
+        let ids = files_upload(
+            case.app.clone(),
+            tunnel.id,
+            vec![tree.to_string_lossy().into_owned()],
+            dir.clone(),
+            Conflict::Replace,
+        );
+        let partial = case.finished(ids[0], TransferState::Failed).await;
+        assert_eq!(partial.error.as_deref(), Some("partial"));
+        assert_eq!(partial.files_done, 2);
+        assert_eq!(partial.files_failed, 1);
+        assert!(partial.failures[0].contains("locked/two"), "{:?}", partial.failures);
+
+        case.exec(&tunnel, &format!("chmod 755 {dir}/tree/locked")).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), ids[0]).await.unwrap();
+        let done = case.finished(retried[0], TransferState::Done).await;
+        // Only the missing file travelled again.
+        assert_eq!(done.done, 1);
+        assert!(files::transfers(case.app).iter().all(|x| x.id != ids[0]));
+        let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
+        assert_eq!(sftp.read(format!("{dir}/tree/locked/two")).await.unwrap(), b"2");
     })
     .await;
 }

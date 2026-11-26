@@ -43,12 +43,12 @@ pub use operations::{count, create_dir, create_file, delete, exists, paste, rena
 pub use preview::{read_bytes, read_text, write_text, Content, Expect, Saved};
 
 pub use transfers::{
-    cancel, clear_finished, start_download, start_upload, transfers, Direction, DownloadJob, Route,
-    Transfer, TransferState, UploadJob,
+    cancel, clear_finished, remove_transfer, start_download, start_upload, transfers, Conflict, Direction, DownloadJob,
+    Route, Transfer, TransferState, UploadJob,
 };
 
 use operations::delete_tree;
-use transfers::{commit_part, short_id, spawn, Ctx, Transfers, PARALLEL_TRANSFERS};
+use transfers::{commit_part, free_remote, short_id, spawn, Ctx, Transfers, Write, PARALLEL_TRANSFERS};
 
 pub(super) use transfers::publish;
 #[cfg(windows)]

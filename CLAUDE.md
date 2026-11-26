@@ -426,8 +426,21 @@ no dropping files on a shell — only on the panel, which names the target.
   downloads go to Downloads and never overwrite (`name (1).ext`): a file is
   written to a hidden part file and published by hard link, which fails on
   an existing name (no placeholder under the final name, so nothing that
-  appears there meanwhile is replaced); uploads skip an existing name unless
-  asked to overwrite. Overwrite on a server without posix-rename renames the
+  appears there meanwhile is replaced). Uploads and server-to-server copies
+  take a `Conflict` (`skip` / `replace` / `keepBoth` / `resume`): before
+  starting, the panel asks `files_existing` which names are taken and asks
+  the user per clash (Skip / Replace / Keep both, "do the same for the rest";
+  `panelLogic.ts` `chooseConflicts`, pure). Keep both picks the first free
+  "name (n).ext" on the server (`free_remote`) and renames the row; Replace
+  merges a folder and replaces its files; the upload picker
+  (`files_pick_upload`) only returns paths. A folder transfer goes on past a
+  file or subfolder that fails (`Ctx::entry`; a cancel or a broken
+  connection, `stops_all`, still stops it) and ends Failed with error
+  `"partial"`, `filesDone`/`filesFailed` and the first 20 `failures`.
+  `files_retry` runs a failed or cancelled row again with `resume` (merge,
+  skip every file already there: a file only gets its final name once
+  complete; a folder download continues in its own folder, `into`) and
+  drops the old row. Overwrite on a server without posix-rename renames the
   old file aside first and back on failure, never remove-then-rename. A
   queued job is bound to the endpoint (`user@host:port`, recorded per session
   by `sftp::note_session`) its tunnel reached when queued and fails with
@@ -503,7 +516,15 @@ no dropping files on a shell — only on the panel, which names the target.
   focus back to the shell when the panel had it.
 - Start folder: the pane's last panel folder, else `PaneHandle.cwd()` (OSC 7
   when the shell reports it, else a `user@host:path$` prompt on the cursor
-  line; `files/paths.ts`), validated by listing it, else the login folder.
+  line; `files/paths.ts`), else the host's most recent folder, validated by
+  listing it, else the login folder.
+- Folder history (`files/history.ts`, pure, `tests/folderHistory.test.ts`):
+  Back/Forward per panel (toolbar, Alt+←/→ in the list; background
+  refreshes never add to it); the bookmark button lists the host's
+  bookmarks (`Tunnel.bookmarks`, saved in SQLite by `set_tunnel_bookmarks`,
+  so config export and WinSCP import carry them) and its last 10 folders
+  (localStorage per host, so they survive the terminal window being
+  destroyed; never in config export).
 - Editor: CodeMirror 6, `import("./editor")` on first use, colours from the
   theme's CSS variables.
 - Row drag (`files/rowDrag.ts` state + gesture, `files/dropLogic.ts` pure,
@@ -536,8 +557,10 @@ no dropping files on a shell — only on the panel, which names the target.
   B, so a destination inside the source (two tunnels to one machine) can't
   feed it its own output; symlinks are not copied: a top-level one fails
   (`"not-copied-link"`), nested ones finish as Done with
-  `error: "skipped-links:N"`, shown as a note. All routes
-  skip an existing top-level name unless Overwrite. A relay returns
+  `error: "skipped-links:N"`, shown as a note. An existing top-level name
+  follows the `Conflict`; rsync merges (Replace: `--ignore-times`, Resume:
+  `--ignore-existing`) only under the source's own name, otherwise (Keep
+  both, or its retry) the copy goes through the stage or the relay. A relay returns
   `key_hint` (none when user/host hold whitespace or control chars), which
   the panel types into the shell it resolved when the hint appeared
   (`terminalWrite`, that pane only, never Enter). protunel never handles

@@ -1,6 +1,7 @@
 // Shared constants, small types and module-level stores of the file panel.
 
 import type { FileCount } from "../../types";
+import type { ClashAnswer } from "./panelLogic";
 
 export const ROW = 28;
 /** Deletes this big ask for the folder's name to be typed. */
@@ -12,7 +13,9 @@ export type NameBar = { kind: "file" | "dir" } | { kind: "rename"; from: string 
 export type NameBarState = NameBar & { value: string };
 export type Confirm =
   | { kind: "delete"; paths: string[]; count: FileCount | null; typed: string }
-  | { kind: "dirty"; resolve: (choice: "save" | "discard" | "cancel") => void };
+  | { kind: "dirty"; resolve: (choice: "save" | "discard" | "cancel") => void }
+  /** `name` is taken in `dir`; `left` more clashes follow. */
+  | { kind: "clash"; name: string; dir: string; left: number; resolve: (answer: ClashAnswer) => void };
 
 /** After a relayed server-to-server copy: the way to make it direct next time. */
 export interface RelayHint {

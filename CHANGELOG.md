@@ -9,6 +9,9 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 ## [Unreleased]
 
 ### Improvements
+- **Name already taken?** Uploading or copying between servers now asks what to do with each name that is already there: **Skip**, **Replace** or **Keep both** (saved as “name (1)”), with one answer for all the rest if you like. A skipped row in the transfer list offers Replace and Keep both too.
+- **Folder transfers go on past a failed file**: the row then says how many files made it and which failed, and **Retry** (also on a cancelled transfer) copies only what is missing.
+- The file panel has **Back / Forward** (Alt+← / Alt+→) and a **bookmark** button: bookmark folders per host (they are saved with the host and come along in config export) and jump back to the folders you opened recently, even after the terminal window was closed.
 - **Ctrl+T** in the main window opens the terminal and hides the main window, in one step.
 - Right-click a host in the terminal's sidebar, or a shell's pane, and choose **Edit host…** to change it without going back to the main window. Changing the connection of a host that is in use reconnects its shells.
 - A **status bar** at the bottom of the main window: live traffic of every connected tunnel, and your version or a waiting update.

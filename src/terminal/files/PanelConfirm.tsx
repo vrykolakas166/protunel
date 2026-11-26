@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { Conflict } from "../../types";
 import { baseName } from "./paths";
 import { deleteConfirmed, deleteNeedsTyping } from "./panelLogic";
 import { TYPE_TO_CONFIRM, type Confirm } from "./panelStore";
@@ -32,6 +34,8 @@ export function PanelConfirm({
             }}
             onConfirm={() => onDelete(confirm.paths)}
           />
+        ) : confirm.kind === "clash" ? (
+          <ClashConfirm key={confirm.name} confirm={confirm} where={where} />
         ) : (
           <>
             <p className="text-sm text-text">{t("files.dirty.message", { where })}</p>
@@ -119,5 +123,40 @@ function DeleteConfirm({
         </button>
       </div>
     </form>
+  );
+}
+
+/** A name already taken where files are arriving: what to do with it. */
+function ClashConfirm({ confirm, where }: { confirm: Extract<Confirm, { kind: "clash" }>; where: string }) {
+  const { t } = useTranslation("terminal");
+  const [all, setAll] = useState(false);
+  const answer = (choice: Conflict | "cancel") => confirm.resolve({ choice, all });
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text">{t("files.clash.title")}</h3>
+      <p className="mt-2 break-all text-xs text-text">
+        {t("files.clash.message", { name: confirm.name, where, dir: confirm.dir })}
+      </p>
+      {confirm.left > 0 && (
+        <label className="mt-3 flex items-center gap-2 text-xs text-muted">
+          <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} />
+          {t("files.clash.all", { count: confirm.left })}
+        </label>
+      )}
+      <div className="mt-4 flex flex-wrap justify-end gap-2">
+        <button onClick={() => answer("cancel")} className="rounded px-3 py-1.5 text-xs text-muted hover:bg-surface-hover">
+          {t("files.cancel")}
+        </button>
+        <button onClick={() => answer("replace")} className="rounded px-3 py-1.5 text-xs text-coral hover:bg-coral/10">
+          {t("files.clash.replace")}
+        </button>
+        <button onClick={() => answer("keepBoth")} className="rounded px-3 py-1.5 text-xs text-text hover:bg-surface-hover">
+          {t("files.clash.keepBoth")}
+        </button>
+        <button autoFocus onClick={() => answer("skip")} className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-on-accent">
+          {t("files.clash.skip")}
+        </button>
+      </div>
+    </div>
   );
 }

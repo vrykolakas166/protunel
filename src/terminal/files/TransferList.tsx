@@ -2,9 +2,9 @@
 
 import { useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { filesCancelTransfer, filesCopyAcross, filesReveal, filesUpload } from "../../api";
+import { filesCancelTransfer, filesCopyAcross, filesReveal, filesRetry, filesUpload } from "../../api";
 import { formatBytes } from "../../format";
-import type { FileTransfer, Tunnel } from "../../types";
+import type { Conflict, FileTransfer, Tunnel } from "../../types";
 import { isActive } from "./useTransfers";
 import { parentPath } from "./paths";
 import { nextSpeed, type SpeedSample } from "./dropLogic";
@@ -84,7 +84,17 @@ function TransferRow({ transfer: x, host, destHost }: { transfer: FileTransfer; 
   const skippedLinks = x.state === "done" ? /^skipped-links:(\d+)$/.exec(x.error ?? "") : null;
   if (skippedLinks) stateText.done = t("files.queue.skippedLinks", { count: Number(skippedLinks[1]) });
   const code = x.state === "failed" ? knownErrorCode(x.error) : null;
-  const failure = code ? t(`files.err.${code}`, { where }) : x.error;
+  const partial = x.state === "failed" && x.error === "partial";
+  const failure = partial
+    ? t("files.queue.partial", { done: x.filesDone, failed: x.filesFailed })
+    : code
+      ? t(`files.err.${code}`, { where })
+      : x.error;
+  /** The skipped name again, now replacing it or under a free name. */
+  const again = (mode: Conflict) => {
+    if (x.direction === "upload") void filesUpload(x.tunnelId, [x.localPath], parentPath(x.remotePath), mode).catch(() => {});
+    else if (x.destTunnelId) void filesCopyAcross(x.tunnelId, [x.remotePath], x.destTunnelId, x.localPath, mode).catch(() => {});
+  };
   const tone =
     x.state === "failed"
       ? "text-coral"
@@ -108,20 +118,23 @@ function TransferRow({ transfer: x, host, destHost }: { transfer: FileTransfer; 
             {t("files.queue.cancel")}
           </button>
         )}
-        {x.state === "skipped" && x.direction === "upload" && (
-          <button
-            onClick={() => void filesUpload(x.tunnelId, [x.localPath], parentPath(x.remotePath), true)}
-            className="shrink-0 rounded px-1.5 text-[11px] text-amber hover:bg-amber/10"
-          >
-            {t("files.queue.overwrite")}
-          </button>
+        {x.state === "skipped" && (x.direction === "upload" || (x.direction === "copy" && x.destTunnelId)) && (
+          <>
+            <button onClick={() => again("replace")} className="shrink-0 rounded px-1.5 text-[11px] text-amber hover:bg-amber/10">
+              {t("files.clash.replace")}
+            </button>
+            <button onClick={() => again("keepBoth")} className="shrink-0 rounded px-1.5 text-[11px] text-accent hover:bg-accent/10">
+              {t("files.clash.keepBoth")}
+            </button>
+          </>
         )}
-        {x.state === "skipped" && x.direction === "copy" && x.destTunnelId && (
+        {(x.state === "failed" || x.state === "cancelled") && x.direction !== "dragout" && (
           <button
-            onClick={() => void filesCopyAcross(x.tunnelId, [x.remotePath], x.destTunnelId!, x.localPath, true).catch(() => {})}
-            className="shrink-0 rounded px-1.5 text-[11px] text-amber hover:bg-amber/10"
+            onClick={() => void filesRetry(x.id).catch(() => {})}
+            title={t("files.queue.retryHint")}
+            className="shrink-0 rounded px-1.5 text-[11px] text-accent hover:bg-accent/10"
           >
-            {t("files.queue.overwrite")}
+            {t("files.queue.retry")}
           </button>
         )}
         {x.state === "done" && x.direction === "download" && !x.openWhenDone && (
@@ -144,6 +157,16 @@ function TransferRow({ transfer: x, host, destHost }: { transfer: FileTransfer; 
         {route && <span className="shrink-0">{route}</span>}
         <span className={`shrink-0 ${tone}`}>{failure && x.state === "failed" ? failure : stateText[x.state]}</span>
       </div>
+      {partial && x.failures.length > 0 && (
+        <ul className="ml-5 mt-0.5 space-y-px text-[10px] text-coral" title={x.failures.join("\n")}>
+          {x.failures.slice(0, 3).map((f) => (
+            <li key={f} className="truncate font-mono">
+              {f}
+            </li>
+          ))}
+          {x.filesFailed > 3 && <li className="text-muted">{t("files.queue.moreFailed", { count: x.filesFailed - 3 })}</li>}
+        </ul>
+      )}
       {x.state === "running" && (
         <div className="ml-5 mt-1 h-1 overflow-hidden rounded bg-border">
           <div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${pct}%` }} />

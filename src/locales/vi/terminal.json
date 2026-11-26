@@ -323,7 +323,6 @@
       "failed": "Lỗi",
       "cancelled": "Đã hủy",
       "cancel": "Hủy",
-      "overwrite": "Ghi đè",
       "reveal": "Mở thư mục",
       "copied": "Đã sao chép",
       "explorer": "Explorer",
@@ -333,7 +332,12 @@
       "routeRelay": "qua máy này",
       "routeRelaySpeed": "qua máy này · {{speed}}/s",
       "skippedLinks_one": "Đã sao chép · bỏ qua {{count}} symlink",
-      "skippedLinks_other": "Đã sao chép · bỏ qua {{count}} symlink"
+      "skippedLinks_other": "Đã sao chép · bỏ qua {{count}} symlink",
+      "retry": "Thử lại",
+      "retryHint": "Chạy lại; các tệp đã chép xong được giữ nguyên",
+      "partial": "Xong {{done}}, lỗi {{failed}}",
+      "moreFailed_one": "…và {{count}} tệp nữa",
+      "moreFailed_other": "…và {{count}} tệp nữa"
     },
     "err": {
       "not-connected": "{{where}} chưa kết nối: hãy kết nối lại shell trước.",
@@ -370,7 +374,25 @@
       "typed": "Đã gõ. Nhấn Enter trong shell để chạy."
     },
     "stale": "Host này giờ trỏ tới {{now}}. Popup vẫn đang hiện {{was}}.",
-    "staleReload": "Tải lại trên {{now}}"
+    "staleReload": "Tải lại trên {{now}}",
+    "back": "Quay lại",
+    "forward": "Tiến tới",
+    "folders": {
+      "title": "Bookmark và thư mục gần đây",
+      "add": "Bookmark thư mục này",
+      "remove": "Bỏ bookmark này",
+      "bookmarks": "Bookmark",
+      "recent": "Gần đây trên máy chủ này"
+    },
+    "clash": {
+      "title": "Tên đã có",
+      "message": "“{{name}}” đã có trong {{where}}:{{dir}}.",
+      "all_one": "Làm tương tự cho {{count}} tên trùng còn lại",
+      "all_other": "Làm tương tự cho {{count}} tên trùng còn lại",
+      "skip": "Bỏ qua",
+      "replace": "Thay",
+      "keepBoth": "Giữ cả hai"
+    }
   },
   "kbFiles": "tệp của shell",
   "sidebarResize": "Kéo để đổi cỡ · nhấp đúp để về mặc định",

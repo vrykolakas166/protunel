@@ -27,8 +27,9 @@ import {
   filesOpenLocal,
   filesPickUpload,
   filesRename,
+  setTunnelBookmarks,
 } from "../../api";
-import { openMenu } from "../../contextMenu";
+import { openMenu, type MenuEntry } from "../../contextMenu";
 import type { FileEntry, FileTransfer, Tunnel } from "../../types";
 import { dropLabelKey } from "./dropLogic";
 import { FileDetails } from "./FileDetails";
@@ -41,6 +42,7 @@ import { PanelFooter, RelayHintBar } from "./PanelFooter";
 import { PanelHeader } from "./PanelHeader";
 import { PanelToolbar } from "./PanelToolbar";
 import { applySelection } from "./selection";
+import { recentFolders, toggleBookmark } from "./history";
 import {
   COLUMNS_MIN,
   DETAILS_MIN,
@@ -56,7 +58,7 @@ import {
   type Confirm,
   type NameBarState,
 } from "./panelStore";
-import { canPasteClip, knownErrorCode, pathsIn } from "./panelLogic";
+import { canPasteClip, knownErrorCode, pathsIn, type ClashAnswer } from "./panelLogic";
 import { handleListKey } from "./panelKeys";
 import { backgroundMenuEntries, rowMenuEntries } from "./panelMenus";
 import { baseName, isDirLike, joinPath, parentPath, resolvePath, sortEntries, validName, type SortKey } from "./paths";
@@ -210,7 +212,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   // ---- loading ----------------------------------------------------------
 
-  const { home, path, entries, loading, error, load, refreshCurrent, retry, restart } = useFileListing({
+  const { home, path, entries, loading, error, load, refreshCurrent, retry, restart, go, canGo } = useFileListing({
     tunnelId,
     errorText,
     onMemory,
@@ -327,8 +329,11 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   const upload = () => {
     if (!path) return;
-    void filesPickUpload(tunnelId, path)
-      .then((ids) => ids.length > 0 && setQueueOpen(true))
+    const dir = path;
+    void filesPickUpload()
+      .then((paths) => {
+        if (paths.length > 0) return uploadInto(paths, dir);
+      })
       .catch((e) => setNotice(errorText(e)));
   };
 
@@ -342,11 +347,29 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   // Cut stays on one server; a copy can be pasted on any other server.
   const canPaste = canPasteClip(clipboard, tunnelId);
 
-  const { dropDir, relayHint, setRelayHint, preparing, paste, hintShellAlive, typeRelayHint, dropFiles } = usePanelDrops({
+  const askClash = (name: string, dir: string, left: number) =>
+    new Promise<ClashAnswer>((resolve) =>
+      setConfirm((prev) => {
+        if (prev?.kind === "clash") prev.resolve({ choice: "cancel", all: false });
+        return {
+          kind: "clash",
+          name,
+          dir,
+          left,
+          resolve: (answer) => {
+            setConfirm(null);
+            resolve(answer);
+          },
+        };
+      }),
+    );
+
+  const { dropDir, relayHint, setRelayHint, preparing, paste, hintShellAlive, typeRelayHint, dropFiles, uploadInto } = usePanelDrops({
     paneId,
     tunnelId,
     stale,
     changed,
+    askClash,
     refreshCurrent,
     path,
     entries,
@@ -423,6 +446,33 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   };
 
   const focusList = () => requestAnimationFrame(() => listRef.current?.focus());
+
+  /** Bookmarks (saved with the host) and the host's recent folders. */
+  const foldersMenu = (e: ReactMouseEvent) => {
+    if (!path) return;
+    const marks = tunnel.bookmarks ?? [];
+    const marked = marks.includes(path);
+    const recent = recentFolders(tunnelId).filter((p) => p !== path && !marks.includes(p));
+    const goTo = (dir: string) => () => {
+      void load(dir);
+      focusList();
+    };
+    openMenu(e, [
+      {
+        label: marked ? t("files.folders.remove") : t("files.folders.add"),
+        action: () =>
+          void setTunnelBookmarks(tunnelId, toggleBookmark(marks, path)).catch((err) => setNotice(errorText(err))),
+      },
+      ...(marks.length > 0
+        ? (["separator", { label: t("files.folders.bookmarks"), action: () => {}, enabled: false }] as MenuEntry[])
+        : []),
+      ...marks.map((dir) => ({ label: dir, action: goTo(dir), enabled: dir !== path })),
+      ...(recent.length > 0
+        ? (["separator", { label: t("files.folders.recent"), action: () => {}, enabled: false }] as MenuEntry[])
+        : []),
+      ...recent.map((dir) => ({ label: dir, action: goTo(dir) })),
+    ]);
+  };
 
   // ---- closing ------------------------------------------------------------
 
@@ -562,6 +612,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
       selectAt,
       open,
       goUp,
+      go,
       refresh,
       askDelete: () => askDelete(),
       paste,
@@ -578,6 +629,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     e.preventDefault();
     if (confirm) {
       if (confirm.kind === "dirty") confirm.resolve("cancel");
+      else if (confirm.kind === "clash") confirm.resolve({ choice: "cancel", all: false });
       else setConfirm(null);
       focusList();
     } else if (nameBar) {
@@ -707,6 +759,9 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
               canDownload={!!current || selected.size > 0}
               load={load}
               goUp={goUp}
+              go={go}
+              canGo={canGo}
+              onFolders={foldersMenu}
               goShellDir={goShellDir}
               refresh={refresh}
               upload={upload}

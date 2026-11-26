@@ -201,6 +201,28 @@ pub fn set_tunnels_group(
     Ok(())
 }
 
+/// A host's bookmarked folders (file panel). Saved with the host, so config
+/// export carries them; never restarts a tunnel.
+#[tauri::command]
+pub fn set_tunnel_bookmarks(
+    app: AppHandle,
+    state: State<AppState>,
+    id: Uuid,
+    bookmarks: Vec<String>,
+) -> Result<(), String> {
+    let mut clean: Vec<String> = Vec::new();
+    for b in bookmarks {
+        let b = b.trim().to_string();
+        if !b.is_empty() && !b.contains('\0') && !clean.contains(&b) {
+            clean.push(b);
+        }
+    }
+    clean.truncate(100);
+    state.db.set_bookmarks(id, &clean).map_err(|e| e.to_string())?;
+    tunnels_changed(&app);
+    Ok(())
+}
+
 /// Saves the display order of tunnels (drag-and-drop in either window).
 #[tauri::command]
 pub fn reorder_tunnels(app: AppHandle, state: State<AppState>, ids: Vec<Uuid>) -> Result<(), String> {

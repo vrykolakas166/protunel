@@ -118,7 +118,7 @@ struct CopyBatch {
     dest_session: Arc<Handle>,
     tunnel: Tunnel,
     dest_dir: String,
-    overwrite: bool,
+    conflict: Conflict,
     pin: Option<(String, Arc<ProbeResult>)>,
 }
 
@@ -129,7 +129,9 @@ pub async fn copy_across(
     sources: Vec<String>,
     to: Uuid,
     dest_dir: String,
-    overwrite: bool,
+    conflict: Conflict,
+    // The name on B, for a single source (a retry of a "keep both" copy).
+    target_name: Option<String>,
 ) -> Result<CopyAcross, String> {
     if from == to {
         return Err("same-tunnel".to_string());
@@ -197,13 +199,17 @@ pub async fn copy_across(
         dest_session,
         tunnel,
         dest_dir,
-        overwrite,
+        conflict,
         pin,
     });
     batch.ensure_live(state)?;
+    let single = jobs.len() == 1;
     let transfer_ids = jobs
         .into_iter()
-        .map(|(source, route)| batch.clone().queue(app, source, route))
+        .map(|(source, route)| {
+            let name = target_name.clone().filter(|n| single && valid_name(n));
+            batch.clone().queue(app, source, name, route)
+        })
         .collect();
     Ok(CopyAcross {
         route,
@@ -236,8 +242,8 @@ impl CopyBatch {
         Ok(())
     }
 
-    fn queue(self: Arc<Self>, app: &AppHandle, source: String, route: Route) -> Uuid {
-        let (_, name) = split(&source);
+    fn queue(self: Arc<Self>, app: &AppHandle, source: String, target_name: Option<String>, route: Route) -> Uuid {
+        let name = target_name.clone().unwrap_or_else(|| split(&source).1.to_string());
         let transfer = Transfer {
             id: Uuid::new_v4(),
             tunnel_id: self.from,
@@ -252,10 +258,13 @@ impl CopyBatch {
             state: TransferState::Queued,
             error: None,
             open_when_done: false,
+            files_done: 0,
+            files_failed: 0,
+            failures: Vec::new(),
         };
         spawn(app, transfer, move |ctx| {
             Box::pin(async move {
-                match self.run(&ctx, &source, route).await {
+                match self.run(&ctx, &source, target_name.as_deref(), route).await {
                     Err(e) if e == "exists" => {
                         ctx.skipped.store(true, Ordering::Relaxed);
                         Ok(())
@@ -266,10 +275,11 @@ impl CopyBatch {
         })
     }
 
-    async fn run(&self, ctx: &Ctx, source: &str, mut route: Route) -> Result<(), String> {
+    async fn run(&self, ctx: &Ctx, source: &str, target_name: Option<&str>, mut route: Route) -> Result<(), String> {
         let source = source.trim_end_matches('/');
-        let (_, name) = split(source);
-        if !valid_name(name) || source.contains('\0') || self.dest_dir.contains('\0') {
+        let source_name = split(source).1;
+        let name = target_name.unwrap_or(source_name);
+        if !valid_name(name) || !valid_name(source_name) || source.contains('\0') || self.dest_dir.contains('\0') {
             return Err("invalid-path".to_string());
         }
         self.ensure_live(&ctx.app.state::<AppState>())?;
@@ -279,10 +289,26 @@ impl CopyBatch {
             .canonicalize(self.dest_dir.as_str())
             .await
             .map_err(err)?;
-        let target = join(&dest_dir, name);
-        if !self.overwrite && exists(&dest, &target).await? {
-            return Err("exists".to_string());
-        }
+        let mut target = join(&dest_dir, name);
+        let mode = match (exists(&dest, &target).await?, self.conflict) {
+            (false, _) => Write::New,
+            (true, Conflict::Skip) => return Err("exists".to_string()),
+            (true, Conflict::Replace) => Write::Replace,
+            (true, Conflict::Resume) => Write::Resume,
+            (true, Conflict::KeepBoth) => {
+                target = free_remote(&dest, &dest_dir, name).await?;
+                let transfer = {
+                    let mut transfer = ctx.transfer.lock().unwrap();
+                    transfer.name = split(&target).1.to_string();
+                    transfer.clone()
+                };
+                publish(&ctx.app, &transfer);
+                Write::New
+            }
+        };
+        // rsync writes `dir/<source name>`: a different target name (keep
+        // both, or its retry) goes through a stage and a rename instead.
+        let renamed = split(&target).1 != source_name;
         let a = sftp_for_session(&ctx.app, self.from, &self.source_session).await?;
         if route == Route::Scp && !regular_source(&a, source).await {
             route = Route::Relay;
@@ -293,8 +319,17 @@ impl CopyBatch {
             };
             publish(&ctx.app, &transfer);
         }
+        // A single file already there on a retry: nothing left to copy.
+        if mode == Write::Resume && route == Route::Scp {
+            ctx.file_done();
+            return Ok(());
+        }
+        // rsync merges only under the source's own name.
+        if route == Route::Rsync && renamed && mode != Write::New {
+            route = Route::Relay;
+        }
         if route == Route::Relay {
-            return relay(ctx, &a, &dest, source, &target, self.overwrite).await;
+            return relay(ctx, &a, &dest, source, &target, mode).await;
         }
 
         let (key, probe) = self
@@ -304,14 +339,15 @@ impl CopyBatch {
         ctx.check()?;
         let known_hosts = write_known_host(&a, key).await?;
         let result = match route {
-            // Overwrite merges into what is there, as an upload does.
-            Route::Rsync if self.overwrite => {
+            // Replace merges into what is there (files replaced), as an
+            // upload does; Resume merges keeping every file already there.
+            Route::Rsync if mode != Write::New => {
                 let marker = completion_marker();
                 let command = rsync_command(
                     &self.tunnel,
                     source,
                     &dest_dir,
-                    true,
+                    mode == Write::Replace,
                     &marker,
                     &known_hosts,
                 );
@@ -321,13 +357,13 @@ impl CopyBatch {
             // with a no-replace rename: two copies of one name never mix,
             // and a cancelled one leaves nothing under the final name.
             Route::Rsync => {
-                self.staged(ctx, &dest, source, &target, true, |stage, marker| {
+                self.staged(ctx, &dest, source, &target, false, true, |stage, marker| {
                     rsync_command(&self.tunnel, source, stage, false, marker, &known_hosts)
                 })
                 .await
             }
             Route::Scp => {
-                self.staged(ctx, &dest, source, &target, false, |stage, marker| {
+                self.staged(ctx, &dest, source, &target, mode == Write::Replace, false, |stage, marker| {
                     scp_command(&self.tunnel, source, stage, marker, &known_hosts)
                 })
                 .await
@@ -352,6 +388,7 @@ impl CopyBatch {
         dest: &SftpSession,
         source: &str,
         target: &str,
+        overwrite: bool,
         progress: bool,
         command: impl FnOnce(&str, &str) -> String,
     ) -> Result<(), DirectError> {
@@ -377,7 +414,7 @@ impl CopyBatch {
             Err(e) => Err(e),
             Ok(()) => {
                 let staged = join(&stage, split(source).1);
-                commit_part(ctx, dest, &staged, target, self.overwrite)
+                commit_part(ctx, dest, &staged, target, overwrite)
                     .await
                     .map_err(DirectError::from)
             }
@@ -807,7 +844,7 @@ async fn relay(
     b: &SftpSession,
     source: &str,
     target: &str,
-    overwrite: bool,
+    mode: Write,
 ) -> Result<(), String> {
     let attrs = a
         .symlink_metadata(source)
@@ -821,41 +858,76 @@ async fn relay(
     ctx.set_total(total);
 
     // New folders stay writable until their children are in; their modes
-    // are applied last, deepest first.
+    // are applied last, deepest first. A subfolder that can't be made is
+    // noted and everything under it left out.
     let mut modes = Vec::new();
+    let mut broken: Vec<String> = Vec::new();
+    let under_broken = |path: &str, broken: &[String]| broken.iter().any(|b| path.starts_with(&format!("{b}/")));
     let mut root = true;
     for step in plan {
         ctx.check()?;
         match step {
-            Planned::Dir(target, mode) => {
-                match b.symlink_metadata(target.as_str()).await {
-                    Ok(attrs) if overwrite && attrs.is_dir() && !attrs.is_symlink() => {}
-                    Ok(_) if !overwrite && root => return Err("exists".to_string()),
-                    Ok(_) => return Err(format!("{target}: not a folder")),
-                    Err(e) if is_missing(&e) => {
-                        if let Err(e) = b.create_dir(target.as_str()).await {
-                            if !overwrite && root && exists(b, &target).await? {
-                                return Err("exists".to_string());
+            Planned::Dir(target, mode_bits) => {
+                if under_broken(&target, &broken) {
+                    continue;
+                }
+                let made: Result<(), String> = async {
+                    match b.symlink_metadata(target.as_str()).await {
+                        Ok(attrs) if (mode != Write::New || !root) && attrs.is_dir() && !attrs.is_symlink() => Ok(()),
+                        Ok(_) if mode == Write::New && root => Err("exists".to_string()),
+                        Ok(_) => Err(format!("{target}: not a folder")),
+                        Err(e) if is_missing(&e) => {
+                            if let Err(e) = b.create_dir(target.as_str()).await {
+                                if mode == Write::New && root && exists(b, &target).await? {
+                                    return Err("exists".to_string());
+                                }
+                                return Err(at(&target, e));
                             }
-                            return Err(at(&target, e));
+                            if let Some(bits) = mode_bits {
+                                modes.push((target.clone(), bits));
+                            }
+                            Ok(())
                         }
-                        if let Some(mode) = mode {
-                            modes.push((target.clone(), mode));
-                        }
+                        Err(e) => Err(at(&target, e)),
                     }
-                    Err(e) => return Err(at(&target, e)),
+                }
+                .await;
+                if root {
+                    made?;
+                } else if made.is_err() {
+                    ctx.entry(&target, made)?;
+                    broken.push(target.clone());
                 }
                 root = false;
             }
             Planned::File(source, target) => {
+                if under_broken(&target, &broken) {
+                    continue;
+                }
                 // Recheck: the file may have changed since it was listed.
                 let current = match a.symlink_metadata(source.as_str()).await {
                     Ok(current) if current.is_regular() => current,
                     Ok(_) => continue,
                     Err(e) if is_missing(&e) => continue,
-                    Err(e) => return Err(at(&source, e)),
+                    Err(e) => {
+                        ctx.entry(&source, Err(at(&source, e)))?;
+                        continue;
+                    }
                 };
-                relay_file(ctx, a, b, &source, &target, &current, overwrite).await?;
+                if mode != Write::Replace && (!root || mode == Write::Resume) && exists(b, &target).await? {
+                    ctx.file_done(); // a retry: already there
+                    continue;
+                }
+                let r = relay_file(ctx, a, b, &source, &target, &current, mode == Write::Replace).await;
+                if r.is_ok() {
+                    ctx.file_done();
+                }
+                if root {
+                    // A single file: its failure is the transfer's.
+                    r?;
+                } else {
+                    ctx.entry(&target, r)?;
+                }
             }
         }
     }

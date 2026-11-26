@@ -13,8 +13,8 @@ use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
 use crate::ssh::sftp::{
-    self, Content, Count, Direction, DownloadJob, Expect, Listing, PasteOutcome, Properties, Saved, Transfer,
-    UploadJob,
+    self, Conflict, Content, Count, Direction, DownloadJob, Expect, Listing, PasteOutcome, Properties, Saved,
+    Transfer, TransferState, UploadJob,
 };
 pub use crate::ssh::sftp::CopyAcross;
 use crate::AppState;
@@ -144,9 +144,86 @@ pub async fn files_copy_across(
     sources: Vec<String>,
     to_tunnel_id: Uuid,
     dest_dir: String,
-    overwrite: bool,
+    conflict: Conflict,
+    target_name: Option<String>,
 ) -> Result<CopyAcross, String> {
-    sftp::copy_across(&app, &state, from_tunnel_id, sources, to_tunnel_id, dest_dir, overwrite).await
+    sftp::copy_across(&app, &state, from_tunnel_id, sources, to_tunnel_id, dest_dir, conflict, target_name).await
+}
+
+/// Which of `names` already exist in `dir`: asked before an upload or a
+/// copy, so the user picks Skip / Replace / Keep both per clash.
+#[tauri::command]
+pub async fn files_existing(app: AppHandle, tunnel_id: Uuid, dir: String, names: Vec<String>) -> Result<Vec<String>, String> {
+    let started = Instant::now();
+    let r = async {
+        let s = sftp::sftp_for(&app, tunnel_id).await?;
+        let mut taken = Vec::new();
+        for name in names {
+            if sftp::exists(&s, &sftp::join(&dir, &name)).await? {
+                taken.push(name);
+            }
+        }
+        Ok(taken)
+    }
+    .await;
+    settle(&app, tunnel_id, started, r).await
+}
+
+/// Runs a failed or cancelled transfer again, picking up where it stopped:
+/// files already at their place are kept (a file only gets its final name
+/// once complete). The old row goes; the new one carries on.
+#[tauri::command]
+pub async fn files_retry(app: AppHandle, state: State<'_, AppState>, id: Uuid) -> Result<Vec<Uuid>, String> {
+    let old = sftp::transfers(&app)
+        .into_iter()
+        .find(|x| x.id == id)
+        .ok_or("no-such-transfer")?;
+    if !matches!(old.state, TransferState::Failed | TransferState::Cancelled) {
+        return Err("not-retryable".into());
+    }
+    let ids = match old.direction {
+        Direction::Upload => {
+            let (dir, name) = sftp::split(&old.remote_path);
+            vec![sftp::start_upload(
+                &app,
+                old.tunnel_id,
+                UploadJob {
+                    local: PathBuf::from(&old.local_path),
+                    remote_dir: dir.to_string(),
+                    name: Some(name.to_string()),
+                    conflict: Conflict::Resume,
+                },
+            )]
+        }
+        Direction::Download => {
+            let local = PathBuf::from(&old.local_path);
+            let into = local.is_dir().then(|| local.clone());
+            let local_dir = local.parent().map(PathBuf::from).unwrap_or(local);
+            vec![sftp::start_download(
+                &app,
+                old.tunnel_id,
+                DownloadJob { remote: old.remote_path.clone(), local_dir, open_when_done: old.open_when_done, into },
+            )]
+        }
+        Direction::Copy => {
+            let to = old.dest_tunnel_id.ok_or("no-such-transfer")?;
+            sftp::copy_across(
+                &app,
+                &state,
+                old.tunnel_id,
+                vec![old.remote_path.clone()],
+                to,
+                old.local_path.clone(),
+                Conflict::Resume,
+                Some(old.name.clone()),
+            )
+            .await?
+            .transfer_ids
+        }
+        Direction::DragOut => return Err("not-retryable".into()),
+    };
+    sftp::remove_transfer(&app, id);
+    Ok(ids)
 }
 
 #[tauri::command]
@@ -206,7 +283,7 @@ pub fn files_upload(
     tunnel_id: Uuid,
     local_paths: Vec<String>,
     remote_dir: String,
-    overwrite: bool,
+    conflict: Conflict,
 ) -> Vec<Uuid> {
     local_paths
         .into_iter()
@@ -214,20 +291,17 @@ pub fn files_upload(
             sftp::start_upload(
                 &app,
                 tunnel_id,
-                UploadJob { local: PathBuf::from(local), remote_dir: remote_dir.clone(), overwrite },
+                UploadJob { local: PathBuf::from(local), remote_dir: remote_dir.clone(), name: None, conflict },
             )
         })
         .collect()
 }
 
-/// The upload button: the OS file picker (Rust side), then `files_upload`.
+/// The upload button: the OS file picker (Rust side). Returns the picked
+/// paths (only paths reach the webview, never contents); the panel resolves
+/// name clashes and then calls `files_upload`.
 #[tauri::command]
-pub async fn files_pick_upload(
-    app: AppHandle,
-    window: WebviewWindow,
-    tunnel_id: Uuid,
-    remote_dir: String,
-) -> Result<Vec<Uuid>, String> {
+pub async fn files_pick_upload(app: AppHandle, window: WebviewWindow) -> Result<Vec<String>, String> {
     let (tx, rx) = tokio::sync::oneshot::channel();
     app.dialog().file().set_parent(&window).pick_files(move |paths| {
         let _ = tx.send(paths);
@@ -235,12 +309,11 @@ pub async fn files_pick_upload(
     let Some(paths) = rx.await.map_err(|_| "file dialog closed".to_string())? else {
         return Ok(Vec::new());
     };
-    let locals = paths
+    Ok(paths
         .into_iter()
         .filter_map(|p| p.into_path().ok())
         .map(|p| p.to_string_lossy().into_owned())
-        .collect();
-    Ok(files_upload(app, tunnel_id, locals, remote_dir, false))
+        .collect())
 }
 
 /// Downloads into the user's Downloads folder; local names never clash.
@@ -257,7 +330,7 @@ pub fn files_download(app: AppHandle, tunnel_id: Uuid, remote_paths: Vec<String>
             sftp::start_download(
                 &app,
                 tunnel_id,
-                DownloadJob { remote, local_dir: dir.clone(), open_when_done: false },
+                DownloadJob { remote, local_dir: dir.clone(), open_when_done: false, into: None },
             )
         })
         .collect())
@@ -303,7 +376,7 @@ pub async fn files_pick_download(
             sftp::start_download(
                 &app,
                 tunnel_id,
-                DownloadJob { remote, local_dir: dir.clone(), open_when_done: false },
+                DownloadJob { remote, local_dir: dir.clone(), open_when_done: false, into: None },
             )
         })
         .collect())
@@ -342,7 +415,7 @@ pub fn files_open_local(app: AppHandle, tunnel_id: Uuid, remote_path: String) ->
     Ok(sftp::start_download(
         &app,
         tunnel_id,
-        DownloadJob { remote: remote_path, local_dir: dir, open_when_done: true },
+        DownloadJob { remote: remote_path, local_dir: dir, open_when_done: true, into: None },
     ))
 }
 

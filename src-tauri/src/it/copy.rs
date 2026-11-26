@@ -1,6 +1,6 @@
 use super::*;
 use crate::commands::files_copy_across;
-use files::Route;
+use files::{Conflict, Route};
 
 struct Pair {
     source: Tunnel,
@@ -29,6 +29,11 @@ impl Pair {
     }
 
     async fn queue(&self, case: &Case, name: &str, route: Route, overwrite: bool) -> Uuid {
+        let conflict = if overwrite { Conflict::Replace } else { Conflict::Skip };
+        self.queue_with(case, name, route, conflict).await
+    }
+
+    async fn queue_with(&self, case: &Case, name: &str, route: Route, conflict: Conflict) -> Uuid {
         let copy = files_copy_across(
             case.app.clone(),
             case.app.state(),
@@ -36,7 +41,8 @@ impl Pair {
             vec![format!("{}/{name}", self.dir)],
             self.dest.id,
             self.dir.clone(),
-            overwrite,
+            conflict,
+            None,
         )
         .await
         .unwrap();
@@ -72,6 +78,22 @@ async fn it_copy_rsync_direct() {
         pair.assert_transfer(case, id, Route::Rsync, TransferState::Done)
             .await;
         assert_eq!(pair.read(case, "sample.txt").await, b"via rsync");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_copy_rsync_keep_both_lands_under_a_free_name() {
+    run(async |case| {
+        let pair = Pair::connect(case, "srv-b").await;
+        case.exec(&pair.source, &format!("mkdir {0}/box && printf mine > {0}/box/f", pair.dir)).await;
+        case.exec(&pair.dest, &format!("mkdir {0}/box && printf theirs > {0}/box/f", pair.dir)).await;
+        let id = pair.queue_with(case, "box", Route::Rsync, Conflict::KeepBoth).await;
+        let done = case.finished(id, TransferState::Done).await;
+        assert_eq!(done.name, "box (1)");
+        assert_eq!(pair.read(case, "box/f").await, b"theirs");
+        assert_eq!(pair.read(case, "box (1)/f").await, b"mine");
     })
     .await;
 }

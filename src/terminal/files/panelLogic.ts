@@ -1,6 +1,6 @@
 // Pure decisions of the file panel (FilePanel), kept apart so they can be tested.
 
-import type { FileCount } from "../../types";
+import type { Conflict, FileCount } from "../../types";
 import { joinPath, type SortKey } from "./paths";
 
 /** Error codes the backend sends that have a translation (`files.err.*`). */
@@ -60,4 +60,39 @@ export function deleteNeedsTyping(count: FileCount | null, threshold: number): b
 /** Whether the delete may go ahead. */
 export function deleteConfirmed(count: FileCount | null, typed: string, word: string, threshold: number): boolean {
   return count !== null && (!deleteNeedsTyping(count, threshold) || typed.trim() === word);
+}
+
+/** The user's answer for one name clash: a mode, and whether it is for all the rest. */
+export type ClashAnswer = { choice: Conflict | "cancel"; all: boolean };
+
+/**
+ * Picks what each name does on arrival: free names just go ("skip" only
+ * matters if one is taken meanwhile), taken ones are asked about one by one
+ * until an answer is "for all". Returns the names grouped by mode, or null
+ * when the user cancelled.
+ */
+export async function chooseConflicts(
+  names: string[],
+  taken: Set<string>,
+  ask: (name: string, left: number) => Promise<ClashAnswer>,
+): Promise<Map<Conflict, string[]> | null> {
+  const groups = new Map<Conflict, string[]>();
+  const put = (mode: Conflict, name: string) => groups.set(mode, [...(groups.get(mode) ?? []), name]);
+  const clashing = names.filter((n) => taken.has(n));
+  let forAll: Conflict | null = null;
+  for (const name of names) {
+    if (!taken.has(name)) {
+      put("skip", name);
+      continue;
+    }
+    if (forAll) {
+      put(forAll, name);
+      continue;
+    }
+    const answer = await ask(name, clashing.length - clashing.indexOf(name) - 1);
+    if (answer.choice === "cancel") return null;
+    if (answer.all) forAll = answer.choice;
+    put(answer.choice, name);
+  }
+  return groups;
 }

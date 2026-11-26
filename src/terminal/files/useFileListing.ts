@@ -3,6 +3,7 @@ import { filesHome, filesList } from "../../api";
 import type { FileEntry } from "../../types";
 import { isCurrentRequest } from "./panelLogic";
 import { resolvePath } from "./paths";
+import { EMPTY_HISTORY, moveTo, recentFolders, rememberFolder, step, visit, type History } from "./history";
 import type { PaneFiles } from "./FilePanel";
 
 /** What a finished listing resets in the view (all stable setters/refs). */
@@ -35,6 +36,8 @@ export interface LoadOptions {
    * undoes one, and it keeps the filter and scroll position.
    */
   background?: boolean;
+  /** Back/Forward: the history position this listing lands on. */
+  historyIndex?: number;
 }
 
 /**
@@ -54,6 +57,13 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
   const homeKnown = useRef(false);
   const pathRef = useRef<string | null>(null);
   pathRef.current = path;
+  const [history, setHistory] = useState<History>(EMPTY_HISTORY);
+
+  /** A folder now on screen by navigation: history and the host's recent list. */
+  const arrived = (listed: string, historyIndex?: number) => {
+    setHistory((h) => (historyIndex === undefined ? visit(h, listed) : moveTo(h, historyIndex, listed)));
+    rememberFolder(tunnelId, listed);
+  };
 
   /** Lists `dir`; the newest request wins (a slow listing never lands late). */
   const load = useCallback(
@@ -71,6 +81,7 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
         const listing = await filesList(tunnelId, dir);
         if (!isCurrentRequest(seq, loadSeq.current)) return;
         const samePlace = background && listing.path === pathRef.current;
+        if (!background) arrived(listing.path, keep?.historyIndex);
         setPath(listing.path);
         setEntries(listing.entries);
         setError(null);
@@ -137,11 +148,12 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
       if (!alive()) return;
       homeKnown.current = true;
       setHome(homeDir);
-      const guess = pathRef.current ?? memory?.path ?? shellDir();
+      const guess = pathRef.current ?? memory?.path ?? shellDir() ?? recentFolders(tunnelId)[0] ?? null;
       const start = guess ? resolvePath(guess, homeDir, homeDir) : homeDir;
       try {
         const listing = await filesList(tunnelId, start);
         if (!alive()) return;
+        arrived(listing.path);
         setPath(listing.path);
         setEntries(listing.entries);
         onMemory({ path: listing.path });
@@ -174,6 +186,7 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
   /** Starts over (the tunnel now reaches another server): the first-open lookup again. */
   const restart = useCallback(() => {
     homeKnown.current = false;
+    setHistory(EMPTY_HISTORY);
     init();
   }, [init]);
 
@@ -186,5 +199,15 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
     [init, load],
   );
 
-  return { home, path, entries, loading, error, load, refreshCurrent, retry, restart };
+  /** Back (-1) / Forward (+1) through this panel's folders. */
+  const go = useCallback(
+    (delta: -1 | 1) => {
+      const to = step(history, delta);
+      if (to) void load(to.path, { historyIndex: to.index });
+    },
+    [history, load],
+  );
+  const canGo = { back: !!step(history, -1), forward: !!step(history, 1) };
+
+  return { home, path, entries, loading, error, load, refreshCurrent, retry, restart, go, canGo };
 }

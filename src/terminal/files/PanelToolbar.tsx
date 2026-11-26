@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { MouseEvent as ReactMouseEvent, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { crumbs, resolvePath } from "./paths";
 import { iconButton } from "./PanelHeader";
@@ -17,6 +17,9 @@ export function PanelToolbar({
   canDownload,
   load,
   goUp,
+  go,
+  canGo,
+  onFolders,
   goShellDir,
   refresh,
   upload,
@@ -39,6 +42,10 @@ export function PanelToolbar({
   canDownload: boolean;
   load: (dir: string) => unknown;
   goUp: () => void;
+  go: (delta: -1 | 1) => void;
+  canGo: { back: boolean; forward: boolean };
+  /** Opens the bookmarks / recent folders menu at the button. */
+  onFolders: (e: ReactMouseEvent) => void;
   goShellDir: () => unknown;
   refresh: () => void;
   upload: () => void;
@@ -51,6 +58,16 @@ export function PanelToolbar({
   const { t } = useTranslation("terminal");
   return (
     <div className="flex shrink-0 items-center gap-0.5 border-b border-border px-1.5 py-1">
+      <button onClick={() => go(-1)} disabled={!canGo.back} className={iconButton} title={`${t("files.back")} (Alt+←)`} aria-label={t("files.back")}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M13 8H3M7.5 3.5L3 8l4.5 4.5" />
+        </svg>
+      </button>
+      <button onClick={() => go(1)} disabled={!canGo.forward} className={`${iconButton} hidden @min-[480px]:block`} title={`${t("files.forward")} (Alt+→)`} aria-label={t("files.forward")}>
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 8h10M8.5 3.5L13 8l-4.5 4.5" />
+        </svg>
+      </button>
       <button onClick={goUp} disabled={!path || path === "/"} className={iconButton} title={t("files.up")} aria-label={t("files.up")}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" />
@@ -98,6 +115,11 @@ export function PanelToolbar({
             ))}
         </nav>
       )}
+      <button onClick={onFolders} disabled={!path} className={iconButton} title={t("files.folders.title")} aria-label={t("files.folders.title")} aria-haspopup="menu">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 2.5h8a.5.5 0 0 1 .5.5v10.5L8 10.5l-4.5 3V3a.5.5 0 0 1 .5-.5Z" />
+        </svg>
+      </button>
       <button onClick={() => void goShellDir()} className={iconButton} title={t("files.shellDir")} aria-label={t("files.shellDir")}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
