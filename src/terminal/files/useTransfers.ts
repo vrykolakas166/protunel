@@ -13,6 +13,8 @@ export function useTransfers(): { transfers: FileTransfer[]; clearFinished: (tun
   const [list, setList] = useState<FileTransfer[]>([]);
   useEffect(() => {
     let alive = true;
+    // Rows removed while the snapshot is on its way must not come back with it.
+    const removed = new Set<string>();
     const merge = (t: FileTransfer) =>
       setList((prev) => {
         const i = prev.findIndex((x) => x.id === t.id);
@@ -21,17 +23,26 @@ export function useTransfers(): { transfers: FileTransfer[]; clearFinished: (tun
         next[i] = t;
         return next;
       });
-    const unlisten = listen<FileTransfer>("file-transfer", (e) => merge(e.payload));
-    filesTransfers()
+    const listeners = Promise.all([
+      listen<FileTransfer>("file-transfer", (e) => merge(e.payload)),
+      // A retried row is replaced by its new one.
+      listen<string>("file-transfer-removed", (e) => {
+        removed.add(e.payload);
+        setList((prev) => prev.filter((x) => x.id !== e.payload));
+      }),
+    ]);
+    // Listening first, then the snapshot: nothing falls between the two.
+    void listeners
+      .then(() => filesTransfers())
       .then((seed) => {
         if (!alive) return;
         // Events that arrived meanwhile are newer than the snapshot.
-        setList((prev) => [...seed.filter((s) => !prev.some((p) => p.id === s.id)), ...prev]);
+        setList((prev) => [...seed.filter((s) => !removed.has(s.id) && !prev.some((p) => p.id === s.id)), ...prev]);
       })
       .catch(() => {});
     return () => {
       alive = false;
-      void unlisten.then((f) => f());
+      void listeners.then((fs) => fs.forEach((f) => f()));
     };
   }, []);
   const clearFinished = (tunnelId?: string) => {

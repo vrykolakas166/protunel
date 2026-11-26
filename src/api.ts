@@ -60,10 +60,10 @@ export const deleteTunnel = (id: string) => invoke<void>("delete_tunnel", { id }
 
 /** Saves the display order of tunnels; ids are the full list, top to bottom. */
 export const reorderTunnels = (ids: string[]) => invoke<void>("reorder_tunnels", { ids });
+/** Adds or removes one of a host's bookmarked folders (file panel); never restarts the tunnel. */
+export const editTunnelBookmark = (id: string, path: string, add: boolean) =>
+  invoke<void>("edit_tunnel_bookmark", { id, path, add });
 /** Files hosts under `group`; null or blank ungroups them. */
-/** A host's bookmarked folders (file panel); never restarts the tunnel. */
-export const setTunnelBookmarks = (id: string, bookmarks: string[]) =>
-  invoke<void>("set_tunnel_bookmarks", { id, bookmarks });
 export const setTunnelsGroup = (ids: string[], group: string | null) =>
   invoke<void>("set_tunnels_group", { ids, group });
 
@@ -235,21 +235,36 @@ export const filesRename = (tunnelId: string, from: string, to: string) =>
   invoke<void>("files_rename", { tunnelId, from, to });
 export const filesCount = (tunnelId: string, paths: string[]) => invoke<FileCount>("files_count", { tunnelId, paths });
 export const filesDelete = (tunnelId: string, paths: string[]) => invoke<void>("files_delete", { tunnelId, paths });
-export const filesPaste = (tunnelId: string, sources: string[], destDir: string, cut: boolean) =>
-  invoke<PasteOutcome>("files_paste", { tunnelId, sources, destDir, cut });
+/** `endpoint`: the server the rows were copied or cut on; a host edited since gets nothing moved. */
+export const filesPaste = (tunnelId: string, sources: string[], destDir: string, cut: boolean, endpoint: string | null) =>
+  invoke<PasteOutcome>("files_paste", { tunnelId, sources, destDir, cut, endpoint });
 export const filesCopyAcross = (
   fromTunnelId: string,
   sources: string[],
   toTunnelId: string,
   destDir: string,
   conflict: Conflict,
+  /** The endpoints (`user@host:port`) the source and target panels show: another server refuses. */
+  fromEndpoint: string | null,
+  toEndpoint: string | null,
   targetName: string | null = null,
-) => invoke<CopyAcross>("files_copy_across", { fromTunnelId, sources, toTunnelId, destDir, conflict, targetName });
+) =>
+  invoke<CopyAcross>("files_copy_across", {
+    fromTunnelId,
+    sources,
+    toTunnelId,
+    destDir,
+    conflict,
+    targetName,
+    fromEndpoint,
+    toEndpoint,
+  });
 /** Which of `names` already exist in `dir` (asked before an upload or copy). */
-export const filesExisting = (tunnelId: string, dir: string, names: string[]) =>
-  invoke<string[]>("files_existing", { tunnelId, dir, names });
+export const filesExisting = (tunnelId: string, dir: string, names: string[], endpoint: string | null) =>
+  invoke<string[]>("files_existing", { tunnelId, dir, names, endpoint });
 /** Runs a failed or cancelled transfer again, keeping what already arrived. */
-export const filesRetry = (id: string) => invoke<string[]>("files_retry", { id });
+/** Runs a failed or cancelled row again; with `conflict`, a skipped row as Replace or Keep both. */
+export const filesRetry = (id: string, conflict: Conflict | null = null) => invoke<string[]>("files_retry", { id, conflict });
 export const filesReadText = (tunnelId: string, path: string, tail: boolean) =>
   invoke<FileContent>("files_read_text", { tunnelId, path, tail });
 export const filesReadImage = (tunnelId: string, path: string) =>
@@ -274,18 +289,20 @@ export const filesWriteText = (
     force,
     inPlace,
   });
-export const filesUpload = (tunnelId: string, localPaths: string[], remoteDir: string, conflict: Conflict) =>
-  invoke<string[]>("files_upload", { tunnelId, localPaths, remoteDir, conflict });
+/** `endpoint`: the server (`user@host:port`) the panel shows; a job never runs against another. */
+export const filesUpload = (tunnelId: string, localPaths: string[], remoteDir: string, conflict: Conflict, endpoint: string | null) =>
+  invoke<string[]>("files_upload", { tunnelId, localPaths, remoteDir, conflict, endpoint });
 /** The OS file picker; returns the picked local paths (nothing uploaded yet). */
 export const filesPickUpload = () => invoke<string[]>("files_pick_upload");
-export const filesDownload = (tunnelId: string, remotePaths: string[]) =>
-  invoke<string[]>("files_download", { tunnelId, remotePaths });
+export const filesDownload = (tunnelId: string, remotePaths: string[], endpoint: string | null) =>
+  invoke<string[]>("files_download", { tunnelId, remotePaths, endpoint });
 /** Windows only: an OS drag of remote rows to Explorer (OLE virtual files); elsewhere "unsupported". */
-export const filesDragOut = (tunnelId: string, paths: string[]) => invoke<void>("files_drag_out", { tunnelId, paths });
-export const filesPickDownload = (tunnelId: string, remotePaths: string[]) =>
-  invoke<string[]>("files_pick_download", { tunnelId, remotePaths });
-export const filesOpenLocal = (tunnelId: string, remotePath: string) =>
-  invoke<string>("files_open_local", { tunnelId, remotePath });
+export const filesDragOut = (tunnelId: string, paths: string[], endpoint: string | null) =>
+  invoke<void>("files_drag_out", { tunnelId, paths, endpoint });
+export const filesPickDownload = (tunnelId: string, remotePaths: string[], endpoint: string | null) =>
+  invoke<string[]>("files_pick_download", { tunnelId, remotePaths, endpoint });
+export const filesOpenLocal = (tunnelId: string, remotePath: string, endpoint: string | null) =>
+  invoke<string>("files_open_local", { tunnelId, remotePath, endpoint });
 export const filesTransfers = () => invoke<FileTransfer[]>("files_transfers");
 export const filesCancelTransfer = (id: string) => invoke<void>("files_cancel_transfer", { id });
 /** `tunnelId`: only that server's finished rows (a file panel's Clear). */

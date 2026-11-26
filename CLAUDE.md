@@ -428,19 +428,43 @@ no dropping files on a shell — only on the panel, which names the target.
   an existing name (no placeholder under the final name, so nothing that
   appears there meanwhile is replaced). Uploads and server-to-server copies
   take a `Conflict` (`skip` / `replace` / `keepBoth` / `resume`): before
-  starting, the panel asks `files_existing` which names are taken and asks
-  the user per clash (Skip / Replace / Keep both, "do the same for the rest";
-  `panelLogic.ts` `chooseConflicts`, pure). Keep both picks the first free
-  "name (n).ext" on the server (`free_remote`) and renames the row; Replace
-  merges a folder and replaces its files; the upload picker
-  (`files_pick_upload`) only returns paths. A folder transfer goes on past a
-  file or subfolder that fails (`Ctx::entry`; a cancel or a broken
-  connection, `stops_all`, still stops it) and ends Failed with error
-  `"partial"`, `filesDone`/`filesFailed` and the first 20 `failures`.
-  `files_retry` runs a failed or cancelled row again with `resume` (merge,
-  skip every file already there: a file only gets its final name once
-  complete; a folder download continues in its own folder, `into`) and
-  drops the old row. Overwrite on a server without posix-rename renames the
+  starting, the panel asks `files_existing` which names are taken and shows
+  them all in one list, each on Skip until changed (`ClashConfirm`;
+  `panelLogic.ts` `chooseConflicts`, pure; native radios per name; two
+  items with one name are refused, in Rust too: `"duplicate-names"`). One
+  question per panel at a time (clash, delete, unsaved): an arrival while
+  one is up is refused, never stacked; closing the panel or reloading it on
+  another server answers it "cancel" and bumps a generation, so a check
+  still on its way asks and sends nothing. Keep
+  both picks the first free "name (n).ext" on the server (`free_remote`,
+  held in `Transfers::reserved` until the job ends so parallel jobs never
+  share one) and renames the row; Replace merges a folder and replaces its
+  files; the upload picker (`files_pick_upload`) only returns paths. Every
+  upload/download/copy/paste/drag-out/`files_existing` call carries the
+  panel's endpoint (`bound`; a source endpoint rides on the clipboard and
+  the row drag), so a host edited meanwhile gets `"target-changed"`, never
+  the files; a direct copy also refuses when B's saved record no longer
+  matches the endpoint its live session reached. An upload root that is a
+  link is refused (`"not-copied-link"`). A folder transfer goes on past a file or subfolder that fails
+  (`Ctx::entry`); it stops on a cancel, a bare stop code (`stops_all`: `err`
+  maps a dead channel to `"connection-lost"`, `remote_io` the same for I/O
+  on an open file) or a closed session, and ends Failed with error
+  `"partial"`, `filesDone`/`filesFailed` and the first 20 `failures`. Each
+  job records what it finished (`Placed`: upload/copy targets; download
+  remote → local path, folders it made included with their identity,
+  `local_id`), its conflict, endpoints and whether it made its target
+  (`owns`) in `JobMeta` (Rust only). `files_retry` claims the row under the
+  lock (`claim_retry`: a second click finds it busy) and removes it
+  (`settle_retry`, `file-transfer-removed`) only once the new job is queued,
+  so a refused retry keeps its row. It runs on the same endpoints: a Replace
+  stays Replace and skips only `Placed`; a job that owns its target resumes
+  (`resume`: complete regular files there are kept); one that never made it
+  starts over with its first choice. A folder download continues only in a
+  folder it made (same identity, same parent, not a link); one made again
+  drops the records under it, and a finished file removed since is fetched
+  again. With a
+  `conflict`, `files_retry` runs a skipped row again as Replace or Keep
+  both. Rows carry `endpoint`/`destEndpoint` as queued. Overwrite on a server without posix-rename renames the
   old file aside first and back on failure, never remove-then-rename. A
   queued job is bound to the endpoint (`user@host:port`, recorded per session
   by `sftp::note_session`) its tunnel reached when queued and fails with
@@ -521,8 +545,9 @@ no dropping files on a shell — only on the panel, which names the target.
 - Folder history (`files/history.ts`, pure, `tests/folderHistory.test.ts`):
   Back/Forward per panel (toolbar, Alt+←/→ in the list; background
   refreshes never add to it); the bookmark button lists the host's
-  bookmarks (`Tunnel.bookmarks`, saved in SQLite by `set_tunnel_bookmarks`,
-  so config export and WinSCP import carry them) and its last 10 folders
+  bookmarks (`Tunnel.bookmarks`, one added or removed at a time by
+  `edit_tunnel_bookmark` against the stored list, at most 100, so config
+  export and WinSCP import carry them; filled icon when the folder is one) and its last 10 folders
   (localStorage per host, so they survive the terminal window being
   destroyed; never in config export).
 - Editor: CodeMirror 6, `import("./editor")` on first use, colours from the
@@ -557,7 +582,14 @@ no dropping files on a shell — only on the panel, which names the target.
   B, so a destination inside the source (two tunnels to one machine) can't
   feed it its own output; symlinks are not copied: a top-level one fails
   (`"not-copied-link"`), nested ones finish as Done with
-  `error: "skipped-links:N"`, shown as a note. An existing top-level name
+  `error: "skipped-links:N"`, shown as a note; rsync runs with
+  `--no-links` (nested links skipped, uncounted) and every route refuses a
+  top-level link. rsync prints each file it copied
+  (`--out-format=protunel-file:%n`), recorded in `Placed` once in place;
+  exiting 23/24 (some files not copied) it publishes what it copied and
+  lists its distinct "rsync: …" lines as the job's failures (nothing
+  published: rsync's own error). A retry of a Replace that finished
+  anything goes by relay, which skips `Placed`. An existing top-level name
   follows the `Conflict`; rsync merges (Replace: `--ignore-times`, Resume:
   `--ignore-existing`) only under the source's own name, otherwise (Keep
   both, or its retry) the copy goes through the stage or the relay. A relay returns

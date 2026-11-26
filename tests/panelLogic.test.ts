@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chooseConflicts } from "../src/terminal/files/panelLogic";
+import { chooseConflicts, duplicateNames } from "../src/terminal/files/panelLogic";
 import {
   DEFAULT_SIZE,
   firstGeometry,
@@ -154,26 +154,34 @@ describe("isCurrentRequest", () => {
 });
 
 describe("chooseConflicts", () => {
-  test("free names go, clashes are asked one by one", async () => {
-    const asked: [string, number][] = [];
-    const groups = await chooseConflicts(["a", "b", "c", "d"], new Set(["b", "d"]), async (name, left) => {
-      asked.push([name, left]);
-      return { choice: name === "b" ? "keepBoth" : "replace", all: false };
+  test("one question for every clash; free names go as they are", async () => {
+    const asked: string[][] = [];
+    const groups = await chooseConflicts(["a", "b", "c", "d"], new Set(["b", "d"]), async (taken) => {
+      asked.push(taken);
+      return new Map([
+        ["b", "keepBoth"],
+        ["d", "replace"],
+      ]);
     });
-    expect(asked).toEqual([["b", 1], ["d", 0]]);
+    expect(asked).toEqual([["b", "d"]]);
     expect(Object.fromEntries(groups!)).toEqual({ skip: ["a", "c"], keepBoth: ["b"], replace: ["d"] });
   });
-  test("an answer for all stops the questions", async () => {
+  test("no clash, no question", async () => {
     let asks = 0;
-    const groups = await chooseConflicts(["a", "b", "c"], new Set(["a", "b", "c"]), async () => {
+    const groups = await chooseConflicts(["a"], new Set(), async () => {
       asks++;
-      return { choice: "skip", all: true };
+      return new Map();
     });
-    expect(asks).toBe(1);
-    expect(groups!.get("skip")).toEqual(["a", "b", "c"]);
+    expect(asks).toBe(0);
+    expect(groups!.get("skip")).toEqual(["a"]);
   });
-  test("cancel drops everything", async () => {
-    const groups = await chooseConflicts(["a"], new Set(["a"]), async () => ({ choice: "cancel", all: false }));
-    expect(groups).toBeNull();
+  test("a name left out is skipped; cancel drops everything", async () => {
+    const groups = await chooseConflicts(["a"], new Set(["a"]), async () => new Map());
+    expect(groups!.get("skip")).toEqual(["a"]);
+    expect(await chooseConflicts(["a"], new Set(["a"]), async () => null)).toBeNull();
+  });
+  test("duplicate names in one batch", () => {
+    expect(duplicateNames(["a", "b", "a", "c", "b"])).toEqual(["a", "b"]);
+    expect(duplicateNames(["a", "b"])).toEqual([]);
   });
 });

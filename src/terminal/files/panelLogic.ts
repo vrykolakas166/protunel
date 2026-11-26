@@ -4,7 +4,7 @@ import type { Conflict, FileCount } from "../../types";
 import { joinPath, type SortKey } from "./paths";
 
 /** Error codes the backend sends that have a translation (`files.err.*`). */
-export const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large", "same-tunnel", "invalid-path", "not-copied-link", "too-many-files", "target-changed"]);
+export const KNOWN_ERRORS = new Set(["not-connected", "no-such-file", "permission-denied", "exists", "conflict", "timeout", "too-large", "same-tunnel", "invalid-path", "not-copied-link", "too-many-files", "target-changed", "connection-lost", "not-retryable", "no-such-transfer", "duplicate-names"]);
 
 /** The code of an error when it is a known one, else null (show its text as is). */
 export function knownErrorCode(e: unknown): string | null {
@@ -63,36 +63,27 @@ export function deleteConfirmed(count: FileCount | null, typed: string, word: st
 }
 
 /** The user's answer for one name clash: a mode, and whether it is for all the rest. */
-export type ClashAnswer = { choice: Conflict | "cancel"; all: boolean };
+/** What to do with each taken name; names left out are skipped. */
+export type ClashChoices = Map<string, Conflict>;
 
 /**
- * Picks what each name does on arrival: free names just go ("skip" only
- * matters if one is taken meanwhile), taken ones are asked about one by one
- * until an answer is "for all". Returns the names grouped by mode, or null
- * when the user cancelled.
+ * Groups `names` by what happens to each on arrival: free names go as they
+ * are ("skip" never applies to them), taken ones follow the user's choices,
+ * asked once for all of them. Null when the user cancelled.
  */
 export async function chooseConflicts(
   names: string[],
   taken: Set<string>,
-  ask: (name: string, left: number) => Promise<ClashAnswer>,
+  ask: (taken: string[]) => Promise<ClashChoices | null>,
 ): Promise<Map<Conflict, string[]> | null> {
   const groups = new Map<Conflict, string[]>();
   const put = (mode: Conflict, name: string) => groups.set(mode, [...(groups.get(mode) ?? []), name]);
   const clashing = names.filter((n) => taken.has(n));
-  let forAll: Conflict | null = null;
-  for (const name of names) {
-    if (!taken.has(name)) {
-      put("skip", name);
-      continue;
-    }
-    if (forAll) {
-      put(forAll, name);
-      continue;
-    }
-    const answer = await ask(name, clashing.length - clashing.indexOf(name) - 1);
-    if (answer.choice === "cancel") return null;
-    if (answer.all) forAll = answer.choice;
-    put(answer.choice, name);
-  }
+  const choices = clashing.length > 0 ? await ask(clashing) : new Map<string, Conflict>();
+  if (!choices) return null;
+  for (const name of names) put(taken.has(name) ? (choices.get(name) ?? "skip") : "skip", name);
   return groups;
 }
+
+/** Names that occur more than once (items from different folders, one target folder). */
+export const duplicateNames = (names: string[]) => [...new Set(names.filter((n, i) => names.indexOf(n) !== i))];

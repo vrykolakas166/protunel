@@ -35,7 +35,8 @@ async fn it_sftp_list_upload_download() {
             vec![upload.to_string_lossy().into_owned()],
             dir.clone(),
             Conflict::Skip,
-        );
+            None,
+        ).unwrap();
         let uploaded = case.finished(ids[0], TransferState::Done).await;
         assert_eq!(uploaded.done, payload.len() as u64);
         let listing = files_list(case.app.clone(), tunnel.id, dir.clone())
@@ -52,7 +53,8 @@ async fn it_sftp_list_upload_download() {
                 remote: format!("{dir}/name.ext"),
                 local_dir: download_dir.clone(),
                 open_when_done: false,
-                into: None,
+                expect: None,
+                placed: Default::default(),
             },
         );
         let part = bounded("local download part to appear", async {
@@ -213,6 +215,7 @@ async fn it_sftp_paste_and_rename_skip_name_clash() {
             vec![source.clone()],
             format!("{dir}/dest"),
             true,
+            None,
         )
         .await
         .unwrap();
@@ -238,15 +241,30 @@ async fn it_sftp_upload_keep_both_takes_a_free_name() {
         case.exec(&tunnel, &format!("printf theirs > {dir}/a.txt")).await;
         let local = local.to_string_lossy().into_owned();
 
-        let ids = files_upload(case.app.clone(), tunnel.id, vec![local.clone()], dir.clone(), Conflict::Skip);
+        let ids = files_upload(case.app.clone(), tunnel.id, vec![local], dir.clone(), Conflict::Skip, None).unwrap();
         case.finished(ids[0], TransferState::Skipped).await;
-        let ids = files_upload(case.app.clone(), tunnel.id, vec![local], dir.clone(), Conflict::KeepBoth);
+        // The skipped row, run again as Keep both.
+        let ids = files_retry(case.app.clone(), case.app.state(), ids[0], Some(Conflict::KeepBoth)).await.unwrap();
         let done = case.finished(ids[0], TransferState::Done).await;
         assert_eq!(done.name, "a (1).txt");
         assert_eq!(done.remote_path, format!("{dir}/a (1).txt"));
         let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
         assert_eq!(sftp.read(format!("{dir}/a.txt")).await.unwrap(), b"theirs");
         assert_eq!(sftp.read(format!("{dir}/a (1).txt")).await.unwrap(), b"mine");
+
+        // Two at once never pick the same free name.
+        let local = case.local_dir().join("a.txt").to_string_lossy().into_owned();
+        // One batch refuses two items with one name; two batches race.
+        let dup = files_upload(case.app.clone(), tunnel.id, vec![local.clone(), local.clone()], dir.clone(), Conflict::KeepBoth, None);
+        assert_eq!(dup.unwrap_err(), "duplicate-names");
+        let mut ids = files_upload(case.app.clone(), tunnel.id, vec![local.clone()], dir.clone(), Conflict::KeepBoth, None).unwrap();
+        ids.extend(files_upload(case.app.clone(), tunnel.id, vec![local], dir.clone(), Conflict::KeepBoth, None).unwrap());
+        let mut names = Vec::new();
+        for id in ids {
+            names.push(case.finished(id, TransferState::Done).await.name);
+        }
+        names.sort();
+        assert_eq!(names, ["a (2).txt", "a (3).txt"]);
     })
     .await;
 }
@@ -262,7 +280,13 @@ async fn it_sftp_folder_upload_goes_on_past_a_failed_file_and_retries() {
         std::fs::write(tree.join("locked/two"), b"2").unwrap();
         std::fs::write(tree.join("three"), b"3").unwrap();
         // The folder is there already, with a subfolder this user can't write.
-        case.exec(&tunnel, &format!("mkdir -p {dir}/tree/locked && chmod 555 {dir}/tree/locked")).await;
+        // An old file sits where the failing one goes: the retry of a
+        // Replace must still replace it, not take it for finished.
+        case.exec(
+            &tunnel,
+            &format!("mkdir -p {dir}/tree/locked && printf old > {dir}/tree/locked/two && chmod 555 {dir}/tree/locked"),
+        )
+        .await;
 
         let ids = files_upload(
             case.app.clone(),
@@ -270,7 +294,8 @@ async fn it_sftp_folder_upload_goes_on_past_a_failed_file_and_retries() {
             vec![tree.to_string_lossy().into_owned()],
             dir.clone(),
             Conflict::Replace,
-        );
+            None,
+        ).unwrap();
         let partial = case.finished(ids[0], TransferState::Failed).await;
         assert_eq!(partial.error.as_deref(), Some("partial"));
         assert_eq!(partial.files_done, 2);
@@ -278,13 +303,85 @@ async fn it_sftp_folder_upload_goes_on_past_a_failed_file_and_retries() {
         assert!(partial.failures[0].contains("locked/two"), "{:?}", partial.failures);
 
         case.exec(&tunnel, &format!("chmod 755 {dir}/tree/locked")).await;
-        let retried = files_retry(case.app.clone(), case.app.state(), ids[0]).await.unwrap();
+        let retried = files_retry(case.app.clone(), case.app.state(), ids[0], None).await.unwrap();
         let done = case.finished(retried[0], TransferState::Done).await;
         // Only the missing file travelled again.
         assert_eq!(done.done, 1);
         assert!(files::transfers(case.app).iter().all(|x| x.id != ids[0]));
         let sftp = files::sftp_for(case.app, tunnel.id).await.unwrap();
         assert_eq!(sftp.read(format!("{dir}/tree/locked/two")).await.unwrap(), b"2");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_sftp_retry_refuses_a_host_edited_to_another_server() {
+    run(async |case| {
+        let (mut tunnel, dir) = connect(case).await;
+        let local = case.local_dir().join("f");
+        std::fs::write(&local, b"x").unwrap();
+        case.exec(&tunnel, &format!("mkdir {dir}/ro && chmod 555 {dir}/ro")).await;
+        let ids = files_upload(
+            case.app.clone(),
+            tunnel.id,
+            vec![local.to_string_lossy().into_owned()],
+            format!("{dir}/ro"),
+            Conflict::Skip,
+            None,
+        ).unwrap();
+        case.finished(ids[0], TransferState::Failed).await;
+
+        // The host now signs in as someone else: another endpoint.
+        case.state().stop_and_wait(tunnel.id).await;
+        bob(&mut tunnel);
+        case.state().db.update(&tunnel).unwrap();
+        case.connect(&tunnel).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), ids[0], None).await.unwrap();
+        let failed = case.finished(retried[0], TransferState::Failed).await;
+        assert_eq!(failed.error.as_deref(), Some("target-changed"));
+        // A second click finds nothing to retry.
+        assert!(files_retry(case.app.clone(), case.app.state(), ids[0], None).await.is_err());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_sftp_download_retry_never_continues_in_a_folder_made_in_its_place() {
+    run(async |case| {
+        let (tunnel, dir) = connect(case).await;
+        let into = case.local_dir().join("dl");
+        std::fs::create_dir(&into).unwrap();
+        case.exec(
+            &tunnel,
+            &format!("mkdir {dir}/logs && printf a > {dir}/logs/a && printf b > {dir}/logs/b && chmod 000 {dir}/logs/b"),
+        )
+        .await;
+        let job = || DownloadJob {
+            remote: format!("{dir}/logs"),
+            local_dir: into.clone(),
+            open_when_done: false,
+            expect: None,
+            placed: Default::default(),
+        };
+        let id = files::start_download(case.app, tunnel.id, job());
+        let partial = case.finished(id, TransferState::Failed).await;
+        assert_eq!(partial.error.as_deref(), Some("partial"));
+        assert_eq!((partial.files_done, partial.files_failed), (1, 1));
+
+        // The folder it made is moved away and another one takes its name.
+        std::fs::rename(into.join("logs"), into.join("moved")).unwrap();
+        std::fs::create_dir(into.join("logs")).unwrap();
+        std::fs::write(into.join("logs/mine"), b"keep").unwrap();
+        case.exec(&tunnel, &format!("chmod 644 {dir}/logs/b")).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), id, None).await.unwrap();
+        let done = case.finished(retried[0], TransferState::Done).await;
+        // A fresh folder, with everything; the lookalike is left alone.
+        assert_eq!(PathBuf::from(&done.local_path), into.join("logs (1)"));
+        assert_eq!(std::fs::read(into.join("logs (1)/a")).unwrap(), b"a");
+        assert_eq!(std::fs::read(into.join("logs (1)/b")).unwrap(), b"b");
+        assert_eq!(std::fs::read_dir(into.join("logs")).unwrap().count(), 1);
     })
     .await;
 }

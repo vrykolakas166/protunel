@@ -40,11 +40,6 @@ export function addRecent(list: string[], path: string): string[] {
   return [path, ...list.filter((p) => p !== path)].slice(0, MAX_RECENT);
 }
 
-/** Bookmarks toggle: add `path` at the end, or remove it. */
-export function toggleBookmark(list: string[], path: string): string[] {
-  return list.includes(path) ? list.filter((p) => p !== path) : [...list, path];
-}
-
 // Recent folders per host. A convenience only (localStorage, failing quietly);
 // never in config export.
 const RECENT_KEY = "protunel.files.recent";

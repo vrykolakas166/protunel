@@ -468,6 +468,8 @@ impl DragTransfer {
             files_done: 0,
             files_failed: 0,
             failures: Vec::new(),
+            endpoint: None,
+            dest_endpoint: None,
         };
         source.track(&transfer, &cancel);
         Self {

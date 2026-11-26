@@ -9,9 +9,9 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 ## [Unreleased]
 
 ### Improvements
-- **Name already taken?** Uploading or copying between servers now asks what to do with each name that is already there: **Skip**, **Replace** or **Keep both** (saved as “name (1)”), with one answer for all the rest if you like. A skipped row in the transfer list offers Replace and Keep both too.
-- **Folder transfers go on past a failed file**: the row then says how many files made it and which failed, and **Retry** (also on a cancelled transfer) copies only what is missing.
-- The file panel has **Back / Forward** (Alt+← / Alt+→) and a **bookmark** button: bookmark folders per host (they are saved with the host and come along in config export) and jump back to the folders you opened recently, even after the terminal window was closed.
+- **Name already taken?** Uploading or copying between servers now lists every name that is already there, each set to **Skip** until you change it: pick **Overwrite** or **Keep both** (saved as “name (1)”) per name, or set them all at once. A skipped row in the transfer list offers Overwrite and Keep both too.
+- **Folder transfers go on past a failed file**: the row says how many files made it and lists the ones that failed (copy the list to fix them). Fix the cause (reconnect the shell if the connection dropped), then press **Retry** on the row, also on a cancelled transfer: finished files are kept, the rest is sent again to the same server, and a file cut off midway starts over. The panel's transfer button counts failed transfers until you clear them.
+- The file panel has **Back / Forward** (Alt+← / Alt+→, for the folders you opened since the panel opened) and a **bookmark** button: bookmark folders per host (saved with the host, they come along in config export) and jump back to the host's recent folders, which are kept even after the terminal window was closed.
 - **Ctrl+T** in the main window opens the terminal and hides the main window, in one step.
 - Right-click a host in the terminal's sidebar, or a shell's pane, and choose **Edit host…** to change it without going back to the main window. Changing the connection of a host that is in use reconnects its shells.
 - A **status bar** at the bottom of the main window: live traffic of every connected tunnel, and your version or a waiting update.
@@ -25,7 +25,7 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 - A file panel's transfer list and progress show only that server's transfers, and its Clear only clears those; before, every open panel showed (and cleared) all of them.
 - A file panel stops working on the old server's files once its host is edited to reach another server, and offers to reload on the new one; transfers queued before the edit no longer run against the new server.
 - Saving a file is refused when someone changed it meanwhile even if size and time look the same, two editors on one file can no longer overwrite each other, and a file that can't be replaced safely asks before being written in place.
-- Overwriting, downloading and cancelling never lose or replace a file: overwrite keeps the old file until the new one is in place, a download never takes over a name that appeared while it ran, and a cancelled download leaves nothing behind.
+- Safer overwrites, downloads and cancels: an overwrite keeps the old file until the new one is complete, a download never takes over a name that appeared while it ran, and a cancelled download leaves nothing behind.
 - Panels on the same server refresh each other after a delete, rename, new item or paste; a finished upload no longer pulls a panel back to the folder it just left, and keeps its filter and scroll.
 - Files dropped from the system land only on the panel list under the pointer, never through a dialog or into the folder behind an open file.
 - Opening a ninth panel closes only the one it asked about, a slow file no longer takes the keyboard from another panel, and Retry on a panel opened while disconnected finds the home folder.

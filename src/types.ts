@@ -503,4 +503,7 @@ export interface FileTransfer {
   filesFailed: number;
   /** The first failures, "path: error". */
   failures: string[];
+  /** The server (`user@host:port`) the job runs against, as when queued; a copy's B is `destEndpoint`. */
+  endpoint: string | null;
+  destEndpoint: string | null;
 }

@@ -50,6 +50,8 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** The listing that failed (folder and history step), for Retry. */
+  const failed = useRef<{ dir: string; keep?: LoadOptions } | null>(null);
   const loadSeq = useRef(0);
   /** The seq of a navigation still in flight, else 0. */
   const navigating = useRef(0);
@@ -98,7 +100,10 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
         }
       } catch (e) {
         if (!isCurrentRequest(seq, loadSeq.current)) return;
-        if (!background) setError(errorText(e));
+        if (!background) {
+          failed.current = { dir, keep: keep?.historyIndex === undefined ? undefined : { historyIndex: keep.historyIndex } };
+          setError(errorText(e));
+        }
       } finally {
         if (isCurrentRequest(seq, loadSeq.current)) {
           navigating.current = 0;
@@ -193,8 +198,11 @@ export function useFileListing({ tunnelId, errorText, onMemory, memory, shellDir
   /** Retry after an error: the whole first-open lookup when it never finished. */
   const retry = useCallback(
     (dir: string) => {
-      if (!homeKnown.current) init();
-      else void load(dir);
+      if (!homeKnown.current) return init();
+      // The folder that failed (a Back, a bookmark), not the one left behind.
+      const again = failed.current;
+      failed.current = null;
+      void (again ? load(again.dir, again.keep) : load(dir));
     },
     [init, load],
   );

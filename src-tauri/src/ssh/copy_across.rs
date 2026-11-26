@@ -120,6 +120,12 @@ struct CopyBatch {
     dest_dir: String,
     conflict: Conflict,
     pin: Option<(String, Arc<ProbeResult>)>,
+    /// The endpoints A and B reached when the copy was asked for.
+    endpoints: (Option<String>, Option<String>),
+    /// A retry: what the earlier run(s) finished, and whether they made the
+    /// target (`JobMeta`).
+    placed: Placed,
+    owns: bool,
 }
 
 pub async fn copy_across(
@@ -132,17 +138,38 @@ pub async fn copy_across(
     conflict: Conflict,
     // The name on B, for a single source (a retry of a "keep both" copy).
     target_name: Option<String>,
+    // The endpoints the panels showed (or a retried job ran against; A in
+    // `endpoint`, B in `dest_endpoint`): a host edited since to reach
+    // another server refuses the copy. A retry also brings `placed`/`owns`.
+    prior: JobMeta,
 ) -> Result<CopyAcross, String> {
+    let expect = (prior.endpoint.clone(), prior.dest_endpoint.clone());
     if from == to {
         return Err("same-tunnel".to_string());
     }
     let source_session = live_session(state, from)?;
     let dest_session = live_session(state, to)?;
+    let endpoints = (endpoint_now(app, from), endpoint_now(app, to));
+    let moved = |want: &Option<String>, now: &Option<String>| want.is_some() && want != now;
+    if moved(&expect.0, &endpoints.0) || moved(&expect.1, &endpoints.1) {
+        return Err("target-changed".to_string());
+    }
     let tunnel = state
         .db
         .get(to)
         .map_err(|e| e.to_string())?
         .ok_or("not-connected")?;
+    // The direct routes dial B by the saved host and pin its saved key: the
+    // record must still describe the server the live session reached (a
+    // host edited but not reconnected yet does not).
+    if endpoints.1.as_ref().is_some_and(|now| *now != format!("{}@{}:{}", tunnel.username, tunnel.host, tunnel.port)) {
+        return Err("target-changed".to_string());
+    }
+    let mut names: Vec<&str> = sources.iter().map(|s| split(s.trim_end_matches('/')).1).collect();
+    names.sort_unstable();
+    if names.windows(2).any(|w| w[0] == w[1]) {
+        return Err("duplicate-names".to_string());
+    }
     let mut pin = None;
     let mut jobs: Vec<_> = sources
         .into_iter()
@@ -201,6 +228,9 @@ pub async fn copy_across(
         dest_dir,
         conflict,
         pin,
+        endpoints,
+        placed: prior.placed,
+        owns: prior.owns,
     });
     batch.ensure_live(state)?;
     let single = jobs.len() == 1;
@@ -261,8 +291,17 @@ impl CopyBatch {
             files_done: 0,
             files_failed: 0,
             failures: Vec::new(),
+            endpoint: None,
+            dest_endpoint: None,
         };
-        spawn(app, transfer, move |ctx| {
+        let meta = JobMeta {
+            conflict: Some(self.conflict),
+            endpoint: self.endpoints.0.clone(),
+            dest_endpoint: self.endpoints.1.clone(),
+            placed: self.placed.clone(),
+            owns: self.owns,
+        };
+        spawn(app, transfer, meta, move |ctx| {
             Box::pin(async move {
                 match self.run(&ctx, &source, target_name.as_deref(), route).await {
                     Err(e) if e == "exists" => {
@@ -275,7 +314,7 @@ impl CopyBatch {
         })
     }
 
-    async fn run(&self, ctx: &Ctx, source: &str, target_name: Option<&str>, mut route: Route) -> Result<(), String> {
+    async fn run(&self, ctx: &Ctx, source: &str, target_name: Option<&str>, route: Route) -> Result<(), String> {
         let source = source.trim_end_matches('/');
         let source_name = split(source).1;
         let name = target_name.unwrap_or(source_name);
@@ -290,13 +329,13 @@ impl CopyBatch {
             .await
             .map_err(err)?;
         let mut target = join(&dest_dir, name);
-        let mode = match (exists(&dest, &target).await?, self.conflict) {
+        let mut mode = match (exists(&dest, &target).await?, self.conflict) {
             (false, _) => Write::New,
             (true, Conflict::Skip) => return Err("exists".to_string()),
             (true, Conflict::Replace) => Write::Replace,
             (true, Conflict::Resume) => Write::Resume,
             (true, Conflict::KeepBoth) => {
-                target = free_remote(&dest, &dest_dir, name).await?;
+                target = free_remote(ctx, self.to, &dest, &dest_dir, name).await?;
                 let transfer = {
                     let mut transfer = ctx.transfer.lock().unwrap();
                     transfer.name = split(&target).1.to_string();
@@ -306,10 +345,53 @@ impl CopyBatch {
                 Write::New
             }
         };
+        // A name taken between the check and the copy: "keep both" moves on
+        // to the next free one; anything else ends as skipped.
+        for _ in 0..5 {
+            match self.copy_into(ctx, source, source_name, &dest, &dest_dir, &target, mode, route).await {
+                Err(e) if e == "exists" && self.conflict == Conflict::KeepBoth => {
+                    target = free_remote(ctx, self.to, &dest, &dest_dir, name).await?;
+                    let transfer = {
+                        let mut transfer = ctx.transfer.lock().unwrap();
+                        transfer.name = split(&target).1.to_string();
+                        transfer.clone()
+                    };
+                    publish(&ctx.app, &transfer);
+                    mode = Write::New;
+                }
+                other => return other,
+            }
+        }
+        Err("exists".to_string())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn copy_into(
+        &self,
+        ctx: &Ctx,
+        source: &str,
+        source_name: &str,
+        dest: &SftpSession,
+        dest_dir: &str,
+        target: &str,
+        mode: Write,
+        mut route: Route,
+    ) -> Result<(), String> {
         // rsync writes `dir/<source name>`: a different target name (keep
         // both, or its retry) goes through a stage and a rename instead.
-        let renamed = split(&target).1 != source_name;
+        let renamed = split(target).1 != source_name;
         let a = sftp_for_session(&ctx.app, self.from, &self.source_session).await?;
+        // One policy for links on every route: a top-level link is refused
+        // (relay would copy nothing, rsync/scp the link or its target).
+        let source_attrs = a.symlink_metadata(source).await.map_err(|e| at(source, e))?;
+        if source_attrs.is_symlink() || !(source_attrs.is_dir() || source_attrs.is_regular()) {
+            return Err("not-copied-link".to_string());
+        }
+        let single = source_attrs.is_regular();
+        if single && already_done(ctx, dest, target, mode).await? {
+            ctx.file_done();
+            return Ok(());
+        }
         if route == Route::Scp && !regular_source(&a, source).await {
             route = Route::Relay;
             let transfer = {
@@ -319,17 +401,14 @@ impl CopyBatch {
             };
             publish(&ctx.app, &transfer);
         }
-        // A single file already there on a retry: nothing left to copy.
-        if mode == Write::Resume && route == Route::Scp {
-            ctx.file_done();
-            return Ok(());
-        }
-        // rsync merges only under the source's own name.
-        if route == Route::Rsync && renamed && mode != Write::New {
+        // rsync merges only under the source's own name. A retry of a
+        // Replace goes by relay too: it skips what the earlier run finished,
+        // where rsync would replace those files again.
+        if route == Route::Rsync && mode != Write::New && (renamed || (mode == Write::Replace && ctx.placed_any())) {
             route = Route::Relay;
         }
         if route == Route::Relay {
-            return relay(ctx, &a, &dest, source, &target, mode).await;
+            return relay(ctx, &a, dest, source, target, mode).await;
         }
 
         let (key, probe) = self
@@ -338,6 +417,9 @@ impl CopyBatch {
             .expect("direct routes require a pinned key");
         ctx.check()?;
         let known_hosts = write_known_host(&a, key).await?;
+        // Files rsync reports finished (`--out-format`), as paths under the
+        // folder it copied into; recorded once they are in place.
+        let mut copied: Vec<String> = Vec::new();
         let result = match route {
             // Replace merges into what is there (files replaced), as an
             // upload does; Resume merges keeping every file already there.
@@ -346,30 +428,43 @@ impl CopyBatch {
                 let command = rsync_command(
                     &self.tunnel,
                     source,
-                    &dest_dir,
+                    dest_dir,
                     mode == Write::Replace,
                     &marker,
                     &known_hosts,
                 );
-                run_direct(ctx, &self.source_session, &command, &marker, true).await
+                let r = run_direct(ctx, &self.source_session, &command, &marker, true, &mut copied).await;
+                // rsync renames each file into place as it finishes.
+                if r.is_ok() || r.as_ref().is_err_and(rsync_partial) {
+                    place_rsync(ctx, target, &copied);
+                }
+                // Went on past files it could not copy: those are the
+                // job's failures, the rest is in place.
+                match r {
+                    Err(e) if rsync_partial(&e) => rsync_failures(ctx, &e.message),
+                    other => other,
+                }
             }
             // Otherwise each job copies into a stage of its own, published
             // with a no-replace rename: two copies of one name never mix,
             // and a cancelled one leaves nothing under the final name.
             Route::Rsync => {
-                self.staged(ctx, &dest, source, &target, false, true, |stage, marker| {
+                self.staged(ctx, dest, source, target, false, true, &mut copied, |stage, marker| {
                     rsync_command(&self.tunnel, source, stage, false, marker, &known_hosts)
                 })
                 .await
             }
             Route::Scp => {
-                self.staged(ctx, &dest, source, &target, mode == Write::Replace, false, |stage, marker| {
+                self.staged(ctx, dest, source, target, mode == Write::Replace, false, &mut copied, |stage, marker| {
                     scp_command(&self.tunnel, source, stage, marker, &known_hosts)
                 })
                 .await
             }
             Route::Relay => unreachable!(),
         };
+        if result.is_ok() && single && ctx.placed_at(target).is_none() {
+            ctx.placed(target, target, true);
+        }
         if result.as_ref().is_err_and(|e| e.status == Some(255)) {
             ctx.app
                 .state::<Files>()
@@ -389,7 +484,8 @@ impl CopyBatch {
         source: &str,
         target: &str,
         overwrite: bool,
-        progress: bool,
+        rsync: bool,
+        copied: &mut Vec<String>,
         command: impl FnOnce(&str, &str) -> String,
     ) -> Result<(), DirectError> {
         ctx.check()?;
@@ -402,7 +498,7 @@ impl CopyBatch {
             .map_err(|e| at(&stage, e))?;
         let marker = completion_marker();
         let command = command(&stage, &marker);
-        let result = run_direct(ctx, &self.source_session, &command, &marker, progress).await;
+        let result = run_direct(ctx, &self.source_session, &command, &marker, rsync, copied).await;
         let result = match result {
             Err(mut e) if e.exit_unconfirmed => {
                 e.message = format!(
@@ -411,17 +507,77 @@ impl CopyBatch {
                 );
                 return Err(e);
             }
+            // rsync copied all it could (23, 24): publish that, so a retry
+            // only fetches the rest; the failures go on the job.
+            // If it made nothing at all, rsync's own words say why.
+            Err(e) if rsync && rsync_partial(&e) => {
+                let staged = join(&stage, split(source).1);
+                match commit_part(ctx, dest, &staged, target, overwrite).await {
+                    Ok(()) => {
+                        ctx.own();
+                        place_rsync(ctx, target, copied);
+                        rsync_failures(ctx, &e.message)
+                    }
+                    Err(_) => Err(e),
+                }
+            }
             Err(e) => Err(e),
             Ok(()) => {
                 let staged = join(&stage, split(source).1);
-                commit_part(ctx, dest, &staged, target, overwrite)
-                    .await
-                    .map_err(DirectError::from)
+                let r = commit_part(ctx, dest, &staged, target, overwrite).await;
+                if r.is_ok() {
+                    if !overwrite {
+                        ctx.own();
+                    }
+                    place_rsync(ctx, target, copied);
+                }
+                r.map_err(DirectError::from)
             }
         };
         let cleanup = delete_tree(dest, &stage, true).await;
         result.and(cleanup.map_err(DirectError::from))
     }
+}
+
+/// rsync went on past files it could not copy (exit 23, 24), and said so
+/// for certain (exit confirmed).
+fn rsync_partial(e: &DirectError) -> bool {
+    matches!(e.status, Some(23 | 24)) && !e.exit_unconfirmed
+}
+
+/// Prefix of the line `--out-format` prints for each file rsync copied.
+const RSYNC_FILE: &str = "protunel-file:";
+
+/// Records the files rsync reported (`copied`, names relative to the folder
+/// it copied into, led by the source's name) under `target`.
+fn place_rsync(ctx: &Ctx, target: &str, copied: &[String]) {
+    for name in copied.iter().filter(|n| !n.ends_with('/')) {
+        let path = match name.split_once('/') {
+            Some((_, rest)) if !rest.is_empty() => join(target, rest),
+            _ => target.to_string(),
+        };
+        if ctx.placed_at(&path).is_none() {
+            ctx.placed(&path, &path, true);
+        }
+    }
+}
+
+/// Notes each distinct "rsync: …" line of a partial rsync run as a failed
+/// entry (rsync's closing "rsync error: …" summary is not one).
+fn rsync_failures(ctx: &Ctx, stderr: &str) -> Result<(), DirectError> {
+    let mut any = false;
+    let mut seen = std::collections::HashSet::new();
+    for line in stderr.lines().filter(|l| l.starts_with("rsync: ")) {
+        any = true;
+        if seen.insert(line) {
+            ctx.entry("", Err(line.trim_start_matches("rsync: ").to_string()))?;
+        }
+    }
+    if !any {
+        let line = stderr.lines().find(|l| !l.trim().is_empty()).unwrap_or("copy-failed");
+        ctx.entry("", Err(line.to_string()))?;
+    }
+    Ok(())
 }
 
 async fn regular_source(sftp: &SftpSession, source: &str) -> bool {
@@ -575,7 +731,12 @@ fn rsync_command(
         "LC_ALL=C",
         "rsync",
         "-a",
+        // Links are not copied, as by the relay.
+        "--no-links",
     ];
+    // One line per file copied, so a partial run knows what is in place.
+    let out_format = format!("--out-format={RSYNC_FILE}%n");
+    args.push(&out_format);
     args.push(if overwrite {
         "--ignore-times"
     } else {
@@ -655,6 +816,7 @@ async fn run_direct(
     command: &str,
     marker: &str,
     progress: bool,
+    copied: &mut Vec<String>,
 ) -> Result<(), DirectError> {
     ctx.check()?;
     let mut channel = tokio::select! {
@@ -700,11 +862,17 @@ async fn run_direct(
                     if matches!(byte, b'\r' | b'\n') {
                         if line == marker.as_bytes() {
                             let _ = channel.eof().await;
+                        } else if let Some(name) = line.strip_prefix(RSYNC_FILE.as_bytes()) {
+                            // A name cut at the length limit is left out
+                            // (that file is only copied again on a retry).
+                            if line.len() < 4096 {
+                                copied.push(String::from_utf8_lossy(name).into_owned());
+                            }
                         } else if progress {
                             update_progress(ctx, &line);
                         }
                         line.clear();
-                    } else if line.len() < 1024 {
+                    } else if line.len() < 4096 {
                         line.push(byte);
                     }
                 }
@@ -815,7 +983,16 @@ async fn plan_relay(
     while let Some((source, target, mode)) = stack.pop() {
         ctx.check()?;
         plan.push(Planned::Dir(target.clone(), mode));
-        for item in a.read_dir(&source).await.map_err(|e| at(&source, e))? {
+        let items = match a.read_dir(&source).await {
+            Ok(items) => items,
+            Err(e) if plan.len() == 1 => return Err(at(&source, e)),
+            Err(e) => {
+                // A subfolder that can't be read: noted, its siblings go on.
+                ctx.entry(&source, Err(at(&source, e)))?;
+                continue;
+            }
+        };
+        for item in items {
             let name = item.file_name();
             if !valid_name(&name) {
                 continue;
@@ -914,13 +1091,21 @@ async fn relay(
                         continue;
                     }
                 };
-                if mode != Write::Replace && (!root || mode == Write::Resume) && exists(b, &target).await? {
-                    ctx.file_done(); // a retry: already there
-                    continue;
+                match already_done(ctx, b, &target, mode).await {
+                    Ok(true) => {
+                        ctx.file_done();
+                        continue;
+                    }
+                    Ok(false) => {}
+                    Err(e) if root => return Err(e),
+                    Err(e) => {
+                        ctx.entry(&target, Err(e))?;
+                        continue;
+                    }
                 }
                 let r = relay_file(ctx, a, b, &source, &target, &current, mode == Write::Replace).await;
                 if r.is_ok() {
-                    ctx.file_done();
+                    ctx.placed(&target, &target, true);
                 }
                 if root {
                     // A single file: its failure is the transfer's.
@@ -969,16 +1154,16 @@ async fn relay_file(
             let n = src
                 .read(&mut buf)
                 .await
-                .map_err(|e| format!("{source}: {e}"))?;
+                .map_err(|e| format!("{source}: {}", remote_io(e)))?;
             if n == 0 {
                 break;
             }
             dst.write_all(&buf[..n])
                 .await
-                .map_err(|e| format!("{target}: {e}"))?;
+                .map_err(|e| format!("{target}: {}", remote_io(e)))?;
             ctx.advance(n as u64);
         }
-        dst.shutdown().await.map_err(|e| format!("{target}: {e}"))
+        dst.shutdown().await.map_err(|e| format!("{target}: {}", remote_io(e)))
     }
     .await;
     drop(dst);
@@ -1110,7 +1295,7 @@ mod tests {
         let source = "-a:b 'source'";
         let dest = "/my dir/$(literal)";
         let command = rsync_command(&tunnel, source, dest, false, "done", KNOWN_HOSTS);
-        assert!(command.contains("'rsync' '-a' '--ignore-existing' '--info=progress2' '-s'"));
+        assert!(command.contains("'rsync' '-a' '--no-links' '--out-format=protunel-file:%n' '--ignore-existing' '--info=progress2' '-s'"));
         assert!(command.ends_with(
             r"'--' './-a:b '\''source'\''' 'o'\''neil@[2001:db8::2]:/my dir/$(literal)/'"
         ));

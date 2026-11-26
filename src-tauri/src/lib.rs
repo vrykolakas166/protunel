@@ -170,7 +170,7 @@ pub fn run() {
             commands::delete_tunnel,
             commands::reorder_tunnels,
             commands::set_tunnels_group,
-            commands::set_tunnel_bookmarks,
+            commands::edit_tunnel_bookmark,
             commands::add_port_forward,
             commands::delete_port_forward,
             commands::connect_tunnel,

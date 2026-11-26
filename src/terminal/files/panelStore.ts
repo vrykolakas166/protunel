@@ -1,7 +1,7 @@
 // Shared constants, small types and module-level stores of the file panel.
 
 import type { FileCount } from "../../types";
-import type { ClashAnswer } from "./panelLogic";
+import type { ClashChoices } from "./panelLogic";
 
 export const ROW = 28;
 /** Deletes this big ask for the folder's name to be typed. */
@@ -14,8 +14,8 @@ export type NameBarState = NameBar & { value: string };
 export type Confirm =
   | { kind: "delete"; paths: string[]; count: FileCount | null; typed: string }
   | { kind: "dirty"; resolve: (choice: "save" | "discard" | "cancel") => void }
-  /** `name` is taken in `dir`; `left` more clashes follow. */
-  | { kind: "clash"; name: string; dir: string; left: number; resolve: (answer: ClashAnswer) => void };
+  /** `names` are taken in `dir`; `total` items are arriving. */
+  | { kind: "clash"; names: string[]; dir: string; total: number; resolve: (choices: ClashChoices | null) => void }
 
 /** After a relayed server-to-server copy: the way to make it direct next time. */
 export interface RelayHint {
@@ -26,7 +26,8 @@ export interface RelayHint {
 }
 
 /** Copied/cut paths; outlives the panel so reopening can still paste. */
-export type Clip = { tunnelId: string; paneId: string; paths: string[]; cut: boolean };
+/** `endpoint`: the server (`user@host:port`) the rows were copied on. */
+export type Clip = { tunnelId: string; endpoint: string; paneId: string; paths: string[]; cut: boolean };
 let clipboardValue: Clip | null = null;
 const clipListeners = new Set<() => void>();
 export const subscribeClipboard = (l: () => void) => {

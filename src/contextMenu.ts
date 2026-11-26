@@ -79,6 +79,12 @@ async function popup(entries: MenuEntry[], x: number, y: number) {
 }
 
 /** Opens `entries` at the pointer. Returns false (doing nothing) for Shift in dev. */
+/** A menu dropped down from a button (mouse or keyboard alike), at its bottom-left corner. */
+export function openMenuBelow(button: Element, entries: MenuEntry[]): void {
+  const box = button.getBoundingClientRect();
+  void popup(entries, box.left, box.bottom);
+}
+
 export function openMenu(e: MouseEvent | ReactMouseEvent, entries: MenuEntry[]): boolean {
   if (wantsWebviewMenu(e)) return false;
   e.preventDefault();

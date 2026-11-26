@@ -43,12 +43,12 @@ pub use operations::{count, create_dir, create_file, delete, exists, paste, rena
 pub use preview::{read_bytes, read_text, write_text, Content, Expect, Saved};
 
 pub use transfers::{
-    cancel, clear_finished, remove_transfer, start_download, start_upload, transfers, Conflict, Direction, DownloadJob,
-    Route, Transfer, TransferState, UploadJob,
+    cancel, claim_retry, clear_finished, settle_retry, start_download, start_upload, transfers, Conflict, Direction, DownloadJob,
+    JobMeta, Placed, Route, Transfer, TransferState, UploadJob,
 };
 
 use operations::delete_tree;
-use transfers::{commit_part, free_remote, short_id, spawn, Ctx, Transfers, Write, PARALLEL_TRANSFERS};
+use transfers::{already_done, commit_part, free_remote, short_id, spawn, Ctx, Transfers, Write, PARALLEL_TRANSFERS};
 
 pub(super) use transfers::publish;
 #[cfg(windows)]
@@ -211,11 +211,32 @@ pub fn err(e: SftpError) -> String {
         SftpError::Status(s) => match s.status_code {
             StatusCode::NoSuchFile => "no-such-file".to_string(),
             StatusCode::PermissionDenied => "permission-denied".to_string(),
+            StatusCode::ConnectionLost | StatusCode::NoConnection => "connection-lost".to_string(),
             _ if s.error_message.is_empty() => s.status_code.to_string(),
             _ => s.error_message,
         },
         SftpError::Timeout => "timeout".to_string(),
+        // The channel itself is gone: every later call fails the same way.
+        SftpError::IO(_) | SftpError::UnexpectedPacket | SftpError::UnexpectedBehavior(_) => "connection-lost".to_string(),
         other => other.to_string(),
+    }
+}
+
+/// An I/O error on an open server file: a dropped channel reads as
+/// "connection-lost" (see `err`), anything else as itself.
+pub fn remote_io(e: std::io::Error) -> String {
+    use std::io::ErrorKind::*;
+    // russh-sftp wraps its own errors (a dead channel among them) as Other.
+    if let Some(inner) = e.get_ref().and_then(|i| i.downcast_ref::<SftpError>()) {
+        return err(inner.clone());
+    }
+    if e.to_string() == "unexpected response packet" {
+        return "connection-lost".to_string();
+    }
+    match e.kind() {
+        BrokenPipe | ConnectionReset | ConnectionAborted | NotConnected | UnexpectedEof => "connection-lost".to_string(),
+        TimedOut => "timeout".to_string(),
+        _ => e.to_string(),
     }
 }
 

@@ -25,6 +25,8 @@ pub const STATUS_EVENT: &str = "tunnel-status";
 
 /// A file transfer queued, progressed or finished (`ssh::sftp::Transfer`).
 pub const FILE_TRANSFER_EVENT: &str = "file-transfer";
+/// A finished transfer row left the list (its retry replaced it); payload: the id.
+pub const FILE_TRANSFER_REMOVED_EVENT: &str = "file-transfer-removed";
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

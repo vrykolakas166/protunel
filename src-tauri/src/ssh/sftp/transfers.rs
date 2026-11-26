@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,10 +15,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
-use crate::events::FILE_TRANSFER_EVENT;
+use crate::events::{FILE_TRANSFER_EVENT, FILE_TRANSFER_REMOVED_EVENT};
 use crate::AppState;
 
-use super::{at, endpoint_now, err, exists, forget, is_missing, join, sanitize, sftp_bound, split, stem_ext, Files, CHUNK, PROGRESS_EVERY};
+use super::{at, endpoint_now, err, exists, remote_io, forget, is_missing, join, sanitize, sftp_bound, split, stem_ext, Files, CHUNK, PROGRESS_EVERY};
 
 /// Transfers running at once, over every host.
 pub(super) const PARALLEL_TRANSFERS: usize = 3;
@@ -97,12 +97,54 @@ pub struct Transfer {
     pub files_failed: u32,
     /// The first failures, "path: error".
     pub failures: Vec<String>,
+    /// The server (`user@host:port`) the job runs against, as when it was
+    /// queued: the row keeps naming it after the host is edited.
+    pub endpoint: Option<String>,
+    /// A copy's B.
+    pub dest_endpoint: Option<String>,
+}
+
+/// What a job finished, so its retry redoes only the rest: for an upload or
+/// copy the target paths it gave their final name, for a download each
+/// remote path and the local path it landed on (folders included, so a
+/// retry continues in folders the job made itself, never in a lookalike).
+pub type Placed = HashMap<String, String>;
+
+/// What a retry needs to know about a job beyond its row; never sent to the
+/// webview.
+#[derive(Clone, Default)]
+pub struct JobMeta {
+    /// Upload/copy: the conflict choice the job was started with.
+    pub conflict: Option<Conflict>,
+    /// The endpoint the job ran (or was bound to run) against; a copy's A.
+    pub endpoint: Option<String>,
+    /// A copy's B.
+    pub dest_endpoint: Option<String>,
+    pub placed: Placed,
+    /// The job made its target itself (a new name, or a "keep both" one):
+    /// a retry may merge into it keeping what is there.
+    pub owns: bool,
 }
 
 #[derive(Default)]
 pub(super) struct Transfers {
     list: Vec<Transfer>,
     cancels: HashMap<Uuid, CancellationToken>,
+    jobs: HashMap<Uuid, JobMeta>,
+    /// Rows a retry is starting from: left listed until the new job is
+    /// queued, so a refused retry keeps its row (and what it finished).
+    claimed: HashSet<Uuid>,
+    /// Names a running job picked with `free_remote` ("tunnel path"), so
+    /// two "keep both" jobs never pick the same one.
+    reserved: HashSet<String>,
+}
+
+impl Transfers {
+    /// Keeps `jobs` to the rows still listed.
+    fn prune(&mut self) {
+        let list = &self.list;
+        self.jobs.retain(|id, _| list.iter().any(|x| x.id == *id));
+    }
 }
 
 pub fn transfers(app: &AppHandle) -> Vec<Transfer> {
@@ -125,13 +167,47 @@ pub fn clear_finished(app: &AppHandle, tunnel: Option<Uuid>) {
         matches!(x.state, TransferState::Queued | TransferState::Running)
             || tunnel.is_some_and(|id| x.tunnel_id != id && x.dest_tunnel_id != Some(id))
     });
+    t.prune();
 }
 
-/// Drops one finished row (a retry replaces it).
-pub fn remove_transfer(app: &AppHandle, id: Uuid) {
+/// Takes a row off the list to run it again, with what the job recorded: a
+/// failed or cancelled one (a retry), or a skipped one (`skipped`: Replace or
+/// Keep both after all). Under the lock, so two clicks never queue two jobs.
+pub fn claim_retry(app: &AppHandle, id: Uuid, skipped: bool) -> Result<(Transfer, JobMeta), String> {
     let files = app.state::<Files>();
     let mut t = files.transfers.lock().unwrap();
-    t.list.retain(|x| x.id != id || matches!(x.state, TransferState::Queued | TransferState::Running));
+    let at = t.list.iter().position(|x| x.id == id).ok_or("no-such-transfer")?;
+    let row = &t.list[at];
+    let fits = if skipped {
+        row.state == TransferState::Skipped
+    } else {
+        matches!(row.state, TransferState::Failed | TransferState::Cancelled)
+    };
+    let blocked = row.direction == Direction::DragOut || (skipped && row.direction == Direction::Download);
+    if !fits || blocked {
+        return Err("not-retryable".into());
+    }
+    let row = row.clone();
+    if !t.claimed.insert(id) {
+        return Err("not-retryable".into()); // a retry of it is starting
+    }
+    let meta = t.jobs.get(&id).cloned().unwrap_or_default();
+    Ok((row, meta))
+}
+
+/// Ends a `claim_retry`: once the new job is queued (`queued`) the old row
+/// goes (`file-transfer-removed`); otherwise it stays, retryable again.
+pub fn settle_retry(app: &AppHandle, id: Uuid, queued: bool) {
+    let files = app.state::<Files>();
+    let mut t = files.transfers.lock().unwrap();
+    t.claimed.remove(&id);
+    if !queued {
+        return;
+    }
+    t.list.retain(|x| x.id != id);
+    t.jobs.remove(&id);
+    drop(t);
+    let _ = app.emit(FILE_TRANSFER_REMOVED_EVENT, id);
 }
 
 pub(in crate::ssh) fn publish(app: &AppHandle, transfer: &Transfer) {
@@ -158,6 +234,7 @@ pub(in crate::ssh) fn publish(app: &AppHandle, transfer: &Transfer) {
                     true
                 }
             });
+            t.prune();
         }
     }
     let _ = app.emit(FILE_TRANSFER_EVENT, transfer);
@@ -183,21 +260,29 @@ pub struct UploadJob {
     /// "keep both" upload).
     pub name: Option<String>,
     pub conflict: Conflict,
+    /// The endpoint it must run against (the panel's, or a retried job's);
+    /// None binds to the tunnel's endpoint now.
+    pub expect: Option<String>,
+    /// A retry: what the earlier run(s) finished.
+    pub placed: Placed,
+    /// A retry: the earlier run made the target itself (`JobMeta::owns`).
+    pub owns: bool,
 }
 
 pub struct DownloadJob {
     pub remote: String,
     pub local_dir: PathBuf,
     pub open_when_done: bool,
-    /// Retry of a folder download: into this existing folder, skipping
-    /// files already there.
-    pub into: Option<PathBuf>,
+    pub expect: Option<String>,
+    /// A retry: what the earlier run(s) finished, the folder they made
+    /// included (it goes on there).
+    pub placed: Placed,
 }
 
-/// What a queued job may run against: the endpoint the tunnel reached when the
-/// job was queued (see `endpoint_now`).
-pub fn bind(app: &AppHandle, tunnel_id: Uuid) -> Option<String> {
-    endpoint_now(app, tunnel_id)
+/// What a queued job may run against: `expect` when given, else the endpoint
+/// the tunnel reaches now (see `endpoint_now`).
+pub fn bind(app: &AppHandle, tunnel_id: Uuid, expect: Option<String>) -> Option<String> {
+    expect.or_else(|| endpoint_now(app, tunnel_id))
 }
 
 /// Queues one transfer and returns its id; it runs when a slot frees up.
@@ -225,9 +310,12 @@ pub fn start_upload(app: &AppHandle, tunnel_id: Uuid, job: UploadJob) -> Uuid {
         files_done: 0,
         files_failed: 0,
         failures: Vec::new(),
+        endpoint: None,
+        dest_endpoint: None,
     };
-    let expect = bind(app, tunnel_id);
-    spawn(app, transfer, move |ctx| Box::pin(upload(ctx, tunnel_id, expect, job)))
+    let expect = bind(app, tunnel_id, job.expect.clone());
+    let meta = JobMeta { conflict: Some(job.conflict), endpoint: expect.clone(), dest_endpoint: None, placed: job.placed.clone(), owns: job.owns };
+    spawn(app, transfer, meta, move |ctx| Box::pin(upload(ctx, tunnel_id, expect, job)))
 }
 
 pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uuid {
@@ -249,9 +337,12 @@ pub fn start_download(app: &AppHandle, tunnel_id: Uuid, job: DownloadJob) -> Uui
         files_done: 0,
         files_failed: 0,
         failures: Vec::new(),
+        endpoint: None,
+        dest_endpoint: None,
     };
-    let expect = bind(app, tunnel_id);
-    spawn(app, transfer, move |ctx| Box::pin(download(ctx, tunnel_id, expect, job)))
+    let expect = bind(app, tunnel_id, job.expect.clone());
+    let meta = JobMeta { conflict: None, endpoint: expect.clone(), dest_endpoint: None, placed: job.placed.clone(), owns: false };
+    spawn(app, transfer, meta, move |ctx| Box::pin(download(ctx, tunnel_id, expect, job)))
 }
 
 type JobFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send>>;
@@ -266,6 +357,12 @@ pub(super) struct Ctx {
     pub(super) done: AtomicU64,
     files_done: AtomicU32,
     failures: Mutex<(u32, Vec<String>)>,
+    /// What this job (and the runs it retries) finished; see `Placed`.
+    placed: Mutex<Placed>,
+    /// Names held by `free_remote` until the job ends.
+    reserved: Mutex<Vec<String>>,
+    /// See `JobMeta::owns`.
+    owns: AtomicBool,
 }
 
 impl Ctx {
@@ -299,6 +396,37 @@ impl Ctx {
     pub(super) fn file_done(&self) {
         self.files_done.fetch_add(1, Ordering::Relaxed);
     }
+    /// A file got its final name (or a download folder was made): counted,
+    /// and remembered for a retry.
+    pub(super) fn placed(&self, key: &str, at: &str, file: bool) {
+        self.placed.lock().unwrap().insert(key.to_string(), at.to_string());
+        if file {
+            self.file_done();
+        }
+    }
+    /// Where an earlier run put `key`, if it finished it.
+    pub(super) fn placed_at(&self, key: &str) -> Option<String> {
+        self.placed.lock().unwrap().get(key).cloned()
+    }
+    /// Whether an earlier run finished anything.
+    pub(super) fn placed_any(&self) -> bool {
+        !self.placed.lock().unwrap().is_empty()
+    }
+    /// Forgets `key` and everything recorded under it (a folder that has to
+    /// be made again: its old records describe another tree).
+    fn forget_under(&self, key: &str) {
+        let below = format!("{}/", key.trim_end_matches('/'));
+        self.placed.lock().unwrap().retain(|k, _| k != key && !k.starts_with(&below));
+    }
+    /// The job made its target itself.
+    pub(super) fn own(&self) {
+        self.owns.store(true, Ordering::Relaxed);
+    }
+    /// The tunnels this job runs over.
+    fn tunnels(&self) -> Vec<Uuid> {
+        let t = self.transfer.lock().unwrap();
+        std::iter::once(t.tunnel_id).chain(t.dest_tunnel_id).collect()
+    }
 
     /// The outcome of one file (or folder step) inside a bigger transfer: a
     /// failure that only concerns that entry is noted and the rest goes on;
@@ -306,7 +434,7 @@ impl Ctx {
     pub(super) fn entry(&self, path: &str, result: Result<(), String>) -> Result<(), String> {
         match result {
             Ok(()) => Ok(()),
-            Err(e) if self.cancel.is_cancelled() || stops_all(&e) => Err(e),
+            Err(e) if self.cancel.is_cancelled() || stops_all(&e) || self.connection_gone() => Err(e),
             Err(e) => {
                 let mut f = self.failures.lock().unwrap();
                 f.0 += 1;
@@ -328,26 +456,41 @@ impl Ctx {
     }
 }
 
-/// Errors that mean the connection (or the whole job) is gone, not one file.
+impl Ctx {
+    /// A session this job runs over is closed (or gone): every later entry
+    /// would fail the same way.
+    fn connection_gone(&self) -> bool {
+        let state = self.app.state::<AppState>();
+        self.tunnels().into_iter().any(|id| state.session_for(id).is_none_or(|s| s.is_closed()))
+    }
+}
+
+/// Errors that mean the connection (or the whole job) is gone, not one
+/// file: the codes `err` and the jobs produce. Read after the last ": ", the
+/// one before the error itself (a path may hold any word, and the path in
+/// front may be the source's or the target's); codes hold no ": ".
 fn stops_all(e: &str) -> bool {
-    e == "cancelled"
-        || e == "timeout"
-        || e == "not-connected"
-        || e == "target-changed"
-        || e.ends_with(": timeout")
-        || e.starts_with("I/O")
-        || e.contains("closed")
-        || e.contains("Unexpected packet")
+    let bare = e.rsplit_once(": ").map_or(e, |(_, code)| code);
+    matches!(bare, "cancelled" | "timeout" | "not-connected" | "target-changed" | "connection-lost")
 }
 
 pub(super) fn spawn(
     app: &AppHandle,
     transfer: Transfer,
+    meta: JobMeta,
     run: impl FnOnce(Arc<Ctx>) -> JobFuture + Send + 'static,
 ) -> Uuid {
     let id = transfer.id;
     let cancel = CancellationToken::new();
-    app.state::<Files>().transfers.lock().unwrap().cancels.insert(id, cancel.clone());
+    let mut transfer = transfer;
+    transfer.endpoint = meta.endpoint.clone();
+    transfer.dest_endpoint = meta.dest_endpoint.clone();
+    {
+        let files = app.state::<Files>();
+        let mut t = files.transfers.lock().unwrap();
+        t.cancels.insert(id, cancel.clone());
+        t.jobs.insert(id, meta.clone());
+    }
     publish(app, &transfer);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -357,7 +500,6 @@ pub(super) fn spawn(
             _ = cancel.cancelled() => None,
             p = slots.acquire_owned() => p.ok(),
         };
-        let mut transfer = transfer;
         let mut started = Instant::now();
         let result = match permit {
             None => Err("cancelled".to_string()),
@@ -374,8 +516,24 @@ pub(super) fn spawn(
                     done: AtomicU64::new(0),
                     files_done: AtomicU32::new(0),
                     failures: Mutex::new((0, Vec::new())),
+                    placed: Mutex::new(meta.placed.clone()),
+                    reserved: Mutex::new(Vec::new()),
+                    owns: AtomicBool::new(meta.owns),
                 });
                 let mut result = run(ctx.clone()).await;
+                {
+                    let held = std::mem::take(&mut *ctx.reserved.lock().unwrap());
+                    let placed = std::mem::take(&mut *ctx.placed.lock().unwrap());
+                    let files = app.state::<Files>();
+                    let mut t = files.transfers.lock().unwrap();
+                    for name in held {
+                        t.reserved.remove(&name);
+                    }
+                    if let Some(job) = t.jobs.get_mut(&id) {
+                        job.placed = placed;
+                        job.owns = ctx.owns.load(Ordering::Relaxed);
+                    }
+                }
                 transfer = ctx.transfer.lock().unwrap().clone();
                 transfer.done = ctx.done.load(Ordering::Relaxed);
                 transfer.files_done = ctx.files_done.load(Ordering::Relaxed);
@@ -414,6 +572,14 @@ pub(super) fn spawn(
             }
         }
         if matches!(transfer.state, TransferState::Failed) {
+            // A dead SFTP channel on a live session: drop it, the next job
+            // opens a fresh one.
+            if transfer.error.as_deref().is_some_and(stops_all) {
+                forget(&app, transfer.tunnel_id, started).await;
+                if let Some(dest) = transfer.dest_tunnel_id {
+                    forget(&app, dest, started).await;
+                }
+            }
             forget_if_dead(&app, transfer.tunnel_id, started).await;
             if let Some(dest_tunnel_id) = transfer.dest_tunnel_id {
                 forget_if_dead(&app, dest_tunnel_id, started).await;
@@ -439,10 +605,17 @@ async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: Upl
         Some(name) => name.clone(),
         None => job.local.file_name().ok_or("no file name")?.to_string_lossy().into_owned(),
     };
-    let mut target = join(&job.remote_dir, &name);
-    let meta = tokio::fs::metadata(&job.local).await.map_err(|e| e.to_string())?;
+    // A link is not uploaded (the same policy as copies between servers).
+    let meta = tokio::fs::symlink_metadata(&job.local).await.map_err(|e| e.to_string())?;
+    if meta.file_type().is_symlink() || !(meta.is_dir() || meta.is_file()) {
+        return Err("not-copied-link".to_string());
+    }
+    // The real folder, so "keep both" reservations agree on one spelling.
+    let dir = sftp.canonicalize(job.remote_dir.as_str()).await.map_err(|e| at(&job.remote_dir, e))?;
+    let mut target = join(&dir, &name);
+    ctx.set_remote(&target);
     let taken = exists(&sftp, &target).await?;
-    let mode = match (taken, job.conflict) {
+    let mut mode = match (taken, job.conflict) {
         (false, _) => Write::New,
         (true, Conflict::Skip) => {
             ctx.skipped.store(true, Ordering::Relaxed);
@@ -451,34 +624,49 @@ async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: Upl
         (true, Conflict::Replace) => Write::Replace,
         (true, Conflict::Resume) => Write::Resume,
         (true, Conflict::KeepBoth) => {
-            target = free_remote(&sftp, &job.remote_dir, &name).await?;
+            target = free_remote(&ctx, tunnel_id, &sftp, &dir, &name).await?;
             ctx.set_remote(&target);
             Write::New
         }
     };
-    let result = if meta.is_dir() {
+    if meta.is_dir() {
         ctx.set_total(local_size(&job.local).await);
-        upload_tree(&ctx, &sftp, &job.local, &target, mode).await
     } else {
         ctx.set_total(meta.len());
-        if mode == Write::Resume {
-            ctx.file_done(); // already there, complete
-            return Ok(());
-        }
-        let r = upload_file(&ctx, &sftp, &job.local, &target, mode == Write::Replace).await;
-        if r.is_ok() {
-            ctx.file_done();
-        }
-        r
-    };
-    match result {
-        // Someone else created the name meanwhile: still never replaced.
-        Err(e) if e == "exists" => {
-            ctx.skipped.store(true, Ordering::Relaxed);
-            Ok(())
-        }
-        other => other,
     }
+    // A name taken between the check and the write: "keep both" moves on to
+    // the next free one; anything else is skipped, never replaced.
+    for _ in 0..5 {
+        let result = if meta.is_dir() {
+            upload_tree(&ctx, &sftp, &job.local, &target, mode).await
+        } else {
+            if already_done(&ctx, &sftp, &target, mode).await? {
+                ctx.file_done();
+                return Ok(());
+            }
+            let r = upload_file(&ctx, &sftp, &job.local, &target, mode == Write::Replace).await;
+            if r.is_ok() {
+                ctx.placed(&target, &target, true);
+                if mode == Write::New {
+                    ctx.own();
+                }
+            }
+            r
+        };
+        match result {
+            Err(e) if e == "exists" && job.conflict == Conflict::KeepBoth => {
+                target = free_remote(&ctx, tunnel_id, &sftp, &dir, &name).await?;
+                ctx.set_remote(&target);
+                mode = Write::New;
+            }
+            Err(e) if e == "exists" => {
+                ctx.skipped.store(true, Ordering::Relaxed);
+                return Ok(());
+            }
+            other => return other,
+        }
+    }
+    Err("exists".to_string())
 }
 
 /// How a transfer writes into its target.
@@ -488,17 +676,55 @@ pub(super) enum Write {
     New,
     /// Merge into a folder; replace files.
     Replace,
-    /// Merge into a folder; skip files already there.
+    /// A retry into the job's own target (it made the name: New or Keep
+    /// both): merge, keeping every file already there, since a file only
+    /// gets its final name once complete. A retry of Replace stays Replace
+    /// and skips only what the earlier run finished (`Placed`): the old
+    /// files there were never its own.
     Resume,
 }
 
-/// The first free "name (n).ext" in `dir` on the server.
-pub(super) async fn free_remote(sftp: &SftpSession, dir: &str, name: &str) -> Result<String, String> {
+/// Whether `path` on the server needs no copy on this run: an earlier run
+/// finished it, or (Resume) a complete regular file is already there.
+pub(super) async fn already_done(ctx: &Ctx, sftp: &SftpSession, path: &str, mode: Write) -> Result<bool, String> {
+    if ctx.placed_at(path).is_some() {
+        return Ok(true);
+    }
+    if mode != Write::Resume {
+        return Ok(false);
+    }
+    match sftp.symlink_metadata(path).await {
+        Ok(a) => Ok(a.is_regular() && !a.is_symlink()),
+        Err(e) if is_missing(&e) => Ok(false),
+        Err(e) => Err(at(path, e)),
+    }
+}
+
+/// The first free "name (n).ext" in `dir` on the server, held for this job
+/// until it ends so a parallel "keep both" picks the next one. (Its final
+/// rename refuses an existing name too, should another program take it.)
+pub(super) async fn free_remote(ctx: &Ctx, tunnel: Uuid, sftp: &SftpSession, dir: &str, name: &str) -> Result<String, String> {
     let (stem, ext) = stem_ext(name);
+    // Keyed by the machine (host:port, whoever signs in) and the real path.
+    let machine = endpoint_now(&ctx.app, tunnel)
+        .map(|e| e.rsplit_once('@').map_or(e.clone(), |(_, hp)| hp.to_string()))
+        .unwrap_or_else(|| tunnel.to_string());
     for n in 1..10_000 {
         let path = join(dir, &format!("{stem} ({n}){ext}"));
-        if !exists(sftp, &path).await? {
-            return Ok(path);
+        let key = format!("{machine} {path}");
+        // Held before it is probed, so no other job can probe it meanwhile.
+        if !ctx.app.state::<Files>().transfers.lock().unwrap().reserved.insert(key.clone()) {
+            continue;
+        }
+        match exists(sftp, &path).await {
+            Ok(false) => {
+                ctx.reserved.lock().unwrap().push(key);
+                return Ok(path);
+            }
+            other => {
+                ctx.app.state::<Files>().transfers.lock().unwrap().reserved.remove(&key);
+                other?;
+            }
         }
     }
     Err("exists".to_string())
@@ -540,6 +766,9 @@ async fn upload_tree(ctx: &Ctx, sftp: &SftpSession, root: &Path, target: &str, m
         .await;
         if first {
             made?;
+            if mode == Write::New {
+                ctx.own();
+            }
         } else if made.is_err() {
             ctx.entry(&remote, made)?;
             continue;
@@ -552,21 +781,38 @@ async fn upload_tree(ctx: &Ctx, sftp: &SftpSession, root: &Path, target: &str, m
                 continue;
             }
         };
-        while let Some(item) = rd.next_entry().await.map_err(|e| e.to_string())? {
+        loop {
+            let item = match rd.next_entry().await {
+                Ok(Some(item)) => item,
+                Ok(None) => break,
+                Err(e) => {
+                    // The rest of this folder can't be read: noted, siblings go on.
+                    ctx.entry(&local.to_string_lossy(), Err(e.to_string()))?;
+                    break;
+                }
+            };
             let name = item.file_name().to_string_lossy().into_owned();
             let child = join(&remote, &name);
             match item.file_type().await {
+                Err(e) => ctx.entry(&child, Err(e.to_string()))?,
                 Ok(t) if t.is_dir() => stack.push((item.path(), child)),
                 Ok(t) if t.is_file() => {
-                    if mode != Write::Replace && exists(sftp, &child).await? {
-                        // Resume: already there. New: our own fresh folder,
-                        // so only a race; never replaced.
-                        ctx.file_done();
-                        continue;
+                    match already_done(ctx, sftp, &child, mode).await {
+                        Ok(true) => {
+                            ctx.file_done();
+                            continue;
+                        }
+                        Ok(false) => {}
+                        Err(e) => {
+                            ctx.entry(&child, Err(e))?;
+                            continue;
+                        }
                     }
+                    // New (our own fresh folder) never replaces: a name
+                    // taken by someone else meanwhile is that file's failure.
                     let r = upload_file(ctx, sftp, &item.path(), &child, mode == Write::Replace).await;
                     if r.is_ok() {
-                        ctx.file_done();
+                        ctx.placed(&child, &child, true);
                     }
                     ctx.entry(&child, r)?;
                 }
@@ -595,10 +841,10 @@ async fn upload_file(ctx: &Ctx, sftp: &SftpSession, local: &Path, remote: &str, 
             if n == 0 {
                 break;
             }
-            dst.write_all(&buf[..n]).await.map_err(|e| e.to_string())?;
+            dst.write_all(&buf[..n]).await.map_err(remote_io)?;
             ctx.advance(n as u64);
         }
-        dst.shutdown().await.map_err(|e| e.to_string())
+        dst.shutdown().await.map_err(remote_io)
     }
     .await;
     if let Err(e) = copied {
@@ -692,21 +938,30 @@ async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: D
     // first free name (`publish_local`), so nothing placed under the final
     // name meanwhile is ever replaced or deleted.
     if attrs.is_dir() {
-        // A retry goes on in the folder the first attempt made.
-        let resume = job.into.as_ref().filter(|dir| dir.is_dir()).cloned();
-        let local = match &resume {
-            Some(dir) => dir.clone(),
-            None => reserve_dir(&job.local_dir, name).await?,
+        // A retry goes on in the folder the first attempt made (and only
+        // that one: a lookalike folder is never taken for it).
+        let local = match own_dir(&ctx, &job.remote, &job.local_dir).await {
+            Some(dir) => dir,
+            None => {
+                let dir = reserve_dir(&job.local_dir, name).await?;
+                place_dir(&ctx, &job.remote, &dir).await;
+                dir
+            }
         };
         ctx.set_local(&local);
         let total = remote_size(&ctx, &sftp, &job.remote).await?;
         ctx.set_total(total);
-        download_tree(&ctx, &sftp, &job.remote, &local, resume.is_some()).await
+        download_tree(&ctx, &sftp, &job.remote, &local).await
     } else {
         ctx.set_total(attrs.size.unwrap_or(0));
+        if let Some(at) = own_file(&ctx, &job.remote, &job.local_dir).await {
+            ctx.set_local(&at);
+            ctx.file_done();
+            return Ok(());
+        }
         let local = download_file(&ctx, &sftp, &job.remote, &job.local_dir, name).await?;
         ctx.set_local(&local);
-        ctx.file_done();
+        ctx.placed(&job.remote, &local.to_string_lossy(), true);
         Ok(())
     }
 }
@@ -752,11 +1007,70 @@ pub(super) async fn remote_size(ctx: &Ctx, sftp: &SftpSession, root: &str) -> Re
     Ok(total)
 }
 
+/// The local folder an earlier run made for `remote`, if it is still a real
+/// folder (never a link put in its place since).
+async fn own_dir(ctx: &Ctx, remote: &str, parent: &Path) -> Option<PathBuf> {
+    let recorded = ctx.placed_at(remote)?;
+    let (at, id) = recorded.split_once('\0').unwrap_or((&recorded, ""));
+    let at = PathBuf::from(at);
+    let same = async {
+        // Still the very folder it made (not one made in its place since),
+        // still where it was, inside its parent, and not a link.
+        let meta = tokio::fs::symlink_metadata(&at).await.ok()?;
+        let fits = meta.is_dir() && !meta.file_type().is_symlink() && at.parent() == Some(parent) && local_id(&meta) == id;
+        fits.then_some(())
+    }
+    .await;
+    if same.is_none() {
+        // Made again from scratch: what was recorded under it belongs to
+        // the old folder.
+        ctx.forget_under(remote);
+        return None;
+    }
+    Some(at)
+}
+
+/// Records a folder this job made, with its identity (see `own_dir`).
+async fn place_dir(ctx: &Ctx, remote: &str, dir: &Path) {
+    let id = tokio::fs::symlink_metadata(dir).await.map(|m| local_id(&m)).unwrap_or_default();
+    ctx.placed(remote, &format!("{}\0{id}", dir.to_string_lossy()), false);
+}
+
+/// Where an earlier run downloaded `remote`, if that file is still there in
+/// `dir` (a file removed since is downloaded again).
+async fn own_file(ctx: &Ctx, remote: &str, dir: &Path) -> Option<PathBuf> {
+    let at = PathBuf::from(ctx.placed_at(remote)?);
+    let ok = at.parent() == Some(dir)
+        && tokio::fs::symlink_metadata(&at).await.is_ok_and(|m| m.is_file() && !m.file_type().is_symlink());
+    if !ok {
+        ctx.forget_under(remote);
+        return None;
+    }
+    Some(at)
+}
+
+/// What tells one local folder from another made later at the same path.
+fn local_id(meta: &std::fs::Metadata) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        format!("{}:{}", meta.dev(), meta.ino())
+    }
+    #[cfg(not(unix))]
+    {
+        meta.created()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_nanos().to_string())
+            .unwrap_or_default()
+    }
+}
+
 /// A server folder into `local_root`. A file or subfolder that fails is
-/// noted (`Ctx::entry`) and the rest goes on. `resume`: a retry into the
-/// folder of an earlier attempt, reusing its subfolders and skipping files
-/// already there (a download only gets its final name once complete).
-async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &Path, resume: bool) -> Result<(), String> {
+/// noted (`Ctx::entry`) and the rest goes on. On a retry, folders an earlier
+/// run made are reused and files it finished skipped (`Placed`); nothing
+/// else on disk is trusted.
+async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &Path) -> Result<(), String> {
     let mut stack = vec![(root.to_string(), local_root.to_path_buf())];
     while let Some((remote, local)) = stack.pop() {
         ctx.check()?;
@@ -772,28 +1086,29 @@ async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &P
             ctx.check()?;
             let meta = item.metadata();
             let name = item.file_name();
-            let mine = local.join(sanitize(&name));
+            let path = item.path();
             // Names that differ remotely but not as local names (`a:b`, `a?b`)
             // get "(1)" instead of landing on each other.
             if meta.is_dir() && !meta.is_symlink() {
-                if resume && mine.is_dir() {
-                    stack.push((item.path(), mine));
+                if let Some(dir) = own_dir(ctx, &path, &local).await {
+                    stack.push((path, dir));
                     continue;
                 }
                 match reserve_dir(&local, &name).await {
-                    Ok(child) => stack.push((item.path(), child)),
-                    Err(e) => ctx.entry(&item.path(), Err(e))?,
+                    Ok(child) => {
+                        place_dir(ctx, &path, &child).await;
+                        stack.push((path, child));
+                    }
+                    Err(e) => ctx.entry(&path, Err(e))?,
                 }
             } else if meta.is_regular() {
-                if resume && mine.is_file() {
+                if own_file(ctx, &path, &local).await.is_some() {
                     ctx.file_done();
                     continue;
                 }
-                let r = download_file(ctx, sftp, &item.path(), &local, &name).await.map(|_| ());
-                if r.is_ok() {
-                    ctx.file_done();
-                }
-                ctx.entry(&item.path(), r)?;
+                let r = download_file(ctx, sftp, &path, &local, &name).await;
+                let r = r.map(|at| ctx.placed(&path, &at.to_string_lossy(), true));
+                ctx.entry(&path, r)?;
             }
         }
     }
@@ -816,7 +1131,7 @@ async fn download_file(ctx: &Ctx, sftp: &SftpSession, remote: &str, dir: &Path, 
     let copied: Result<(), String> = async {
         loop {
             ctx.check()?;
-            let n = src.read(&mut buf).await.map_err(|e| e.to_string())?;
+            let n = src.read(&mut buf).await.map_err(remote_io)?;
             if n == 0 {
                 break;
             }

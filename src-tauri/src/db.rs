@@ -339,6 +339,31 @@ impl Db {
         Ok(())
     }
 
+    /// Adds or removes one bookmark against the stored list, under the
+    /// connection lock, so two panels editing at once never lose a change.
+    /// Returns false when adding would go past `limit`.
+    pub fn edit_bookmark(&self, id: Uuid, path: &str, add: bool, limit: usize) -> rusqlite::Result<bool> {
+        let conn = self.conn.lock().unwrap();
+        let stored: Option<String> = conn.query_row(
+            "SELECT bookmarks FROM tunnels WHERE id = ?1",
+            params![id.to_string()],
+            |row| row.get(0),
+        )?;
+        let mut list: Vec<String> = stored.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+        let had = list.iter().any(|b| b == path);
+        match (add, had) {
+            (true, true) | (false, false) => return Ok(true),
+            (true, false) if list.len() >= limit => return Ok(false),
+            (true, false) => list.push(path.to_string()),
+            (false, true) => list.retain(|b| b != path),
+        }
+        conn.execute(
+            "UPDATE tunnels SET bookmarks = ?2 WHERE id = ?1",
+            params![id.to_string(), bookmarks_json(&list)],
+        )?;
+        Ok(true)
+    }
+
     /// Files `ids` under `group` (None: ungrouped) in one transaction. Only
     /// the group changes, so live sessions are left alone.
     pub fn set_group(&self, ids: &[Uuid], group: Option<&str>) -> rusqlite::Result<()> {

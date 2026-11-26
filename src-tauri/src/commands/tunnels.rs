@@ -201,24 +201,26 @@ pub fn set_tunnels_group(
     Ok(())
 }
 
-/// A host's bookmarked folders (file panel). Saved with the host, so config
-/// export carries them; never restarts a tunnel.
+/// Bookmarks kept per host, at most.
+const MAX_BOOKMARKS: usize = 100;
+
+/// Adds or removes one of a host's bookmarked folders (file panel). Saved
+/// with the host, so config export carries them; never restarts a tunnel.
 #[tauri::command]
-pub fn set_tunnel_bookmarks(
+pub fn edit_tunnel_bookmark(
     app: AppHandle,
     state: State<AppState>,
     id: Uuid,
-    bookmarks: Vec<String>,
+    path: String,
+    add: bool,
 ) -> Result<(), String> {
-    let mut clean: Vec<String> = Vec::new();
-    for b in bookmarks {
-        let b = b.trim().to_string();
-        if !b.is_empty() && !b.contains('\0') && !clean.contains(&b) {
-            clean.push(b);
-        }
+    // Kept exactly as given (a folder name may end in a space).
+    if path.is_empty() || path.contains('\0') {
+        return Err("invalid-path".into());
     }
-    clean.truncate(100);
-    state.db.set_bookmarks(id, &clean).map_err(|e| e.to_string())?;
+    if !state.db.edit_bookmark(id, &path, add, MAX_BOOKMARKS).map_err(|e| e.to_string())? {
+        return Err("too-many-bookmarks".into());
+    }
     tunnels_changed(&app);
     Ok(())
 }

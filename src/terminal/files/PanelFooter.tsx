@@ -35,6 +35,7 @@ export function PanelFooter({
   onClearTransfers: () => void;
 }) {
   const { t } = useTranslation("terminal");
+  const failed = transfers.filter((x) => x.state === "failed").length;
   return (
     <div className="relative flex h-7 shrink-0 items-center gap-3 border-t border-border bg-bg/60 px-2.5 text-[11px] text-muted">
       <span className="min-w-0 flex-1 truncate" role="status">
@@ -55,6 +56,8 @@ export function PanelFooter({
       >
         <span aria-hidden="true">⇅</span>
         {running > 0 ? `${running} · ${Math.round((progress ?? 0) * 100)}%` : t("files.queue.title")}
+        {/* Failed rows stay counted until cleared, so one is not missed among several panels. */}
+        {failed > 0 && <span className="rounded bg-coral/15 px-1 text-coral">{t("files.queue.failedCount", { count: failed })}</span>}
       </button>
       {queueOpen && (
         <div className="absolute bottom-full right-1 z-10 mb-1 w-[min(26rem,calc(100%-0.5rem))] overflow-hidden rounded-md border border-border bg-surface shadow-xl">

@@ -3,13 +3,15 @@ import type { TFunction } from "i18next";
 import { filesCopyAcross, filesDragOut, filesExisting, filesPaste, filesUpload, terminalWrite } from "../../api";
 import type { Conflict, CopyAcross, FileEntry } from "../../types";
 import { dropDirFor, type DropPlan } from "./dropLogic";
-import { canPasteClip, chooseConflicts, type ClashAnswer } from "./panelLogic";
+import { canPasteClip, chooseConflicts, duplicateNames, type ClashChoices } from "./panelLogic";
 import { getClipboard, setClipboard, type RelayHint } from "./panelStore";
-
-/** The last part of a local (either separator) or remote path. */
-const lastName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 import { baseName, isDirLike, joinPath, parentPath } from "./paths";
 import { isWindows } from "../../platform";
+
+/** The last part of a local path: either separator on Windows, only "/" elsewhere. */
+const localName = (p: string) => p.split(isWindows ? /[\\/]/ : "/").filter((c) => c && c !== ".").pop() ?? p;
+/** The last part of a server path (POSIX: a backslash is part of the name). */
+const remoteName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 import { onRowDragLeaveWindow, registerRowReceiver, type RowDragPayload } from "./rowDrag";
 
 interface Args {
@@ -17,10 +19,17 @@ interface Args {
   tunnelId: string;
   /** The host now reaches another server: nothing may land here. */
   stale: boolean;
+  /** The server (`user@host:port`) this panel shows: every job is bound to it. */
+  endpoint: string;
   /** Tells the other panels on this server these folders changed. */
   changed: (dirs: string[]) => void;
-  /** Asks what to do with `name`, already in `dir`; `left` more clashes follow. */
-  askClash: (name: string, dir: string, left: number) => Promise<ClashAnswer>;
+  /**
+   * Bumped when the panel closes or reloads on another server: a check
+   * still on its way then asks nothing and sends nothing.
+   */
+  generation: () => number;
+  /** Asks what to do with each of `names`, taken in `dir` (`total` items arriving); null: cancelled. */
+  askClash: (names: string[], dir: string, total: number) => Promise<ClashChoices | null>;
   /** Re-lists the folder on screen now; `select` applies only if it is `dir`. */
   refreshCurrent: (select?: string[], dir?: string) => void;
   path: string | null;
@@ -47,6 +56,8 @@ export function usePanelDrops({
   paneId,
   tunnelId,
   stale,
+  endpoint,
+  generation,
   changed,
   askClash,
   refreshCurrent,
@@ -68,20 +79,28 @@ export function usePanelDrops({
 
   /**
    * Splits `items` by what each does when its name is taken in `dir` on this
-   * server: asks about every clash (Skip / Replace / Keep both, or one answer
-   * for all). Null when the user cancelled or the check failed.
+   * server: one question lists every clash (Skip / Replace / Keep both).
+   * Null when the user cancelled or the check failed.
    */
-  const splitByConflict = async (items: string[], dir: string): Promise<Map<Conflict, string[]> | null> => {
-    const names = items.map(lastName);
-    let taken: string[];
-    try {
-      taken = await filesExisting(tunnelId, dir, [...new Set(names)]);
-    } catch (e) {
-      setNotice(errorText(e));
+  const splitByConflict = async (items: string[], dir: string, nameOf: (p: string) => string): Promise<Map<Conflict, string[]> | null> => {
+    const names = items.map(nameOf);
+    // Two items for one name (from different folders) would race for it.
+    const twice = duplicateNames(names);
+    if (twice.length > 0) {
+      setNotice(t("files.clash.twice", { names: twice.join(", ") }));
       return null;
     }
-    const groups = await chooseConflicts([...new Set(names)], new Set(taken), (name, left) => askClash(name, dir, left));
-    if (!groups) return null;
+    const gen = generation();
+    let taken: string[];
+    try {
+      taken = await filesExisting(tunnelId, dir, names, endpoint);
+    } catch (e) {
+      if (gen === generation()) setNotice(errorText(e));
+      return null;
+    }
+    if (gen !== generation()) return null;
+    const groups = await chooseConflicts(names, new Set(taken), (clashing) => askClash(clashing, dir, names.length));
+    if (!groups || gen !== generation()) return null;
     const modeOf = new Map<string, Conflict>();
     for (const [mode, ns] of groups) for (const n of ns) modeOf.set(n, mode);
     const parts = new Map<Conflict, string[]>();
@@ -94,10 +113,10 @@ export function usePanelDrops({
 
   /** Local files or folders into `dir`, asking about names already there. */
   const uploadInto = async (localPaths: string[], dir: string) => {
-    const parts = await splitByConflict(localPaths, dir);
+    const parts = await splitByConflict(localPaths, dir, localName);
     if (!parts) return;
     try {
-      for (const [mode, paths] of parts) await filesUpload(tunnelId, paths, dir, mode);
+      for (const [mode, paths] of parts) await filesUpload(tunnelId, paths, dir, mode, endpoint);
       setQueueOpen(true);
     } catch (e) {
       setNotice(errorText(e));
@@ -105,14 +124,14 @@ export function usePanelDrops({
   };
 
   /** Server-to-server copy into `dir`; the queue shows progress, and a relayed one offers the key hint. */
-  const copyAcross = async (from: string, fromPaneId: string, paths: string[], dir: string) => {
-    const parts = await splitByConflict(paths, dir);
+  const copyAcross = async (from: string, fromEndpoint: string, fromPaneId: string, paths: string[], dir: string) => {
+    const parts = await splitByConflict(paths, dir, remoteName);
     if (!parts) return;
     setNotice(t("files.copying"));
     try {
       let hint: RelayHint | null = null;
       for (const [mode, some] of parts) {
-        const out: CopyAcross = await filesCopyAcross(from, some, tunnelId, dir, mode);
+        const out: CopyAcross = await filesCopyAcross(from, some, tunnelId, dir, mode, fromEndpoint, endpoint);
         if (out.route === "relay" && out.keyHint) {
           hint = { fromTunnelId: from, termId: shellFor(from, fromPaneId), command: out.keyHint };
         }
@@ -126,10 +145,10 @@ export function usePanelDrops({
   };
 
   /** Same-server copy or move (`files_paste`) into `dir`. */
-  const pasteHere = async (paths: string[], dir: string, cut: boolean) => {
+  const pasteHere = async (paths: string[], dir: string, cut: boolean, from: string) => {
     setNotice(t("files.pasting"));
     try {
-      const out = await filesPaste(tunnelId, paths, dir, cut);
+      const out = await filesPaste(tunnelId, paths, dir, cut, from);
       setNotice(
         out.skipped.length > 0
           ? t("files.pasteSkipped", { count: out.skipped.length, names: out.skipped.map(baseName).join(", ") })
@@ -151,8 +170,8 @@ export function usePanelDrops({
     // Re-read the store: this panel's render may predate another panel's Copy/Cut.
     const clip = getClipboard();
     if (!path || !clip || !canPasteClip(clip, tunnelId)) return;
-    if (clip.tunnelId !== tunnelId) return void (await copyAcross(clip.tunnelId, clip.paneId, clip.paths, path));
-    if ((await pasteHere(clip.paths, path, clip.cut)) && clip.cut && getClipboard() === clip) {
+    if (clip.tunnelId !== tunnelId) return void (await copyAcross(clip.tunnelId, clip.endpoint, clip.paneId, clip.paths, path));
+    if ((await pasteHere(clip.paths, path, clip.cut, clip.endpoint)) && clip.cut && getClipboard() === clip) {
       setClipboard(null);
     }
   };
@@ -166,10 +185,10 @@ export function usePanelDrops({
     return dropDirFor(path, name ? entries.find((e) => e.name === name) : undefined);
   };
   const receiveRows = async (payload: RowDragPayload, dir: string, plan: DropPlan) => {
-    if (plan.kind === "across") return void (await copyAcross(payload.tunnelId, payload.paneId, payload.paths, dir));
+    if (plan.kind === "across") return void (await copyAcross(payload.tunnelId, payload.endpoint, payload.paneId, payload.paths, dir));
     if (plan.kind === "none") return;
     // A move empties the source folder: `pasteHere` tells the panels showing it.
-    await pasteHere(payload.paths, dir, plan.kind === "move");
+    await pasteHere(payload.paths, dir, plan.kind === "move", payload.endpoint);
   };
   const receiverApi = useRef({ rowDropDir, receiveRows, refresh });
   receiverApi.current = { rowDropDir, receiveRows, refresh };
@@ -198,7 +217,7 @@ export function usePanelDrops({
       setPreparing(payload.paths);
       setNotice(tr("files.dragOut.preparing"));
       // Resolves once the OS drag has started, or at once if the button was released while listing.
-      filesDragOut(payload.tunnelId, payload.paths)
+      filesDragOut(payload.tunnelId, payload.paths, payload.endpoint)
         .then(() => setNotice(null))
         .catch((e) => {
           const code = String(e);

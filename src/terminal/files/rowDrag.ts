@@ -10,6 +10,8 @@ import { planDrop, type DropPlan, type DropSource } from "./dropLogic";
 export interface RowDragPayload extends DropSource {
   /** The panel (pane id) the rows come from. */
   paneId: string;
+  /** The server (`user@host:port`) that panel shows. */
+  endpoint: string;
 }
 
 export interface RowDragView {

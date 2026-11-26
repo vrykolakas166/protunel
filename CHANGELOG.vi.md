@@ -9,9 +9,9 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 ## [Unreleased]
 
 ### Cải thiện
-- **Tên đã có?** Upload hoặc sao chép giữa hai máy chủ giờ hỏi phải làm gì với từng tên đã tồn tại: **Bỏ qua**, **Thay** hoặc **Giữ cả hai** (lưu thành “tên (1)”), có thể chọn một lần cho tất cả. Dòng bị bỏ qua trong danh sách truyền cũng có nút Thay và Giữ cả hai.
-- **Truyền thư mục không dừng vì một tệp lỗi**: dòng truyền cho biết bao nhiêu tệp đã xong và tệp nào lỗi, và **Thử lại** (cả với lượt đã hủy) chỉ chép phần còn thiếu.
-- Popup tệp có **Quay lại / Tiến tới** (Alt+← / Alt+→) và nút **bookmark**: bookmark thư mục theo từng máy chủ (lưu cùng host và đi theo khi xuất cấu hình) và quay lại các thư mục vừa mở, kể cả sau khi đã đóng cửa sổ terminal.
+- **Tên đã có?** Khi tải lên hoặc sao chép giữa hai máy chủ, mọi tên đã có được liệt kê trong một bảng, mặc định **Bỏ qua**: chọn **Ghi đè** hoặc **Giữ cả hai** (lưu thành “tên (1)”) cho từng tên, hoặc đặt cho tất cả một lần. Dòng bị bỏ qua trong danh sách truyền cũng có nút Ghi đè và Giữ cả hai.
+- **Truyền thư mục không dừng vì một tệp lỗi**: dòng truyền cho biết bao nhiêu tệp đã xong và liệt kê các tệp lỗi (có thể sao chép danh sách để đi sửa). Sửa nguyên nhân (kết nối lại shell nếu mất kết nối), rồi bấm **Thử lại** trên dòng đó, kể cả lượt đã hủy: tệp đã xong được giữ nguyên, phần còn lại được gửi lại tới đúng máy chủ cũ, tệp đang dở sẽ chép lại từ đầu. Nút truyền tệp của popup đếm số lượt lỗi cho tới khi bạn xóa chúng.
+- Popup tệp có **Quay lại / Tiến tới** (Alt+← / Alt+→, qua các thư mục đã mở từ lúc mở popup) và nút **đánh dấu**: đánh dấu thư mục theo từng máy chủ (lưu cùng host, đi theo khi xuất cấu hình) và quay lại các thư mục gần đây của máy chủ, vẫn còn cả sau khi đã đóng cửa sổ terminal.
 - **Ctrl+T** ở cửa sổ chính mở terminal và ẩn cửa sổ chính, chỉ một bước.
 - Nhấp chuột phải vào máy chủ ở thanh bên của terminal, hoặc vào khung shell, rồi chọn **Sửa máy chủ…** để sửa ngay, không cần quay lại cửa sổ chính. Đổi thông tin kết nối của máy chủ đang dùng sẽ kết nối lại các shell của nó.
 - **Thanh trạng thái** ở dưới cửa sổ chính: lưu lượng của mọi tunnel đang kết nối, và phiên bản hoặc bản cập nhật đang chờ.
@@ -22,10 +22,10 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 - Thanh máy chủ bên trái của terminal **đổi được độ rộng**: kéo cạnh phải (nhấp đúp để về độ rộng mặc định).
 
 ### Sửa lỗi
-- Danh sách truyền tệp và tiến độ trong popup tệp chỉ hiện các lượt truyền của máy chủ đó, và nút Xóa chỉ xóa các lượt đó; trước đây mọi popup đang mở đều hiện (và xóa) tất cả.
+- Danh sách truyền tệp và tiến độ trong popup tệp chỉ hiện các lượt truyền của máy chủ đó, và nút **Xóa mục đã xong** chỉ xóa các lượt đó; trước đây mọi popup đang mở đều hiện (và xóa) tất cả.
 - Popup tệp ngừng thao tác trên tệp của máy chủ cũ khi host được sửa để trỏ tới máy chủ khác, và đề nghị tải lại trên máy chủ mới; các lượt truyền đã xếp hàng trước khi sửa không còn chạy trên máy chủ mới.
 - Lưu tệp bị từ chối khi tệp đã bị người khác sửa kể cả khi kích thước và thời gian trông như cũ, hai editor trên cùng một tệp không còn ghi đè nhau, và tệp không thể thay an toàn sẽ hỏi trước khi ghi trực tiếp.
-- Ghi đè, tải về và hủy không bao giờ làm mất hay đè tệp: ghi đè giữ tệp cũ đến khi tệp mới vào chỗ, tải về không chiếm tên vừa xuất hiện trong lúc tải, và hủy tải không để lại gì.
+- Ghi đè, tải về và hủy an toàn hơn: ghi đè giữ tệp cũ cho đến khi tệp mới chép xong, tải về không chiếm tên vừa xuất hiện trong lúc tải, và hủy tải không để lại gì.
 - Các popup cùng máy chủ tự làm mới cho nhau sau khi xóa, đổi tên, tạo mới hay dán; upload xong không còn kéo popup về thư mục vừa rời, và giữ nguyên bộ lọc lẫn vị trí cuộn.
 - Tệp thả từ hệ thống chỉ vào danh sách của popup ngay dưới con trỏ, không xuyên qua hộp thoại hay vào thư mục phía sau tệp đang mở.
 - Mở popup thứ chín chỉ đóng đúng popup đã được hỏi, tệp mở chậm không còn giành bàn phím của popup khác, và Thử lại trên popup mở lúc chưa kết nối sẽ tìm đúng thư mục home.

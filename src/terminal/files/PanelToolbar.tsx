@@ -19,6 +19,7 @@ export function PanelToolbar({
   goUp,
   go,
   canGo,
+  bookmarked,
   onFolders,
   goShellDir,
   refresh,
@@ -44,6 +45,8 @@ export function PanelToolbar({
   goUp: () => void;
   go: (delta: -1 | 1) => void;
   canGo: { back: boolean; forward: boolean };
+  /** The folder on screen is one of the host's bookmarks. */
+  bookmarked: boolean;
   /** Opens the bookmarks / recent folders menu at the button. */
   onFolders: (e: ReactMouseEvent) => void;
   goShellDir: () => unknown;
@@ -63,7 +66,7 @@ export function PanelToolbar({
           <path d="M13 8H3M7.5 3.5L3 8l4.5 4.5" />
         </svg>
       </button>
-      <button onClick={() => go(1)} disabled={!canGo.forward} className={`${iconButton} hidden @min-[480px]:block`} title={`${t("files.forward")} (Alt+→)`} aria-label={t("files.forward")}>
+      <button onClick={() => go(1)} disabled={!canGo.forward} className={iconButton} title={`${t("files.forward")} (Alt+→)`} aria-label={t("files.forward")}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M3 8h10M8.5 3.5L13 8l-4.5 4.5" />
         </svg>
@@ -98,7 +101,7 @@ export function PanelToolbar({
         <nav
           aria-label={t("files.path")}
           onDoubleClick={() => setPathEdit(path ?? "")}
-          title={t("files.pathHint")}
+          title={path ? `${path}\n${t("files.pathHint")}` : t("files.pathHint")}
           className="flex min-w-0 flex-1 items-center overflow-hidden font-mono text-xs"
         >
           {path &&
@@ -115,18 +118,25 @@ export function PanelToolbar({
             ))}
         </nav>
       )}
-      <button onClick={onFolders} disabled={!path} className={iconButton} title={t("files.folders.title")} aria-label={t("files.folders.title")} aria-haspopup="menu">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
+      <button
+        onClick={onFolders}
+        disabled={!path}
+        className={`${iconButton} ${bookmarked ? "text-accent" : ""}`}
+        title={t(bookmarked ? "files.folders.titleMarked" : "files.folders.title")}
+        aria-label={t(bookmarked ? "files.folders.titleMarked" : "files.folders.title")}
+        aria-haspopup="menu"
+      >
+        <svg width="13" height="13" viewBox="0 0 16 16" fill={bookmarked ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" aria-hidden="true">
           <path d="M4 2.5h8a.5.5 0 0 1 .5.5v10.5L8 10.5l-4.5 3V3a.5.5 0 0 1 .5-.5Z" />
         </svg>
       </button>
-      <button onClick={() => void goShellDir()} className={iconButton} title={t("files.shellDir")} aria-label={t("files.shellDir")}>
+      <button onClick={() => void goShellDir()} className={`${iconButton} hidden @min-[420px]:block`} title={t("files.shellDir")} aria-label={t("files.shellDir")}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
           <path d="M4.5 6.5l2 1.5-2 1.5M8 10h3" />
         </svg>
       </button>
-      <button onClick={() => void load(home)} className={iconButton} title={t("files.home", { home })} aria-label={t("files.homeLabel")}>
+      <button onClick={() => void load(home)} className={`${iconButton} hidden @min-[420px]:block`} title={t("files.home", { home })} aria-label={t("files.homeLabel")}>
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
           <path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H10V10H6v3.5H3a.5.5 0 0 1-.5-.5Z" />
         </svg>

@@ -1,5 +1,5 @@
 use super::*;
-use crate::commands::files_copy_across;
+use crate::commands::{files_copy_across, files_retry};
 use files::{Conflict, Route};
 
 struct Pair {
@@ -42,6 +42,8 @@ impl Pair {
             self.dest.id,
             self.dir.clone(),
             conflict,
+            None,
+            None,
             None,
         )
         .await
@@ -207,6 +209,70 @@ async fn it_copy_top_level_name_skipped_unless_overwrite() {
         pair.assert_transfer(case, replaced, Route::Rsync, TransferState::Done)
             .await;
         assert_eq!(pair.read(case, "same.txt").await, b"new");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_copy_retry_refused_keeps_its_row() {
+    run(async |case| {
+        let pair = Pair::connect(case, "srv-b").await;
+        case.exec(&pair.source, &format!("printf x > {}/f", pair.dir)).await;
+        case.exec(&pair.dest, &format!("mkdir {0}/ro && chmod 555 {0}/ro", pair.dir)).await;
+        let copy = files_copy_across(
+            case.app.clone(),
+            case.app.state(),
+            pair.source.id,
+            vec![format!("{}/f", pair.dir)],
+            pair.dest.id,
+            format!("{}/ro", pair.dir),
+            Conflict::Skip,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        let id = copy.transfer_ids[0];
+        case.finished(id, TransferState::Failed).await;
+
+        // B is down: the retry is refused and the row stays, still retryable.
+        case.state().stop_and_wait(pair.dest.id).await;
+        assert!(files_retry(case.app.clone(), case.app.state(), id, None).await.is_err());
+        assert!(files::transfers(case.app).iter().any(|x| x.id == id));
+
+        case.connect(&pair.dest).await;
+        case.exec(&pair.dest, &format!("chmod 755 {}/ro", pair.dir)).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), id, None).await.unwrap();
+        case.finished(retried[0], TransferState::Done).await;
+        assert!(files::transfers(case.app).iter().all(|x| x.id != id));
+        assert_eq!(pair.read(case, "ro/f").await, b"x");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_copy_rsync_partial_then_retry() {
+    run(async |case| {
+        let pair = Pair::connect(case, "srv-b").await;
+        case.exec(
+            &pair.source,
+            &format!("mkdir {0}/box && printf 1 > {0}/box/one && printf 2 > {0}/box/two && chmod 000 {0}/box/two", pair.dir),
+        )
+        .await;
+        let id = pair.queue(case, "box", Route::Rsync, false).await;
+        let partial = case.finished(id, TransferState::Failed).await;
+        assert_eq!(partial.error.as_deref(), Some("partial"));
+        assert_eq!(partial.files_done, 1);
+        assert_eq!(partial.files_failed, 1, "{:?}", partial.failures);
+        assert_eq!(pair.read(case, "box/one").await, b"1");
+
+        case.exec(&pair.source, &format!("chmod 644 {}/box/two", pair.dir)).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), id, None).await.unwrap();
+        case.finished(retried[0], TransferState::Done).await;
+        assert_eq!(pair.read(case, "box/two").await, b"2");
     })
     .await;
 }

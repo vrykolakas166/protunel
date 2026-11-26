@@ -27,9 +27,9 @@ import {
   filesOpenLocal,
   filesPickUpload,
   filesRename,
-  setTunnelBookmarks,
+  editTunnelBookmark,
 } from "../../api";
-import { openMenu, type MenuEntry } from "../../contextMenu";
+import { openMenu, openMenuBelow, type MenuEntry } from "../../contextMenu";
 import type { FileEntry, FileTransfer, Tunnel } from "../../types";
 import { dropLabelKey } from "./dropLogic";
 import { FileDetails } from "./FileDetails";
@@ -42,7 +42,7 @@ import { PanelFooter, RelayHintBar } from "./PanelFooter";
 import { PanelHeader } from "./PanelHeader";
 import { PanelToolbar } from "./PanelToolbar";
 import { applySelection } from "./selection";
-import { recentFolders, toggleBookmark } from "./history";
+import { recentFolders } from "./history";
 import {
   COLUMNS_MIN,
   DETAILS_MIN,
@@ -58,7 +58,7 @@ import {
   type Confirm,
   type NameBarState,
 } from "./panelStore";
-import { canPasteClip, knownErrorCode, pathsIn, type ClashAnswer } from "./panelLogic";
+import { canPasteClip, knownErrorCode, pathsIn, type ClashChoices } from "./panelLogic";
 import { handleListKey } from "./panelKeys";
 import { backgroundMenuEntries, rowMenuEntries } from "./panelMenus";
 import { baseName, isDirLike, joinPath, parentPath, resolvePath, sortEntries, validName, type SortKey } from "./paths";
@@ -306,7 +306,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   const download = (paths = targets()) => {
     if (paths.length === 0) return;
-    void filesDownload(tunnelId, paths)
+    void filesDownload(tunnelId, paths, bound)
       .then(() => {
         setQueueOpen(true);
       })
@@ -315,7 +315,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   const downloadTo = (paths = targets()) => {
     if (paths.length === 0) return;
-    void filesPickDownload(tunnelId, paths)
+    void filesPickDownload(tunnelId, paths, bound)
       .then((ids) => {
         if (ids.length > 0) setQueueOpen(true);
       })
@@ -323,7 +323,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   };
 
   const openLocal = (p: string) => {
-    void filesOpenLocal(tunnelId, p).catch((e) => setNotice(errorText(e)));
+    void filesOpenLocal(tunnelId, p, bound).catch((e) => setNotice(errorText(e)));
     setNotice(t("files.openingLocal", { name: baseName(p) }));
   };
 
@@ -340,34 +340,68 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const copyToClipboard = (cut: boolean) => {
     const paths = targets();
     if (paths.length === 0) return;
-    setClipboard({ tunnelId, paneId, paths, cut });
+    setClipboard({ tunnelId, endpoint: bound, paneId, paths, cut });
     setNotice(t(cut ? "files.cutCount" : "files.copiedCount", { count: paths.length }));
   };
 
   // Cut stays on one server; a copy can be pasted on any other server.
   const canPaste = canPasteClip(clipboard, tunnelId);
 
-  const askClash = (name: string, dir: string, left: number) =>
-    new Promise<ClashAnswer>((resolve) =>
-      setConfirm((prev) => {
-        if (prev?.kind === "clash") prev.resolve({ choice: "cancel", all: false });
-        return {
-          kind: "clash",
-          name,
-          dir,
-          left,
-          resolve: (answer) => {
-            setConfirm(null);
-            resolve(answer);
-          },
-        };
-      }),
-    );
+  // One question at a time: an arrival while another question is up is
+  // refused (said in the notice), never queued behind it or put over it.
+  const confirmRef = useRef<Confirm | null>(null);
+  confirmRef.current = confirm;
+  const askClash = (names: string[], dir: string, total: number) =>
+    new Promise<ClashChoices | null>((resolve) => {
+      if (confirmRef.current) {
+        setNotice(t("files.clash.busy"));
+        return resolve(null);
+      }
+      let settled = false;
+      const next: Confirm = {
+        kind: "clash",
+        names,
+        dir,
+        total,
+        resolve: (choices) => {
+          if (settled) return;
+          settled = true;
+          confirmRef.current = null;
+          setConfirm(null);
+          resolve(choices);
+          focusList();
+        },
+      };
+      confirmRef.current = next;
+      setConfirm(next);
+    });
+  /** Closes whatever question is up, answering it "cancel". */
+  const dismissConfirm = () => {
+    const open = confirmRef.current;
+    if (open?.kind === "dirty") open.resolve("cancel");
+    else if (open?.kind === "clash") open.resolve(null);
+    confirmRef.current = null;
+    setConfirm(null);
+  };
+  const dismissRef = useRef(dismissConfirm);
+  dismissRef.current = dismissConfirm;
+  // See `usePanelDrops` `generation`.
+  const generationRef = useRef(0);
+  // A panel closing never leaves an operation waiting on its question.
+  useEffect(
+    () => () => {
+      generationRef.current++;
+      dismissRef.current();
+    },
+    [],
+  );
 
   const { dropDir, relayHint, setRelayHint, preparing, paste, hintShellAlive, typeRelayHint, dropFiles, uploadInto } = usePanelDrops({
     paneId,
     tunnelId,
     stale,
+    endpoint: bound,
+    generation: () => generationRef.current,
     changed,
     askClash,
     refreshCurrent,
@@ -387,7 +421,10 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   const askDelete = (paths = targets()) => {
     if (paths.length === 0) return;
-    setConfirm({ kind: "delete", paths, count: null, typed: "" });
+    if (confirmRef.current) return setNotice(t("files.clash.busy"));
+    const next: Confirm = { kind: "delete", paths, count: null, typed: "" };
+    confirmRef.current = next;
+    setConfirm(next);
     filesCount(tunnelId, paths)
       .then((count) =>
         setConfirm((c) => (c?.kind === "delete" && c.paths === paths ? { ...c, count } : c)),
@@ -457,12 +494,16 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
       void load(dir);
       focusList();
     };
-    openMenu(e, [
+    openMenuBelow(e.currentTarget, [
       {
         label: marked ? t("files.folders.remove") : t("files.folders.add"),
         action: () =>
-          void setTunnelBookmarks(tunnelId, toggleBookmark(marks, path)).catch((err) => setNotice(errorText(err))),
+          void editTunnelBookmark(tunnelId, path, !marked).catch((err: unknown) =>
+            setNotice(String(err) === "too-many-bookmarks" ? t("files.folders.tooMany") : errorText(err)),
+          ),
       },
+      { label: t("files.homeLabel"), action: goTo(home) },
+      { label: t("files.shellDir"), action: () => void goShellDir() },
       ...(marks.length > 0
         ? (["separator", { label: t("files.folders.bookmarks"), action: () => {}, enabled: false }] as MenuEntry[])
         : []),
@@ -481,6 +522,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     if (!viewRef.current?.dirty()) return true;
     // Stale: saving would reach the wrong server; the edits go to a local draft.
     if (stale) return viewRef.current.saveDraft();
+    if (confirmRef.current?.kind === "clash") confirmRef.current.resolve(null);
     const choice = await new Promise<"save" | "discard" | "cancel">((resolve) =>
       setConfirm((prev) => {
         // Asked again while the question is up: the earlier ask is answered "cancel".
@@ -508,7 +550,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     setViewing(null);
     setDetails(null);
     setNameBar(null);
-    setConfirm(null);
+    generationRef.current++;
+    dismissConfirm();
     setBound(endpointNow);
     restart();
   };
@@ -550,8 +593,8 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
         download: () => download(paths),
         downloadTo: () => downloadTo(paths),
         openLocal: () => openLocal(full),
-        copy: () => setClipboard({ tunnelId, paneId, paths, cut: false }),
-        cut: () => setClipboard({ tunnelId, paneId, paths, cut: true }),
+        copy: () => setClipboard({ tunnelId, endpoint: bound, paneId, paths, cut: false }),
+        cut: () => setClipboard({ tunnelId, endpoint: bound, paneId, paths, cut: true }),
         paste: () => void paste(),
         rename: () => setNameBar({ kind: "rename", from: entry.name, value: entry.name }),
         copyPath: () => copyPath(full),
@@ -625,11 +668,21 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
 
   /** Esc unwinds one layer at a time; the panel closes last. */
   const onRootKey = (e: ReactKeyboardEvent) => {
+    // Back / Forward from anywhere in the panel but text being edited (the
+    // list handles its own; the toolbar buttons show the keys).
+    if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && e.altKey && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
+      const el = e.target as HTMLElement;
+      if (!e.defaultPrevented && !confirm && !viewing && !el.closest("input, textarea, .cm-editor")) {
+        e.preventDefault();
+        go(e.key === "ArrowLeft" ? -1 : 1);
+      }
+      return;
+    }
     if (e.key !== "Escape" || e.defaultPrevented) return;
     e.preventDefault();
     if (confirm) {
       if (confirm.kind === "dirty") confirm.resolve("cancel");
-      else if (confirm.kind === "clash") confirm.resolve({ choice: "cancel", all: false });
+      else if (confirm.kind === "clash") confirm.resolve(null);
       else setConfirm(null);
       focusList();
     } else if (nameBar) {
@@ -660,7 +713,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
     if (e.button !== 0 || e.shiftKey || !path) return;
     // The rows that travel: the selection when this row is in it.
     const names = isSelected ? [...selected] : [entry.name];
-    beginRowDrag(e, { paneId, tunnelId, dir: path, paths: pathsOf(names) }, () => {
+    beginRowDrag(e, { paneId, tunnelId, endpoint: bound, dir: path, paths: pathsOf(names) }, () => {
       if (e.ctrlKey || e.metaKey) selectAt(index, "toggle");
       else if (isSelected && selected.size > 1) selectAt(index, "only");
     });
@@ -761,6 +814,7 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
               goUp={goUp}
               go={go}
               canGo={canGo}
+              bookmarked={!!path && (tunnel.bookmarks ?? []).includes(path)}
               onFolders={foldersMenu}
               goShellDir={goShellDir}
               refresh={refresh}

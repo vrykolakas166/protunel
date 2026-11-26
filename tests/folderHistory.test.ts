@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { EMPTY_HISTORY, MAX_RECENT, addRecent, moveTo, step, toggleBookmark, visit } from "../src/terminal/files/history";
+import { EMPTY_HISTORY, MAX_RECENT, addRecent, moveTo, step, visit } from "../src/terminal/files/history";
 
 describe("folder history", () => {
   test("visit, back, forward, and a new visit drops forward", () => {
@@ -33,10 +33,5 @@ describe("folder history", () => {
     expect(list.length).toBe(MAX_RECENT);
     expect(addRecent(list, "/10")[0]).toBe("/10");
     expect(addRecent(list, "/10").filter((p) => p === "/10").length).toBe(1);
-  });
-
-  test("bookmark toggle", () => {
-    expect(toggleBookmark(["/a"], "/b")).toEqual(["/a", "/b"]);
-    expect(toggleBookmark(["/a", "/b"], "/a")).toEqual(["/b"]);
   });
 });
