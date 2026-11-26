@@ -8,6 +8,8 @@ Anh: [CHANGELOG.md](CHANGELOG.md). Các bản trước 0.10.0 xem ở
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-26
+
 ### Cải thiện
 - Terminal: khi chưa có tab nào, có thể kéo máy chủ từ thanh bên thả vào bất kỳ chỗ nào của vùng trống để mở. Bỏ nút + trên thanh tab (chỉ nhảy tới ô tìm máy chủ); Ctrl+Shift+K vẫn làm việc đó.
 - **Tên đã có?** Khi tải lên hoặc sao chép giữa hai máy chủ, mọi tên đã có được liệt kê trong một bảng, mặc định **Bỏ qua**: chọn **Ghi đè** hoặc **Giữ cả hai** (lưu thành “tên (1)”) cho từng tên, hoặc đặt cho tất cả một lần. Dòng bị bỏ qua trong danh sách truyền cũng có nút Ghi đè và Giữ cả hai.

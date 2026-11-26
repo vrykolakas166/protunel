@@ -8,6 +8,8 @@ follow [Semantic Versioning](https://semver.org/). Vietnamese:
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-26
+
 ### Improvements
 - Terminal: with no tab open, a host dragged from the sidebar can be dropped anywhere in the empty area to open it. The tab strip's + button, which only jumped to the host search, is gone (Ctrl+Shift+K still does that).
 - **Name already taken?** Uploading or copying between servers now lists every name that is already there, each set to **Skip** until you change it: pick **Overwrite** or **Keep both** (saved as “name (1)”) per name, or set them all at once. A skipped row in the transfer list offers Overwrite and Keep both too.
