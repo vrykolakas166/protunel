@@ -471,7 +471,12 @@ impl CopyBatch {
                 // cancel or a failed check ends the job (what was checked
                 // stays recorded): never Done with files unaccounted for.
                 let placed = if r.is_ok() || r.as_ref().is_err_and(rsync_partial) {
-                    place_rsync(ctx, dest, target, target, &copied).await
+                    // In place: what was verified stays recorded even if a
+                    // later check fails.
+                    let mut found = Vec::new();
+                    let r = place_rsync(ctx, dest, target, target, &copied, &mut found).await;
+                    record_all(ctx, &found);
+                    r
                 } else {
                     Ok(())
                 };
@@ -553,7 +558,10 @@ impl CopyBatch {
                 // Checked in the stage, before publishing: a check that
                 // fails publishes nothing, so a retry starts clean instead
                 // of finding its own target with nothing recorded.
-                if let Err(v) = place_rsync(ctx, dest, &staged, target, copied).await {
+                // Recorded only once published: a rename that fails leaves
+                // no record of a path that holds someone else's file.
+                let mut found = Vec::new();
+                if let Err(v) = place_rsync(ctx, dest, &staged, target, copied, &mut found).await {
                     // The check's error is the one to report.
                     let _ = delete_tree(dest, &stage, true).await;
                     return Err(v);
@@ -561,6 +569,7 @@ impl CopyBatch {
                 match commit_part(ctx, dest, &staged, target, overwrite).await {
                     Ok(()) => {
                         ctx.own();
+                        record_all(ctx, &found);
                         rsync_failures(ctx, &e.message)
                     }
                     // The name was taken meanwhile: "keep both" moves on.
@@ -571,8 +580,9 @@ impl CopyBatch {
             Err(e) => Err(e),
             Ok(()) => {
                 let staged = join(&stage, split(source).1);
+                let mut found = Vec::new();
                 if rsync {
-                    if let Err(v) = place_rsync(ctx, dest, &staged, target, copied).await {
+                    if let Err(v) = place_rsync(ctx, dest, &staged, target, copied, &mut found).await {
                         // The check's error is the one to report.
                         let _ = delete_tree(dest, &stage, true).await;
                         return Err(v);
@@ -583,6 +593,7 @@ impl CopyBatch {
                     if !overwrite {
                         ctx.own();
                     }
+                    record_all(ctx, &found);
                 }
                 r.map_err(DirectError::from)
             }
@@ -603,10 +614,18 @@ const RSYNC_FILE: &str = "protunel-file:";
 
 /// Records the files rsync reported (`copied`, names relative to the folder
 /// it copied into, led by the source's name), looked up under `look` (the
-/// stage before publishing, or the target itself) and recorded under
-/// `target`: only those really there on B as regular files, so one rsync listed but could not
-/// write is never taken for finished.
-async fn place_rsync(ctx: &Ctx, dest: &SftpSession, look: &str, target: &str, copied: &[String]) -> Result<(), DirectError> {
+/// stage before publishing, or the target itself), named as under `target`
+/// into `found` (recorded by the caller once in place): only those really
+/// there on B as regular files, so one rsync listed but could not write is
+/// never taken for finished.
+async fn place_rsync(
+    ctx: &Ctx,
+    dest: &SftpSession,
+    look: &str,
+    target: &str,
+    copied: &[String],
+    found: &mut Vec<String>,
+) -> Result<(), DirectError> {
     // Grouped by folder: one listing per folder, not one round trip per file.
     let mut by_dir: std::collections::BTreeMap<String, Vec<(String, String)>> = Default::default();
     for name in copied.iter().filter(|n| !n.ends_with('/')) {
@@ -630,7 +649,7 @@ async fn place_rsync(ctx: &Ctx, dest: &SftpSession, look: &str, target: &str, co
                 _ = ctx.cancel.cancelled() => return Err(DirectError::from("cancelled".to_string())),
             };
             match meta {
-                Ok(a) if a.is_regular() && !a.is_symlink() => ctx.placed(record, record, true),
+                Ok(a) if a.is_regular() && !a.is_symlink() => found.push(record.clone()),
                 Ok(_) => {}
                 Err(e) if is_missing(&e) => {}
                 Err(e) => return Err(DirectError::from(at(path, e))),
@@ -644,11 +663,18 @@ async fn place_rsync(ctx: &Ctx, dest: &SftpSession, look: &str, target: &str, co
             .filter(|i| i.metadata().is_regular() && !i.metadata().is_symlink())
             .map(|i| i.file_name())
             .collect();
-        for (_, record) in paths.iter().filter(|(p, _)| files.contains(split(p).1)) {
-            ctx.placed(record, record, true);
-        }
+        found.extend(paths.iter().filter(|(p, _)| files.contains(split(p).1)).map(|(_, r)| r.clone()));
     }
+    // A cancel during the last listing still counts.
+    ctx.check()?;
     Ok(())
+}
+
+/// Records verified files (see `place_rsync`) as finished.
+fn record_all(ctx: &Ctx, found: &[String]) {
+    for path in found {
+        ctx.placed(path, path, true);
+    }
 }
 
 /// One `--out-format` line ("<bytes>:<name>") as the name: rsync writes
