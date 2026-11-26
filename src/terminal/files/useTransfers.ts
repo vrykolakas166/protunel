@@ -15,7 +15,9 @@ export function useTransfers(): { transfers: FileTransfer[]; clearFinished: (tun
     let alive = true;
     // Rows removed while the snapshot is on its way must not come back with it.
     const removed = new Set<string>();
-    const merge = (t: FileTransfer) =>
+    const merge = (t: FileTransfer) => {
+      // A late update for a row already removed (retried) never brings it back.
+      if (removed.has(t.id)) return;
       setList((prev) => {
         const i = prev.findIndex((x) => x.id === t.id);
         if (i < 0) return [...prev, t];
@@ -23,6 +25,7 @@ export function useTransfers(): { transfers: FileTransfer[]; clearFinished: (tun
         next[i] = t;
         return next;
       });
+    };
     const listeners = Promise.all([
       listen<FileTransfer>("file-transfer", (e) => merge(e.payload)),
       // A retried row is replaced by its new one.

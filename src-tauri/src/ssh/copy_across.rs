@@ -324,6 +324,7 @@ impl CopyBatch {
         self.ensure_live(&ctx.app.state::<AppState>())?;
         ctx.check()?;
         let dest = sftp_for_session(&ctx.app, self.to, &self.dest_session).await?;
+        ctx.uses(self.to, &dest);
         let dest_dir = dest
             .canonicalize(self.dest_dir.as_str())
             .await
@@ -333,7 +334,30 @@ impl CopyBatch {
             (false, _) => Write::New,
             (true, Conflict::Skip) => return Err("exists".to_string()),
             (true, Conflict::Replace) => Write::Replace,
-            (true, Conflict::Resume) => Write::Resume,
+            (true, Conflict::Resume) => {
+                // Resuming into what this job made: when none of what it
+                // finished there is left and the folder holds something
+                // else, it was replaced (moved aside, another made) and is
+                // not this job's to merge into. Empty, nothing is at stake.
+                let records = ctx.placed_under(&target);
+                let mut left = records.is_empty();
+                for path in &records {
+                    if dest.symlink_metadata(path.as_str()).await.is_ok_and(|a| a.is_regular() && !a.is_symlink()) {
+                        left = true;
+                        break;
+                    }
+                }
+                if !left {
+                    let empty = match dest.read_dir(target.as_str()).await {
+                        Ok(mut items) => items.next().is_none(),
+                        Err(_) => false,
+                    };
+                    if !empty {
+                        return Err("exists".to_string());
+                    }
+                }
+                Write::Resume
+            }
             (true, Conflict::KeepBoth) => {
                 target = free_remote(ctx, self.to, &dest, &dest_dir, name).await?;
                 let transfer = {
@@ -381,6 +405,7 @@ impl CopyBatch {
         // both, or its retry) goes through a stage and a rename instead.
         let renamed = split(target).1 != source_name;
         let a = sftp_for_session(&ctx.app, self.from, &self.source_session).await?;
+        ctx.uses(self.from, &a);
         // One policy for links on every route: a top-level link is refused
         // (relay would copy nothing, rsync/scp the link or its target).
         let source_attrs = a.symlink_metadata(source).await.map_err(|e| at(source, e))?;
@@ -436,7 +461,7 @@ impl CopyBatch {
                 let r = run_direct(ctx, &self.source_session, &command, &marker, true, &mut copied).await;
                 // rsync renames each file into place as it finishes.
                 if r.is_ok() || r.as_ref().is_err_and(rsync_partial) {
-                    place_rsync(ctx, target, &copied);
+                    place_rsync(ctx, dest, target, &copied).await;
                 }
                 // Went on past files it could not copy: those are the
                 // job's failures, the rest is in place.
@@ -515,9 +540,11 @@ impl CopyBatch {
                 match commit_part(ctx, dest, &staged, target, overwrite).await {
                     Ok(()) => {
                         ctx.own();
-                        place_rsync(ctx, target, copied);
+                        place_rsync(ctx, dest, target, copied).await;
                         rsync_failures(ctx, &e.message)
                     }
+                    // The name was taken meanwhile: "keep both" moves on.
+                    Err(c) if c == "exists" => Err(DirectError::from(c)),
                     Err(_) => Err(e),
                 }
             }
@@ -529,7 +556,7 @@ impl CopyBatch {
                     if !overwrite {
                         ctx.own();
                     }
-                    place_rsync(ctx, target, copied);
+                    place_rsync(ctx, dest, target, copied).await;
                 }
                 r.map_err(DirectError::from)
             }
@@ -549,17 +576,67 @@ fn rsync_partial(e: &DirectError) -> bool {
 const RSYNC_FILE: &str = "protunel-file:";
 
 /// Records the files rsync reported (`copied`, names relative to the folder
-/// it copied into, led by the source's name) under `target`.
-fn place_rsync(ctx: &Ctx, target: &str, copied: &[String]) {
+/// it copied into, led by the source's name) under `target`: only those
+/// really there on B as regular files, so one rsync listed but could not
+/// write is never taken for finished.
+async fn place_rsync(ctx: &Ctx, dest: &SftpSession, target: &str, copied: &[String]) {
+    // Grouped by folder: one listing per folder, not one round trip per file.
+    let mut by_dir: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     for name in copied.iter().filter(|n| !n.ends_with('/')) {
         let path = match name.split_once('/') {
             Some((_, rest)) if !rest.is_empty() => join(target, rest),
             _ => target.to_string(),
         };
         if ctx.placed_at(&path).is_none() {
-            ctx.placed(&path, &path, true);
+            by_dir.entry(split(&path).0.to_string()).or_default().push(path);
         }
     }
+    for (dir, paths) in by_dir {
+        // A cancel ends the bookkeeping too (unrecorded files are copied
+        // again on a retry, never taken for done).
+        if ctx.check().is_err() {
+            return;
+        }
+        if let [path] = paths.as_slice() {
+            match dest.symlink_metadata(path.as_str()).await {
+                Ok(a) if a.is_regular() && !a.is_symlink() => ctx.placed(path, path, true),
+                Ok(_) => {}
+                Err(e) if is_missing(&e) => {}
+                Err(_) => return,
+            }
+            continue;
+        }
+        let Ok(items) = dest.read_dir(dir.as_str()).await else { return };
+        let files: std::collections::HashSet<String> = items
+            .filter(|i| i.metadata().is_regular() && !i.metadata().is_symlink())
+            .map(|i| i.file_name())
+            .collect();
+        for path in paths.iter().filter(|p| files.contains(split(p).1)) {
+            ctx.placed(path, path, true);
+        }
+    }
+}
+
+/// One `--out-format` line ("<bytes>:<name>") as the name: rsync writes
+/// unprintable bytes as "\#ooo" (octal); a name that does not decode to
+/// UTF-8 is left out (that file is only copied again on a retry).
+fn rsync_name(line: &[u8]) -> Option<String> {
+    let (_, name) = std::str::from_utf8(line).ok()?.split_once(':')?;
+    let raw = name.as_bytes();
+    let mut out = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        // Only a complete escape: "\\#" followed by anything else is literal.
+        let escape = raw.get(i..i + 5).filter(|e| e.starts_with(b"\\#") && e[2..].iter().all(|d| (b'0'..=b'7').contains(d)));
+        if let Some(e) = escape {
+            out.push((e[2] - b'0') * 64 + (e[3] - b'0') * 8 + (e[4] - b'0'));
+            i += 5;
+        } else {
+            out.push(raw[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// Notes each distinct "rsync: …" line of a partial rsync run as a failed
@@ -735,7 +812,9 @@ fn rsync_command(
         "--no-links",
     ];
     // One line per file copied, so a partial run knows what is in place.
-    let out_format = format!("--out-format={RSYNC_FILE}%n");
+    // %b (bytes sent) makes rsync log a file once it is through, not as it
+    // starts.
+    let out_format = format!("--out-format={RSYNC_FILE}%b:%n");
     args.push(&out_format);
     args.push(if overwrite {
         "--ignore-times"
@@ -862,11 +941,11 @@ async fn run_direct(
                     if matches!(byte, b'\r' | b'\n') {
                         if line == marker.as_bytes() {
                             let _ = channel.eof().await;
-                        } else if let Some(name) = line.strip_prefix(RSYNC_FILE.as_bytes()) {
+                        } else if let Some(rest) = line.strip_prefix(RSYNC_FILE.as_bytes()) {
                             // A name cut at the length limit is left out
                             // (that file is only copied again on a retry).
                             if line.len() < 4096 {
-                                copied.push(String::from_utf8_lossy(name).into_owned());
+                                copied.extend(rsync_name(rest));
                             }
                         } else if progress {
                             update_progress(ctx, &line);
@@ -1071,6 +1150,9 @@ async fn relay(
                 .await;
                 if root {
                     made?;
+                    if mode == Write::New {
+                        ctx.own(); // the folder is this job's: a retry may merge into it
+                    }
                 } else if made.is_err() {
                     ctx.entry(&target, made)?;
                     broken.push(target.clone());
@@ -1106,6 +1188,9 @@ async fn relay(
                 let r = relay_file(ctx, a, b, &source, &target, &current, mode == Write::Replace).await;
                 if r.is_ok() {
                     ctx.placed(&target, &target, true);
+                    if root && mode == Write::New {
+                        ctx.own();
+                    }
                 }
                 if root {
                     // A single file: its failure is the transfer's.
@@ -1290,12 +1375,21 @@ mod tests {
     }
 
     #[test]
+    fn reads_rsync_file_lines() {
+        assert_eq!(rsync_name(b"12:box/a b.txt").as_deref(), Some("box/a b.txt"));
+        assert_eq!(rsync_name(b"0:box/x\\#011y").as_deref(), Some("box/x\ty"));
+        assert_eq!(rsync_name(b"5:a:b").as_deref(), Some("a:b"));
+        assert_eq!(rsync_name(b"nocolon"), None);
+        assert_eq!(rsync_name(b"1:a\\#notes").as_deref(), Some("a\\#notes"));
+    }
+
+    #[test]
     fn builds_rsync_commands_with_a_limited_ssh_transport() {
         let tunnel = destination();
         let source = "-a:b 'source'";
         let dest = "/my dir/$(literal)";
         let command = rsync_command(&tunnel, source, dest, false, "done", KNOWN_HOSTS);
-        assert!(command.contains("'rsync' '-a' '--no-links' '--out-format=protunel-file:%n' '--ignore-existing' '--info=progress2' '-s'"));
+        assert!(command.contains("'rsync' '-a' '--no-links' '--out-format=protunel-file:%b:%n' '--ignore-existing' '--info=progress2' '-s'"));
         assert!(command.ends_with(
             r"'--' './-a:b '\''source'\''' 'o'\''neil@[2001:db8::2]:/my dir/$(literal)/'"
         ));

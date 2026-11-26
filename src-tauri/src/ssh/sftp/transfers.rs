@@ -363,6 +363,9 @@ pub(super) struct Ctx {
     reserved: Mutex<Vec<String>>,
     /// See `JobMeta::owns`.
     owns: AtomicBool,
+    /// The SFTP channels the job used: dropped from the cache if it ends on
+    /// a dead channel (never a newer one opened meanwhile).
+    channels: Mutex<Vec<(Uuid, Arc<SftpSession>)>>,
 }
 
 impl Ctx {
@@ -412,11 +415,20 @@ impl Ctx {
     pub(super) fn placed_any(&self) -> bool {
         !self.placed.lock().unwrap().is_empty()
     }
+    /// The paths recorded at or under `key`.
+    pub(super) fn placed_under(&self, key: &str) -> Vec<String> {
+        let below = format!("{}/", key.trim_end_matches('/'));
+        self.placed.lock().unwrap().keys().filter(|k| *k == key || k.starts_with(&below)).cloned().collect()
+    }
     /// Forgets `key` and everything recorded under it (a folder that has to
     /// be made again: its old records describe another tree).
     fn forget_under(&self, key: &str) {
         let below = format!("{}/", key.trim_end_matches('/'));
         self.placed.lock().unwrap().retain(|k, _| k != key && !k.starts_with(&below));
+    }
+    /// Notes an SFTP channel the job runs over (see `channels`).
+    pub(super) fn uses(&self, tunnel: Uuid, sftp: &Arc<SftpSession>) {
+        self.channels.lock().unwrap().push((tunnel, sftp.clone()));
     }
     /// The job made its target itself.
     pub(super) fn own(&self) {
@@ -519,8 +531,23 @@ pub(super) fn spawn(
                     placed: Mutex::new(meta.placed.clone()),
                     reserved: Mutex::new(Vec::new()),
                     owns: AtomicBool::new(meta.owns),
+                    channels: Mutex::new(Vec::new()),
                 });
                 let mut result = run(ctx.clone()).await;
+                // Only a channel that broke: a cancel or a host edit leaves a
+                // healthy channel other jobs may still be using.
+                let broken = |e: &String| {
+                    let bare = e.rsplit_once(": ").map_or(e.as_str(), |(_, code)| code);
+                    matches!(bare, "connection-lost" | "timeout")
+                };
+                if result.as_ref().is_err_and(broken) {
+                    // A dead SFTP channel on a live session: drop the very
+                    // channel that failed, the next job opens a fresh one.
+                    let used = std::mem::take(&mut *ctx.channels.lock().unwrap());
+                    for (tunnel, sftp) in used {
+                        super::forget_channel(&app, tunnel, &sftp).await;
+                    }
+                }
                 {
                     let held = std::mem::take(&mut *ctx.reserved.lock().unwrap());
                     let placed = std::mem::take(&mut *ctx.placed.lock().unwrap());
@@ -572,14 +599,6 @@ pub(super) fn spawn(
             }
         }
         if matches!(transfer.state, TransferState::Failed) {
-            // A dead SFTP channel on a live session: drop it, the next job
-            // opens a fresh one.
-            if transfer.error.as_deref().is_some_and(stops_all) {
-                forget(&app, transfer.tunnel_id, started).await;
-                if let Some(dest) = transfer.dest_tunnel_id {
-                    forget(&app, dest, started).await;
-                }
-            }
             forget_if_dead(&app, transfer.tunnel_id, started).await;
             if let Some(dest_tunnel_id) = transfer.dest_tunnel_id {
                 forget_if_dead(&app, dest_tunnel_id, started).await;
@@ -601,12 +620,15 @@ async fn forget_if_dead(app: &AppHandle, tunnel_id: Uuid, started: Instant) {
 
 async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: UploadJob) -> Result<(), String> {
     let sftp = sftp_bound(&ctx.app, tunnel_id, expect.as_deref()).await?;
+    ctx.uses(tunnel_id, &sftp);
     let name = match &job.name {
         Some(name) => name.clone(),
         None => job.local.file_name().ok_or("no file name")?.to_string_lossy().into_owned(),
     };
     // A link is not uploaded (the same policy as copies between servers).
-    let meta = tokio::fs::symlink_metadata(&job.local).await.map_err(|e| e.to_string())?;
+    // Normalized first: "link/" or "link/." would name what it points to.
+    let local: PathBuf = job.local.components().collect();
+    let meta = tokio::fs::symlink_metadata(&local).await.map_err(|e| e.to_string())?;
     if meta.file_type().is_symlink() || !(meta.is_dir() || meta.is_file()) {
         return Err("not-copied-link".to_string());
     }
@@ -630,7 +652,7 @@ async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: Upl
         }
     };
     if meta.is_dir() {
-        ctx.set_total(local_size(&job.local).await);
+        ctx.set_total(local_size(&local).await);
     } else {
         ctx.set_total(meta.len());
     }
@@ -638,13 +660,13 @@ async fn upload(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: Upl
     // the next free one; anything else is skipped, never replaced.
     for _ in 0..5 {
         let result = if meta.is_dir() {
-            upload_tree(&ctx, &sftp, &job.local, &target, mode).await
+            upload_tree(&ctx, &sftp, &local, &target, mode).await
         } else {
             if already_done(&ctx, &sftp, &target, mode).await? {
                 ctx.file_done();
                 return Ok(());
             }
-            let r = upload_file(&ctx, &sftp, &job.local, &target, mode == Write::Replace).await;
+            let r = upload_file(&ctx, &sftp, &local, &target, mode == Write::Replace).await;
             if r.is_ok() {
                 ctx.placed(&target, &target, true);
                 if mode == Write::New {
@@ -687,17 +709,21 @@ pub(super) enum Write {
 /// Whether `path` on the server needs no copy on this run: an earlier run
 /// finished it, or (Resume) a complete regular file is already there.
 pub(super) async fn already_done(ctx: &Ctx, sftp: &SftpSession, path: &str, mode: Write) -> Result<bool, String> {
-    if ctx.placed_at(path).is_some() {
-        return Ok(true);
-    }
-    if mode != Write::Resume {
+    let placed = ctx.placed_at(path).is_some();
+    if !placed && mode != Write::Resume {
         return Ok(false);
     }
-    match sftp.symlink_metadata(path).await {
-        Ok(a) => Ok(a.is_regular() && !a.is_symlink()),
-        Err(e) if is_missing(&e) => Ok(false),
-        Err(e) => Err(at(path, e)),
+    let there = match sftp.symlink_metadata(path).await {
+        Ok(a) => a.is_regular() && !a.is_symlink(),
+        Err(e) if is_missing(&e) => false,
+        Err(e) => return Err(at(path, e)),
+    };
+    // A finished file removed (or replaced by something else) since is
+    // copied again.
+    if placed && !there {
+        ctx.forget_under(path);
     }
+    Ok(there)
 }
 
 /// The first free "name (n).ext" in `dir` on the server, held for this job
@@ -759,7 +785,12 @@ async fn upload_tree(ctx: &Ctx, sftp: &SftpSession, root: &Path, target: &str, m
                 Ok(a) if a.is_dir() && !a.is_symlink() && (mode != Write::New || !first) => Ok(()),
                 Ok(_) if first && mode == Write::New => Err("exists".to_string()),
                 Ok(_) => Err(format!("{remote}: not a folder")),
-                Err(e) if is_missing(&e) => sftp.create_dir(remote.as_str()).await.map_err(|e| at(&remote, e)),
+                Err(e) if is_missing(&e) => match sftp.create_dir(remote.as_str()).await {
+                    Ok(()) => Ok(()),
+                    // Made by someone else since the check: a clash, not a failure.
+                    Err(_) if first && mode == Write::New && exists(sftp, &remote).await? => Err("exists".to_string()),
+                    Err(e) => Err(at(&remote, e)),
+                },
                 Err(e) => Err(at(&remote, e)),
             }
         }
@@ -929,6 +960,7 @@ pub(super) fn short_id() -> String {
 
 async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: DownloadJob) -> Result<(), String> {
     let sftp = sftp_bound(&ctx.app, tunnel_id, expect.as_deref()).await?;
+    ctx.uses(tunnel_id, &sftp);
     let attrs = sftp.metadata(job.remote.as_str()).await.map_err(err)?;
     let (_, name) = split(&job.remote);
     tokio::fs::create_dir_all(&job.local_dir).await.map_err(|e| e.to_string())?;
@@ -961,7 +993,7 @@ async fn download(ctx: Arc<Ctx>, tunnel_id: Uuid, expect: Option<String>, job: D
         }
         let local = download_file(&ctx, &sftp, &job.remote, &job.local_dir, name).await?;
         ctx.set_local(&local);
-        ctx.placed(&job.remote, &local.to_string_lossy(), true);
+        place_file(&ctx, &job.remote, &local).await;
         Ok(())
     }
 }
@@ -1017,7 +1049,7 @@ async fn own_dir(ctx: &Ctx, remote: &str, parent: &Path) -> Option<PathBuf> {
         // Still the very folder it made (not one made in its place since),
         // still where it was, inside its parent, and not a link.
         let meta = tokio::fs::symlink_metadata(&at).await.ok()?;
-        let fits = meta.is_dir() && !meta.file_type().is_symlink() && at.parent() == Some(parent) && local_id(&meta) == id;
+        let fits = meta.is_dir() && !meta.file_type().is_symlink() && at.parent() == Some(parent) && !id.is_empty() && local_id(&meta) == id;
         fits.then_some(())
     }
     .await;
@@ -1030,6 +1062,12 @@ async fn own_dir(ctx: &Ctx, remote: &str, parent: &Path) -> Option<PathBuf> {
     Some(at)
 }
 
+/// Records a file this job downloaded, with its identity (see `own_file`).
+async fn place_file(ctx: &Ctx, remote: &str, at: &Path) {
+    let id = tokio::fs::symlink_metadata(at).await.map(|m| local_id(&m)).unwrap_or_default();
+    ctx.placed(remote, &format!("{}\0{id}", at.to_string_lossy()), true);
+}
+
 /// Records a folder this job made, with its identity (see `own_dir`).
 async fn place_dir(ctx: &Ctx, remote: &str, dir: &Path) {
     let id = tokio::fs::symlink_metadata(dir).await.map(|m| local_id(&m)).unwrap_or_default();
@@ -1039,9 +1077,14 @@ async fn place_dir(ctx: &Ctx, remote: &str, dir: &Path) {
 /// Where an earlier run downloaded `remote`, if that file is still there in
 /// `dir` (a file removed since is downloaded again).
 async fn own_file(ctx: &Ctx, remote: &str, dir: &Path) -> Option<PathBuf> {
-    let at = PathBuf::from(ctx.placed_at(remote)?);
+    let recorded = ctx.placed_at(remote)?;
+    let (at, id) = recorded.split_once('\0').unwrap_or((&recorded, ""));
+    let at = PathBuf::from(at);
+    // The very file it wrote: a file put in its place since is not it.
     let ok = at.parent() == Some(dir)
-        && tokio::fs::symlink_metadata(&at).await.is_ok_and(|m| m.is_file() && !m.file_type().is_symlink());
+        && tokio::fs::symlink_metadata(&at)
+            .await
+            .is_ok_and(|m| m.is_file() && !m.file_type().is_symlink() && !id.is_empty() && local_id(&m) == id);
     if !ok {
         ctx.forget_under(remote);
         return None;
@@ -1107,7 +1150,13 @@ async fn download_tree(ctx: &Ctx, sftp: &SftpSession, root: &str, local_root: &P
                     continue;
                 }
                 let r = download_file(ctx, sftp, &path, &local, &name).await;
-                let r = r.map(|at| ctx.placed(&path, &at.to_string_lossy(), true));
+                let r = match r {
+                    Ok(at) => {
+                        place_file(ctx, &path, &at).await;
+                        Ok(())
+                    }
+                    Err(e) => Err(e),
+                };
                 ctx.entry(&path, r)?;
             }
         }

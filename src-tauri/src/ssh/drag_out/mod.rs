@@ -36,6 +36,8 @@ pub async fn start(
     window: WebviewWindow,
     tunnel: Uuid,
     paths: Vec<String>,
+    // The server the panel shows: checked on the session the channel comes from.
+    expect: Option<String>,
 ) -> Result<(), String> {
     if !left_button_down() {
         return Ok(());
@@ -56,7 +58,7 @@ pub async fn start(
             }
         })
         .map_err(|e| e.to_string())?;
-    let sftp = sftp::sftp_for(app, tunnel).await;
+    let sftp = sftp::sftp_bound(app, tunnel, expect.as_deref()).await;
     if released.is_cancelled() {
         return Ok(());
     }

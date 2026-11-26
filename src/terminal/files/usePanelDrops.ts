@@ -82,7 +82,12 @@ export function usePanelDrops({
    * server: one question lists every clash (Skip / Replace / Keep both).
    * Null when the user cancelled or the check failed.
    */
-  const splitByConflict = async (items: string[], dir: string, nameOf: (p: string) => string): Promise<Map<Conflict, string[]> | null> => {
+  const splitByConflict = async (
+    items: string[],
+    dir: string,
+    nameOf: (p: string) => string,
+    gen: number,
+  ): Promise<Map<Conflict, string[]> | null> => {
     const names = items.map(nameOf);
     // Two items for one name (from different folders) would race for it.
     const twice = duplicateNames(names);
@@ -90,7 +95,7 @@ export function usePanelDrops({
       setNotice(t("files.clash.twice", { names: twice.join(", ") }));
       return null;
     }
-    const gen = generation();
+    if (gen !== generation()) return null;
     let taken: string[];
     try {
       taken = await filesExisting(tunnelId, dir, names, endpoint);
@@ -112,11 +117,15 @@ export function usePanelDrops({
   };
 
   /** Local files or folders into `dir`, asking about names already there. */
-  const uploadInto = async (localPaths: string[], dir: string) => {
-    const parts = await splitByConflict(localPaths, dir, localName);
+  const uploadInto = async (localPaths: string[], dir: string, gen = generation()) => {
+    const parts = await splitByConflict(localPaths, dir, localName, gen);
     if (!parts) return;
     try {
-      for (const [mode, paths] of parts) await filesUpload(tunnelId, paths, dir, mode, endpoint);
+      for (const [mode, paths] of parts) {
+        // Each group checks again: the panel may have closed between two.
+        if (gen !== generation()) return;
+        await filesUpload(tunnelId, paths, dir, mode, endpoint);
+      }
       setQueueOpen(true);
     } catch (e) {
       setNotice(errorText(e));
@@ -125,12 +134,14 @@ export function usePanelDrops({
 
   /** Server-to-server copy into `dir`; the queue shows progress, and a relayed one offers the key hint. */
   const copyAcross = async (from: string, fromEndpoint: string, fromPaneId: string, paths: string[], dir: string) => {
-    const parts = await splitByConflict(paths, dir, remoteName);
+    const gen = generation();
+    const parts = await splitByConflict(paths, dir, remoteName, gen);
     if (!parts) return;
     setNotice(t("files.copying"));
     try {
       let hint: RelayHint | null = null;
       for (const [mode, some] of parts) {
+        if (gen !== generation()) return;
         const out: CopyAcross = await filesCopyAcross(from, some, tunnelId, dir, mode, fromEndpoint, endpoint);
         if (out.route === "relay" && out.keyHint) {
           hint = { fromTunnelId: from, termId: shellFor(from, fromPaneId), command: out.keyHint };

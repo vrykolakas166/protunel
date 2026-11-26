@@ -47,7 +47,7 @@ export function PanelConfirm({
         aria-modal="false"
         aria-labelledby={titleId}
         onKeyDown={wrapTab}
-        className="w-full max-w-md rounded-lg border border-border bg-surface p-4 shadow-xl"
+        className="flex max-h-full w-full max-w-md flex-col overflow-y-auto rounded-lg border border-border bg-surface p-4 shadow-xl"
       >
         {confirm.kind === "delete" ? (
           <DeleteConfirm
@@ -171,7 +171,7 @@ function ClashConfirm({ confirm, where, titleId }: { confirm: Extract<Confirm, {
   const fresh = confirm.total - confirm.names.length;
   const label = (c: Conflict) => t(`files.clash.${c}`);
   return (
-    <div>
+    <div className="flex min-h-0 flex-col">
       <h3 id={titleId} className="text-sm font-semibold text-text">
         {t("files.clash.title", { count: confirm.names.length })}
       </h3>
@@ -190,7 +190,8 @@ function ClashConfirm({ confirm, where, titleId }: { confirm: Extract<Confirm, {
           ))}
         </div>
       )}
-      <ul className="mt-2 max-h-56 space-y-1 overflow-y-auto pr-1">
+      {/* Shrinks first on a small panel, so the buttons stay on screen. */}
+      <ul className="mt-2 max-h-56 min-h-12 shrink space-y-1 overflow-y-auto pr-1">
         {confirm.names.map((name) => {
           const chosen = choices.get(name) ?? "skip";
           return (

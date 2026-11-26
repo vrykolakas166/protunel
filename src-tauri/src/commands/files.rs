@@ -121,7 +121,6 @@ pub async fn files_delete(app: AppHandle, tunnel_id: Uuid, paths: Vec<String>) -
 #[tauri::command]
 pub async fn files_paste(
     app: AppHandle,
-    state: State<'_, AppState>,
     tunnel_id: Uuid,
     sources: Vec<String>,
     dest_dir: String,
@@ -132,8 +131,9 @@ pub async fn files_paste(
 ) -> Result<PasteOutcome, String> {
     let started = Instant::now();
     let r = async {
-        let s = sftp::sftp_bound(&app, tunnel_id, endpoint.as_deref()).await?;
-        sftp::paste(&*session(&state, tunnel_id)?, &s, &sources, &dest_dir, cut).await
+        // One session, checked once, for both the SFTP calls and `cp`.
+        let (session, s) = sftp::bound_session(&app, tunnel_id, endpoint.as_deref()).await?;
+        sftp::paste(&session, &s, &sources, &dest_dir, cut).await
     }
     .await;
     settle(&app, tunnel_id, started, r).await
@@ -468,18 +468,15 @@ pub async fn files_drag_out(
     paths: Vec<String>,
     endpoint: Option<String>,
 ) -> Result<(), String> {
-    if endpoint.is_some() && sftp::endpoint_now(&app, tunnel_id) != endpoint {
-        return Err("target-changed".into());
-    }
     #[cfg(windows)]
     {
         let started = Instant::now();
-        let result = crate::ssh::drag_out::start(&app, window, tunnel_id, paths).await;
+        let result = crate::ssh::drag_out::start(&app, window, tunnel_id, paths, endpoint).await;
         settle(&app, tunnel_id, started, result).await
     }
     #[cfg(not(windows))]
     {
-        let _ = (app, window, tunnel_id, paths);
+        let _ = (app, window, tunnel_id, paths, endpoint);
         Err("unsupported".into())
     }
 }

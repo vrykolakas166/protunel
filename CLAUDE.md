@@ -416,7 +416,11 @@ no dropping files on a shell — only on the panel, which names the target.
   to that same `client::Handle` (a reconnect gets a fresh one), opened once
   per tunnel even when two panels ask at once; `settle` drops it after an
   error on a dead session, but never a channel opened after the failed call
-  started (`forget(.., since)`). Commands never connect: no
+  started (`forget(.., since)`); a job ending on a broken channel
+  (`connection-lost`, `timeout`; never a cancel) drops the very channels it
+  used (`forget_channel`, by identity). Work that needs SFTP and `exec` on
+  one server (paste's `cp`) takes both from one checked session
+  (`bound_session`). Commands never connect: no
   session → `"not-connected"`. Error codes the UI translates are bare words
   (`files.err.*`). Server-side copy and folder size are `exec` (`cp -a`, `du
   -sk`) with `sftp::quote` (POSIX single quotes); SFTP has no copy.
@@ -461,8 +465,10 @@ no dropping files on a shell — only on the panel, which names the target.
   (`resume`: complete regular files there are kept); one that never made it
   starts over with its first choice. A folder download continues only in a
   folder it made (same identity, same parent, not a link); one made again
-  drops the records under it, and a finished file removed since is fetched
-  again. With a
+  drops the records under it, and a finished file removed or replaced since
+  (downloads record each file's identity too) is transferred again. A copy
+  resuming into a folder where none of its records is left and something
+  else is ends as skipped (the folder was replaced). With a
   `conflict`, `files_retry` runs a skipped row again as Replace or Keep
   both. Rows carry `endpoint`/`destEndpoint` as queued. Overwrite on a server without posix-rename renames the
   old file aside first and back on failure, never remove-then-rename. A
@@ -585,7 +591,9 @@ no dropping files on a shell — only on the panel, which names the target.
   `error: "skipped-links:N"`, shown as a note; rsync runs with
   `--no-links` (nested links skipped, uncounted) and every route refuses a
   top-level link. rsync prints each file it copied
-  (`--out-format=protunel-file:%n`), recorded in `Placed` once in place;
+  (`--out-format=protunel-file:%b:%n`: %b logs a file once sent; complete
+  octal escapes decoded), recorded in `Placed` only when found on B as a
+  regular file (one listing per folder, stopped by a cancel);
   exiting 23/24 (some files not copied) it publishes what it copied and
   lists its distinct "rsync: …" lines as the job's failures (nothing
   published: rsync's own error). A retry of a Replace that finished

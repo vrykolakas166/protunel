@@ -330,9 +330,11 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
   const upload = () => {
     if (!path) return;
     const dir = path;
+    // Taken before the picker: a panel closed or reloaded meanwhile sends nothing.
+    const gen = generationRef.current;
     void filesPickUpload()
       .then((paths) => {
-        if (paths.length > 0) return uploadInto(paths, dir);
+        if (paths.length > 0 && gen === generationRef.current) return uploadInto(paths, dir, gen);
       })
       .catch((e) => setNotice(errorText(e)));
   };
@@ -430,6 +432,9 @@ export const FilePanel = forwardRef<FilePanelHandle, Props>(function FilePanel(p
         setConfirm((c) => (c?.kind === "delete" && c.paths === paths ? { ...c, count } : c)),
       )
       .catch((e) => {
+        // Only this question: never one that took its place meanwhile.
+        if (confirmRef.current !== next && !(confirmRef.current?.kind === "delete" && confirmRef.current.paths === paths)) return;
+        confirmRef.current = null;
         setConfirm(null);
         setNotice(errorText(e));
       });

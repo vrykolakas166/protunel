@@ -210,7 +210,6 @@ async fn it_sftp_paste_and_rename_skip_name_clash() {
         .await;
         let outcome = files_paste(
             case.app.clone(),
-            case.app.state(),
             tunnel.id,
             vec![source.clone()],
             format!("{dir}/dest"),

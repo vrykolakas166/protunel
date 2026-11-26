@@ -276,3 +276,54 @@ async fn it_copy_rsync_partial_then_retry() {
     })
     .await;
 }
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_copy_relay_partial_then_retry_into_its_own_folder() {
+    run(async |case| {
+        let pair = Pair::connect(case, "srv-norsync").await;
+        case.exec(
+            &pair.source,
+            &format!("mkdir {0}/box && printf 1 > {0}/box/one && printf 2 > {0}/box/two && chmod 000 {0}/box/two", pair.dir),
+        )
+        .await;
+        // Skip: the folder is new, so the job made it and a retry merges into it.
+        let id = pair.queue(case, "box", Route::Relay, false).await;
+        let partial = case.finished(id, TransferState::Failed).await;
+        assert_eq!(partial.error.as_deref(), Some("partial"));
+        assert_eq!((partial.files_done, partial.files_failed), (1, 1));
+
+        // A finished file removed since is copied again.
+        case.exec(&pair.dest, &format!("rm {}/box/one", pair.dir)).await;
+        case.exec(&pair.source, &format!("chmod 644 {}/box/two", pair.dir)).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), id, None).await.unwrap();
+        let done = case.finished(retried[0], TransferState::Done).await;
+        assert_eq!(done.name, "box");
+        assert_eq!(pair.read(case, "box/one").await, b"1");
+        assert_eq!(pair.read(case, "box/two").await, b"2");
+    })
+    .await;
+}
+
+#[tokio::test]
+#[ignore = "needs docker/it (PROTUNEL_IT=1)"]
+async fn it_copy_retry_never_merges_into_a_folder_made_in_its_place() {
+    run(async |case| {
+        let pair = Pair::connect(case, "srv-norsync").await;
+        case.exec(
+            &pair.source,
+            &format!("mkdir {0}/box && printf 1 > {0}/box/one && printf 2 > {0}/box/two && chmod 000 {0}/box/two", pair.dir),
+        )
+        .await;
+        let id = pair.queue(case, "box", Route::Relay, false).await;
+        case.finished(id, TransferState::Failed).await;
+
+        // Moved aside, another folder takes the name.
+        case.exec(&pair.dest, &format!("mv {0}/box {0}/moved && mkdir {0}/box && printf mine > {0}/box/mine", pair.dir)).await;
+        case.exec(&pair.source, &format!("chmod 644 {}/box/two", pair.dir)).await;
+        let retried = files_retry(case.app.clone(), case.app.state(), id, None).await.unwrap();
+        case.finished(retried[0], TransferState::Skipped).await;
+        assert_eq!(case.exec(&pair.dest, &format!("ls {}/box", pair.dir)).await.trim(), "mine");
+    })
+    .await;
+}

@@ -147,6 +147,28 @@ pub fn endpoint_now(app: &AppHandle, tunnel_id: Uuid) -> Option<String> {
         .map(|e| e.target.clone())
 }
 
+/// The tunnel's current session, checked against `expect` when given, and
+/// its SFTP channel: one session for both, so a reconnect in between can
+/// never send part of the work to another server.
+pub async fn bound_session(app: &AppHandle, tunnel_id: Uuid, expect: Option<&str>) -> Result<(Arc<Handle>, Arc<SftpSession>), String> {
+    let session = app.state::<AppState>().session_for(tunnel_id).ok_or("not-connected")?;
+    if let Some(target) = expect {
+        check_target(app, &session, target)?;
+    }
+    let sftp = sftp_for_session(app, tunnel_id, &session).await?;
+    Ok((session, sftp))
+}
+
+/// Drops `sftp` from the cache if it is still the cached channel (one that
+/// failed); a newer one opened meanwhile stays.
+pub async fn forget_channel(app: &AppHandle, tunnel_id: Uuid, sftp: &Arc<SftpSession>) {
+    let files = app.state::<Files>();
+    let mut cache = files.cache.lock().await;
+    if cache.get(&tunnel_id).is_some_and(|entry| Arc::ptr_eq(&entry.sftp, sftp)) {
+        cache.remove(&tunnel_id);
+    }
+}
+
 /// `sftp_checked` when the job was bound to an endpoint, else `sftp_for`.
 pub async fn sftp_bound(app: &AppHandle, tunnel_id: Uuid, expect: Option<&str>) -> Result<Arc<SftpSession>, String> {
     match expect {
